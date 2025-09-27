@@ -1,0 +1,142 @@
+# Register Allocation - 2 SSA-based Register Allocation
+
+- Today
+  - finish up conservative coalesce, special regsiter, implementation
+  - ssa based register allocation
+    - SSA (static single assignment), basic blocks + control graph, etc
+- coalescing
+  - remove unnecessary moves
+  - important because previous phases will add a bunch of moves
+  - we risk when coalesce that we introduce a new node which results in a spill
+  - we could do aggressive or conservative coalescing
+    - aggressive is when we can + then undo
+    - conservative only coalesce things which keep graph colored
+    - some debate in literature about which is better
+  - briggs & perston methods
+  - (previous steps)
+    - build -> simplify -> potential spill -> select -> actual done (recurssion missing here)
+  - lets add coalesce after simplify
+  - brigs: one heuristic: look at all neighbors of two nodes you are coalescing
+  - preston: can coealesce if neighbor interfers with other or neighbor less than k
+- spilling a node with a lot of interference might actually
+  - reduces a lot of conns
+  - also long live ranges might good too
+  - things that are really bad to spill are things in loops
+  - spill something alive around a lot of calls
+  - spilling can potentially really hurt our program if not done right
+  - what are caller safe register (already spilled)
+  - coalesce registers?
+- special registers
+  - certain instructions have certain register requirements
+  - on x86 rax, rdx should be used for mul
+  - which registers are callee safe versus caller safe also
+  - ex) a * b = d
+    - mov a %rax
+    - mul b
+    - mov d rdx
+    - rax needs an edge also now
+    - ideally, d would be coalesced
+  - x86, can't AVI says result of return instruction will be %rax
+  - other special ones divide, modulo, shift, cmp?
+  - what are callee safe registers
+    - if callee writes to the register, they must also clear them
+    - if there is register pressure, we wont use
+    - if there is a lot of register pressure, then we should use them
+    - at beginning of function, we create a fake def of each callee safe register
+      - move into newly generated temp
+      - at end of function, we move back into callee safe register (even tho temp not used)
+      - temp_1 has live range of entire program and we dont use it
+      - if our heuristic for spilling is based on long range, we will spill this first
+    - we are protecting callee safe registers implicitly
+- iterative register coloring does pretty well in practice
+  - build interference graph is most expensive part
+  - graph is O(n^2) if we have n temps
+    - we want quick interference test
+    - and quickly get the number of neighbors for coalescing and getting number of neighbors
+    - typically ppl using hash table for sparse of ajacincy matrix for bits / adjacency list
+    - some people say build list first with multiple passes
+- static single assignment
+  - makes data flow assignments much simpler
+  - makes optimiziations easier
+  - can do register allocation in polynomial time in special cases 🤔
+  - if the same name is defined more than once, we can treat as sep
+- Def-Use chains
+  - keep track of where every variable is used
+  - for each use, where it is defined
+  - for each triple in your IR, keep track of triple using the def
+  - can be extremely expensive tho
+    - imagine control flow with a def behind each one
+    - in general, O(nm) space time n = defs, m = uses
+- Basic Blocks & Control Flow Graph
+  - control flow
+    - potential sequence of instructions
+    - jump, conditional jump, call, label (target of a transfer)
+  - we build a control flow graph or (cfg)
+  - group together non-jumps into Basic blocks
+    - one entry point
+    - one point of exit
+    - when entered all instructions are run
+  - basic blocks are nodes in our CFG
+- back to SSA (static single assignment)
+  - for straight line or within a single basic block, this is easier
+  - good bc
+    - makes du-chains explicit
+    - makes dataflow optim easier and faster
+    - improve register allocation (interference graphs, regiser allloc, and decoupling)
+    - for most programs reduces space/time requirements
+  - developed in 1988 - used in most production compilers like gcc, llvm..
+  - very much encourage people to do this by adding checkpoint for this
+  - straight line SSA
+    - variable is tied to its most recent def
+    - for each variable, keep count, stack (most recent def)
+    - stack is needed for extending to control flow with multiple basic blocks
+    - increase count with def
+    - when we see a use, we will use the def version by the count
+  - question now is what we do in a join of a control flow
+    - if a = 3 else a = 2
+    - well which do we use
+    - we are going to introduce a notion called phi functions
+    - will be used for all live variables at that point
+    - in our example a_3 = phi(a_1, a_2)
+  - if we have a basic block with p predecssors then our phi has p args
+  - we might also want to keep track of which edge args came from
+  - processors dont have phi so we will deconstruct ssa into asm eventually
+    - one way, for each incoming edge, we add a mov at end in LHS
+    - so we lose SSA again but since we are running that's fine
+- when should we deconstruct SSA to run on proceessor
+  - lots of research
+  - since they all use SSA for their intermediate stage
+  - maybe we do right before register allocation
+  - maybe we do after register allocation on ssa and then remove ssa
+  - color ssa means assign registers btw
+- Chordal Graphs
+  - we can do a minimal coloring in polynomial time
+  - an undirected graph if every cycle of 4 or more has a chord
+  - clique: fully connected subgraph
+  - perfect graph: chromatic number = size of largest clique
+  - all chords are perfect
+  - can color perfect graphs in poly times, finally SSA is chordal
+- Simplical Elimination Ordering
+  - vertex is called simplicial iff its neighborhood is a clique
+  - simplicial elimination ordering of G is a bijection such that
+    - every vertex `v_i` is a simplicial vertex in the subgraph
+  - can use maximum cardinality searchto generate SEO
+    - runtime: O(|V| + |E|)
+    - increment neighbor of each node
+    - next node and repeat
+    - greedly color from lowest to highest
+    - make sure neighbors have different color
+  - using SEO is optimial
+- Best Effor Coalescing
+  - good part of SSA, decouple spilling, register assign, coalescing
+  - simple way to do this
+  - color -> look at pairs with mov
+  - look at colors of nodes that do move
+  - if U(colors) and one extra, can combine and change color
+  - ex) N(v) = {x, w}, N(u) = {x,w, t}, U(v, u) = {x, w, t}
+  - pretty conservative but decouples
+- We can also do prespilling
+  - find maximal clique, if clique is too large (greater than k)
+  - we can split live graph or spill register
+  - maximal cardinality search, greedy color, best effort coalescing
+  - pretty solid ssa approach -- straight forward

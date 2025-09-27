@@ -1,0 +1,137 @@
+# Course Overview
+
+- What should a good compiler do?
+  - correct
+  - performance of translated program
+  - scability of compiler
+    - runs quickly seperate compilation
+  - easy to modify
+  - aids programmer (good msgs + debugger)
+  - predictable performance on target
+
+- What does a compiler do
+  - `x := a * 2 + b * (x + 3)`
+  - how do we break this apart? is it valid etc
+  - first phase of compiler, lexical analysis
+    - get rid of unneeded chars (spaces, \n, etc)
+  - turn everything into tokens
+  - lexmes
+  - then group tokens into sentences
+  - maybe parens get removed now that we have trees now
+  - general theory is context free grammars
+  - semantic analysis
+    - meaning of sentence
+    - types of vars, are things legal
+    - have some sort of symbol table to look things up in our tree
+  - translation
+    - interface betwen frontend and backend
+    - hierarchical, linear, tree based, triple based representation
+  - instruction selection
+    - do we want (smul or ssl) instructions for ex
+      - a * 2 => a << 1
+    - complex instructions, types of branches, tree grammers & dynamic programming
+- can optimize for
+  - code size
+  - number of registers used
+  - speed
+  - power
+  - etc
+- types of optimization
+  - local -> within a sequence of instructions with no branching
+  - global optimizations -> -> single function or procedure (ex: loop hoisting)
+  - interprocedural -> between functions optim
+- flow analysis
+- ex
+  - imagine load takes 3 cycles
+  - mul takes 2 cycles
+  - can we swap order if there is no depedence analysis telling us we cant reorder
+  - might need to use a new register to avoid clashing
+  - we are using more register which might not work if we dont have another one
+    - might even result in register spilling
+    - this is a very non trival compiler thing
+    - need to be aware of special registers
+    - need to be aware of calling conventions
+    - need to be aware of lifetimes also
+- front end
+  - Lex -> Parse -> Semantics -> Translation
+  - tokens -> ast + symbol table
+- backend
+  - -> Instruction selection -> Optim -> register allocation -> code generation
+  - IR -> code triples (asm like syntax -- list of operations)
+- compiler: source language to target language
+- modern compilers are beasts
+  - gcc has 7.5 million LOC
+  - lot of compiler research still going on
+  - guest lectures will show some more info
+- compilers use to be two pass
+  - lack of memory made this required
+  - source -> FE -- Via IR --> Backend -> Machine code
+  - both FE, Backend produce errors
+- without IR, we have n * m compilers
+  - with IR, we need n + m compilers
+- optimizing compilers
+  - three passes FE - (IR) -> Middle End - (IR) -> machine code
+  - split compiler into phases
+  - **keep each pass as simple as possible**
+- fortran was 6 pass compiler (1957)
+  - FE -> Index Optim -> Code merge -> flow analysis -> register alloc (basic) -> final asm
+- fortran h compiler (1969)
+  - 11 steps
+  - identified loops with dominators
+  - ahmdel's, expect the loop to run longer therefore
+  - new things like loop inv code motion && copy elimination
+- BLISS-11 compiler (1975)
+  - good register allocation steps
+  - TLA, Rank, Pack
+- IBM PL8 Compiler (1980)
+  - no static order of optimizations
+  - can run some multiple times depending on results on one of them
+  - multi level IR
+- HP PA-RISC compiler (1986)
+  - more optim
+- SUIF compiler (1999)
+  - used a bunch in research
+  - SSA used?
+- textbook for class is Andrew Appel - Modern Compiler Implementation in ML (Java, C++, etc)
+- infamous dragon book is decent too
+- what will you learn
+  - source -> working machine languages
+  - applied algos and data structs for compilers
+  - focus on sequential imperative programming language
+    - not functional, parallel, distributed, object-oriented
+  - focus on code generation and optimization
+    - not error messages, type inference, runtime systems
+  - focus
+    - correctness, code quality, efficency of compilation, usability
+  - lots of software engineering overall
+- grading
+  - 6 labs = compilers for subsets of C0 to x86-64 asm -- recommend with a partner
+  - 4 assignments
+- lab 1: (test + compiler) striaght-line code
+- lab 2: (test + compiler) conditionals and loops
+- lab 3: (test + compiler) functions
+- lab 4: test + compiler) memory
+- lab 5: (compiler + paper) optimizations
+- lab 6: (code and paper) you choose
+- jane street pays for aws cost
+- c0 -> small, safe, fully specified, rich representation, small enough to manage in sem
+- x86 -> widly used, quirky (you can choose the instructions you use), low level enough for hardware
+- runtime system -> co uses the ABI (application binary interface) for C
+  - strict adherence internally and for libraries
+- start code is provided for SML, OCaml, Haskell, Rust, and C++
+  - consider how parsers are available -> more support for some langs
+- can use docker to get same env as the grader
+- compilers are complex
+  - that's the fun :)
+- lab 1 least, lab 2 increases, lab 3 increases, lab 4 and 5 are hardest, lab 6 down a bit
+- 6 late days for labs && 3 late days for assignments
+- tools to use
+  - debugger
+  - profiler
+  - test programs
+  - standard library
+  - lecture notes
+  - textbooks
+- if rusty with x86 or c0, should brush up on it
+- inductive defs are used a bunch in beginning
+  - 15-312 "Bob Harper's Practical Foundations for Programming Languages"

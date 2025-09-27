@@ -1,0 +1,142 @@
+# Register Allocation
+
+- Lex -> Parse -> Semantics -> Translation -> Instruction selec -> optim -> reg alloc -> code gen
+
+- register allocation is close to end
+- we will then move on to instruction selection
+- touching the backend let's us start experimenting rn
+- intro to L1, abstract assembly
+  - L1 is a subset of C0
+- progrma := s_1; s_2; .. s_n;
+  - s := v = e (assignment)
+  - | return e (return)
+  - e := c (constant)
+  - | v (variable)
+  - | e_1 + e_2 binary ops
+  - `+` := + | - ...
+- ambiguity in terms of order of operations
+- abstract syntax tree (AST)
+  - stmt-list -> (stmt | stmt-list)
+  - expr + -> (expr, expr), var const
+  - stmt -> = -> (var, expr), return -> expr
+- abstrast assmebly
+  - we are then going to lower AST to abstract assembly (almost assembly)
+  - features
+    - unlimited number of "temps" (real limit number of registers)
+    - may not restrict how memory is used
+    - simple operations
+    - may restrict how constants are used
+    - may specify certain "special registers"
+  - form
+    - dest <- src_1 operator src_2
+    - dest <- operator src_1
+    - dest <- operator
+  - src can be constant, temp, special register, memory
+  - program := i_1, i_2, ... i_n (seq of instructions)
+  - i := d <- s (move)
+  - | d <- s_1 + s_2 (binop)
+  - | return s_1 (return)
+  - s := c (intermediate)
+  - | t (temp)
+  - | r (register)
+  - d := t | r
+  - "+" := (+ | - | * ...)
+- closer to the machine, we just return %rax so temp has value over registers
+- job of register allocator
+  - map these temps to registers
+  - we particularly have to deal with real fixed set of registers
+  - lots of temps get generating during programs
+  - they are called temps bc they dont exist in og program and final binary
+  - the locations are either
+    - physical registers (less power + lower speed)
+    - or slots in the activation frame
+    - some risc vs cisc differences here (x86 can do memory but risc can't)
+- registers: rax, rbx, r12, ...
+- Activation frame (stack frame)
+  - contains slots like (temp_1, temp_2)
+- sub-tasks of register allocations
+  - assignment: map temp to particular register
+  - spilling: if we can't assign to a register, assign to a slot in the stack frame
+    - add code to save and store
+  - coalescing
+    - if possible eliminate moves (move from one temp to another)
+  - ensuring special cases are handled properly
+    - examples for x86
+      - return returns %rax for example
+      - mul required certain registers
+    - calllee/caller registers
+- interference
+  - if we have two temps, if the ranges where they are required overlap, we say they interfer
+  - therefore, they can't use same register
+  - they need to be in diff registers if they hold different values
+  - so the first step for register allocation is to figure out live ranges
+  - build interference graph
+  - main datastruct for going temps -> real registers
+- a variable is live if it can still be used at some point
+  - if variable is used in RHS
+  - start from bottom of program and work way up is one way of calculating
+  - once it is defined, it goes back out of scope
+  - what if a variable is defined twice?
+    - but we are actually using static single assignment
+    - a loop is possible but we are assigning within the same variable
+    - we will need to turn normal code into static single assignment form beforehand
+  - live-out is actaully more useful than live-in
+    - it's essentially a step after live-in
+- there are some instructions like returns, compares which have src but no dest
+- how do we generate interference from liveness?
+- Optimistic Graph Coloring
+  - NP hard
+  - (u, v) \in G iff cna't be the same hard register i.e. they interfer
+  - color graph
+    - assign to each node a color from a set of k colors (k is |register set|)
+    - let's try a greedy coloring
+      - color node then color neighbor with different color
+  - spill
+    - if you can't color graph with k colors, spill some temps into memory
+    - regenerate asm code and startover
+- interference graph
+  - connection in graph means overlapping interference
+  - max connection of a node needs to be less than the number of colors we have
+- what if two vals interfer but only via a move
+  - this is a case for maybe doing a coalesce or a special edge in our graph
+  - u <- v (combine them into one regsiter then uv)
+    - after this, attempt to recolor the graph
+    - in this case, we removed a single move instruction by combing u, v in the graph
+    - it's a simple translation and then if we later need to add moves
+  - but we cant always coalesce
+    - coalescing can result in register pressure which results in spilling
+    - spilling is far more expensive than a move instruction
+  - a move edge will be a ---- line
+    - we will ignore move edge while we can and at end consider coalesce our graph
+- new question? what to spill and why?
+  - spill the thing with the least chance to reduce register pressure
+    - define once used once, might be good canadite for a spill
+    - spilling something that's alive for while and has a lot of degrees, and use a lot
+      - this all make it bad to spill
+    - M[] <- w
+    - w' <- M[]
+    - w'' <- M[]
+    - by spilling, we've splt w's live range into a tiny portin where it just loads into mem
+    - each fetch is it's own w (w prime)
+    - we dont keep track of memory in our graph
+- Kempe's observation
+  - graph with degree less than k, can remove node from graph
+  - in the graph was k colorable with that node it is k colerable without that node
+  - let's use a stack for this
+  - color by the order i would pop off the stack
+  - ensure we color everything with this
+  - it is opimtimistic because if no node has degree < k
+- Chaitin's allocator
+  - build: construct interference graph
+  - simplify: node removal, a la Kempe
+  - spill: if necessary, remove a gree >= K node, marking it as a potential spill
+  - select: rebuild the graph color as we go
+    - if a potential spill can't be colored, mark it as an actual spill and continue
+  - start over: if there was an actual spill, generate spill code and then start over
+- choosing potential spill
+  - we want to pick the spill nodes which will the least expensive
+  - we can attempt to compute a spill cost for each temp
+    - by estimating performance cost
+    - or by using actual profile info
+  - more heuristics but we will talk about later
+- build -> simplify -> potential spill -> select -> actual done (recurssion missing here)
