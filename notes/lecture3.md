@@ -133,10 +133,15 @@
   - color -> look at pairs with mov
   - look at colors of nodes that do move
   - if U(colors) and one extra, can combine and change color
-  - ex) N(v) = {x, w}, N(u) = {x,w, t}, U(v, u) = {x, w, t}
+  - ex) N(v) = {x, w}, N(u) = {x, w, t}, U(v, u) = {x, w, t}
   - pretty conservative but decouples
 - We can also do prespilling
   - find maximal clique, if clique is too large (greater than k)
   - we can split live graph or spill register
   - maximal cardinality search, greedy color, best effort coalescing
   - pretty solid ssa approach -- straight forward
+- In practice
+  - pre-colored nodes break chordality
+  - often assuming cordal is ok
+  - have to get out of ssa sometimes
+  - most peple, SSA -> interative coloring etc
