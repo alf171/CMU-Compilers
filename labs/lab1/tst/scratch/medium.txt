@@ -1,0 +1,74 @@
+// target 4
+
+// t1 (t3, t4, t2) == v (x, u, w)
+// t2 (t3, t1, t4, t5) == w (x, v, u, t)
+// t3 (t1, t2, t4, t5) == x (v, w, u, t)
+// t4 (t1, t3, t2, t5) == u (v, x, w, t)
+// t5 (t3, t4, t2) == t (x, u, w)
+
+[
+  %t1 <- 1 ()
+  {
+    "Uses": [],
+    "Defines": ["%t1"],
+    "Live_out": [%t1],
+    "Move": false,
+    "Line": 1
+  },
+  %t2 <- %t1 + 3
+  {
+    "Uses": ["%t1"],
+    "Defines": ["%t2"],
+    "Live_out": [%t1, %t2],
+    "Move": false,
+    "Line": 2
+  }
+  %t3 <- %t2 + %t1
+  {
+    "Uses": ["%t1", "%t2"],
+    "Defines": ["%t3"],
+    "Live_out": [%t1, %t2, %t3],
+    "Move": false,
+    "Line": 3
+  }
+  %t4 <- %t1
+  {
+    "Uses": ["%t1"],
+    "Defines": ["%t4"],
+    "Live_out": [%t1, %t2, %t3, %t4],
+    "Move": true,
+    "Line": 4
+  }
+  %t5 <- %t4 + %t1
+  {
+    "Uses": ["%t1, %t4"],
+    "Defines": ["%t5"],
+    "Live_out": [%t2, %t3, %t4, %t5],
+    "Move": false,
+    "Line": 5
+  }
+  _ <- %t2 + %t3
+  {
+    "Uses": ["%t2, %t3"],
+    "Defines": [],
+    "Live_out": [%t5],
+    "Move": false,
+    "Line": 6
+  }
+  _ <- %t5
+  {
+    "Uses": ["%t5"],
+    "Defines": [],
+    "Live_out": [%t4],
+    "Move": false,
+    "Line": 7
+  }
+  _ <- %t4
+  {
+    "Uses": ["%t4"],
+    "Defines": [],
+    "Live_out": [],
+    "Move": false,
+    "Line": 8
+  }
+]

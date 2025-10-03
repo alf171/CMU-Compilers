@@ -1,5 +1,29 @@
 const std = @import("std");
 const parser = @import("parse.zig");
+const igraph = @import("igraph.zig");
+
+fn print_program(program: parser.Program, A: std.mem.Allocator) !void {
+    // TODO: move into parser
+    // call each print method uniquely
+    // then pass writter (std.io.getStdOut().writer())
+    // this allows less individual heap allocs of strings
+    std.debug.print("register count: {d}\n", .{program.register_count});
+    for (program.lines, 0..) |line, i| {
+        const uses = try line.uses.toJoinedString(A);
+        defer A.free(uses);
+
+        const defs = try line.defines.toJoinedString(A);
+        defer A.free(defs);
+
+        const live = try line.live_out.toJoinedString(A);
+        defer A.free(live);
+
+        std.debug.print(
+            "line[{d}] = (uses: {s}, defines: {s}, live_out: {s}, move: {}, line num: {d})\n",
+            .{ i, uses, defs, live, line.move, line.line_number },
+        );
+    }
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -23,20 +47,11 @@ pub fn main() !void {
         A.free(program.lines);
     }
 
-    std.debug.print("register count: {d}\n", .{program.register_count});
-    for (program.lines, 0..) |line, i| {
-        const uses = try line.uses.toJoinedString(A);
-        defer A.free(uses);
+    // try print_program(program, A);
 
-        const defs = try line.defines.toJoinedString(A);
-        defer A.free(defs);
+    var graph: igraph.IGraph = try igraph.createIgraph(program.lines, A);
 
-        const live = try line.live_out.toJoinedString(A);
-        defer A.free(live);
+    try graph.print(A);
 
-        std.debug.print(
-            "line[{d}] = (uses: {s}, defines: {s}, live_out: {s}, move: {}, line num: {d})\n",
-            .{ i, uses, defs, live, line.move, line.line_number },
-        );
-    }
+    defer graph.deinit();
 }

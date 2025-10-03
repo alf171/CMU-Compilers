@@ -1,0 +1,41 @@
+//target 2
+[
+  // t1 <- const
+  {
+    "Uses": [],
+    "Defines": ["%t1"],
+    "Live_out": ["%t1"],
+    "Move": false,
+    "Line": 1
+  },
+  // t2 <- f(t1)
+  {
+    "Uses": ["%t1"],
+    "Defines": ["%t2"],
+    "Live_out": ["%t2"],
+    "Move": false,
+    "Line": 2
+  },
+  // %eax <- t2
+  {
+    "Uses": ["%t2"],
+    "Defines": ["%eax"],
+    "Live_out": [],
+    "Move": true,
+    "Line": 3
+  }
+]
+
+// graphs produced
+interference graph = {
+  "%1": {},
+  "%t2": {},
+  "%eax": {}
+}
+
+// move graph
+moves = {
+  "%1": {},
+  "%t2": "%eax",
+  "%eax": "%t2"
+}

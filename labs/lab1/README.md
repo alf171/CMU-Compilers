@@ -49,11 +49,11 @@
 
 ## Goals
 
-- [ ] I/O stub: read file, split //target, parse JSON into []Line.
+- [x] I/O stub: read file, split //target, parse JSON into []Line.
 
-- [ ] Collect temps + numbering.
+- [x] Collect temps + numbering.
 
-- [ ] Interference graph from (def temp) vs live_out.
+- [x] Interference graph from (def temp) vs live_out.
 
 - [ ] Coloring (k-aware, no spills).
 

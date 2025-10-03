@@ -1,4 +1,3 @@
-// goal of this file is to parse from FILE -> JSON
 const std = @import("std");
 
 pub const SpecialRegs = enum { eax };
@@ -11,7 +10,20 @@ pub const Operand = union(enum) {
     temp: i32,
     spec_reg: SpecialRegs,
 
-    fn toString(op: Operand, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn equal(self: Operand, other: Operand) bool {
+        return switch (self) {
+            .temp => |t1| switch (other) {
+                .temp => |t2| t1 == t2,
+                else => false,
+            },
+            .spec_reg => |t1| switch (other) {
+                .spec_reg => |t2| return t1 == t2,
+                else => false,
+            },
+        };
+    }
+
+    pub fn toString(op: Operand, allocator: std.mem.Allocator) ![]u8 {
         return switch (op) {
             .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t + 1}),
             .spec_reg => |s| std.fmt.allocPrint(allocator, "%{s}", .{@tagName(s)}),
@@ -93,6 +105,8 @@ fn parse_temp_reg_list(alloc: std.mem.Allocator, ss: [][]const u8) !Operands {
     return .{ .ops = out };
 }
 
+/// Go from file_name -> data struct to test our compiler
+/// within this middle step of the compiler
 pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
     std.debug.print("Got filename: {s}\n", .{filename});
     const file = try std.fs.cwd().openFile(filename, .{
@@ -107,7 +121,7 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
     // Find the delim line //target
     const delim = "//target";
     const dpos = std.mem.indexOf(u8, bytes, delim) orelse {
-        std.debug.print("No //taget found", .{});
+        std.debug.print("No //target found ", .{});
         return error.SyntaxError;
     };
 
@@ -121,8 +135,6 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
     const nl = std.mem.indexOfScalar(u8, after, '\n') orelse return error.SyntaxError;
     const num_str = std.mem.trim(u8, after[0..nl], " \t");
     const reg_count = try std.fmt.parseInt(i32, num_str, 10);
-
-    // move after json
     after = after[nl + 1 ..];
 
     const start = std.mem.indexOfScalar(u8, after, '[') orelse return error.SyntaxError;
@@ -135,7 +147,6 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
     var lines = try allocator.alloc(Line, parsed.value.len);
     var filled: usize = 0;
     errdefer {
-        // free only what we filled so far
         var k: usize = 0;
         while (k < filled) : (k += 1) {
             lines[k].deinit(allocator);
