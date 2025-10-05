@@ -1,6 +1,7 @@
 const std = @import("std");
 const parser = @import("parse.zig");
 const igraph = @import("igraph.zig");
+const color = @import("color.zig");
 
 fn print_program(program: parser.Program, A: std.mem.Allocator) !void {
     // TODO: move into parser
@@ -49,9 +50,15 @@ pub fn main() !void {
 
     // try print_program(program, A);
 
-    var graph: igraph.IGraph = try igraph.createIgraph(program.lines, A);
+    var graph = try igraph.createIgraph(program.lines, A);
+    defer graph.deinit();
 
+    std.log.debug("interference graph below", .{});
     try graph.print(A);
 
-    defer graph.deinit();
+    var colored_graph = try color.colorGraph(&graph, program.register_count, A);
+    defer colored_graph.deinit();
+
+    std.log.debug("colored graph below", .{});
+    try colored_graph.print(A);
 }

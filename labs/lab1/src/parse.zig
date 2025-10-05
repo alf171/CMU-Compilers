@@ -72,7 +72,7 @@ pub const Line = struct {
 };
 
 pub const Program = struct {
-    register_count: i32,
+    register_count: u8,
     lines: []Line,
 };
 
@@ -134,7 +134,7 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
     // take remaining of line
     const nl = std.mem.indexOfScalar(u8, after, '\n') orelse return error.SyntaxError;
     const num_str = std.mem.trim(u8, after[0..nl], " \t");
-    const reg_count = try std.fmt.parseInt(i32, num_str, 10);
+    const reg_count = try std.fmt.parseInt(u8, num_str, 10);
     after = after[nl + 1 ..];
 
     const start = std.mem.indexOfScalar(u8, after, '[') orelse return error.SyntaxError;
