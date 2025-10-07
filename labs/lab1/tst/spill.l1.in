@@ -1,0 +1,59 @@
+//target 3
+[
+  {
+    "Uses": [],
+    "Defines": ["%t1"],
+    "Live_out": ["%t1"],
+    "Move": false,
+    "Line": 1
+  },
+  {
+    "Uses": ["%t1"],
+    "Defines": ["%t2"],
+    "Live_out": ["%t1", "%t2"],
+    "Move": false,
+    "Line": 2
+  },
+  {
+    "Uses": ["%t1", "%t2"],
+    "Defines": ["%t3"],
+    "Live_out": ["%t1", "%t2", "%t3"],
+    "Move": false,
+    "Line": 3
+  },
+  {
+    "Uses": ["%t1"],
+    "Defines": ["%t4"],
+    "Live_out": ["%t1", "%t2", "%t3", "%t4"],
+    "Move": true,
+    "Line": 4
+  },
+  {
+    "Uses": ["%t1", "%t4"],
+    "Defines": ["%t5"],
+    "Live_out": ["%t2", "%t3", "%t4", "%t5"],
+    "Move": false,
+    "Line": 5
+  },
+  {
+    "Uses": ["%t2", "%t3"],
+    "Defines": ["%t4", "%t5"],
+    "Live_out": ["%t5"],
+    "Move": false,
+    "Line": 6
+  },
+  {
+    "Uses": ["%t5"],
+    "Defines": [],
+    "Live_out": ["%t4"],
+    "Move": false,
+    "Line": 7
+  },
+  {
+    "Uses": ["%t4"],
+    "Defines": [],
+    "Live_out": [],
+    "Move": false,
+    "Line": 8
+  }
+]

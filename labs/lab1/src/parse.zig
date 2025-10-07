@@ -7,8 +7,10 @@ const spec_reg_map = SpecRegsMap.initComptime(.{
 });
 
 pub const Operand = union(enum) {
-    temp: i32,
+    // 256 temps are possible currently
+    temp: u8,
     spec_reg: SpecialRegs,
+    mem: u8,
 
     pub fn equal(self: Operand, other: Operand) bool {
         return switch (self) {
@@ -20,6 +22,10 @@ pub const Operand = union(enum) {
                 .spec_reg => |t2| return t1 == t2,
                 else => false,
             },
+            .mem => |t1| switch (other) {
+                .mem => |t2| return t1 == t2,
+                else => false,
+            },
         };
     }
 
@@ -27,6 +33,7 @@ pub const Operand = union(enum) {
         return switch (op) {
             .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t + 1}),
             .spec_reg => |s| std.fmt.allocPrint(allocator, "%{s}", .{@tagName(s)}),
+            .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t}),
         };
     }
 };
@@ -69,16 +76,26 @@ pub const Line = struct {
         alloc.free(self.defines.ops);
         alloc.free(self.live_out.ops);
     }
+
+    /// compare addresses not data
+    pub fn equals(self: Line, other: Line) bool {
+        return &self == &other;
+    }
 };
 
+/// keep track of the largest temp currently used to easy implement spilling
 pub const Program = struct {
+    /// how many registers the program needs to utilize
     register_count: u8,
+    /// the raw lines being passed into the program
     lines: []Line,
+    /// keep track of largest temp used in program
+    max_temp_reg: u8,
 };
 
 fn parse_temp_reg(s: []const u8) !Operand {
     if (s.len > 2 and s[0] == '%' and s[1] == 't') {
-        const n = try std.fmt.parseInt(i32, s[2..], 10);
+        const n = try std.fmt.parseInt(u8, s[2..], 10);
         return .{ .temp = n - 1 };
     }
     if (s.len > 1 and s[0] == '%') {
@@ -153,6 +170,7 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
         }
         allocator.free(lines);
     }
+    var max_temp_reg: u8 = 0;
     for (parsed.value, 0..) |raw_line, i| {
         lines[i] = Line{
             .uses = try parse_temp_reg_list(allocator, raw_line.Uses),
@@ -162,7 +180,15 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
             .line_number = raw_line.Line,
         };
         filled = i + 1;
+        if (lines[i].defines.ops.len > 0) {
+            switch (lines[i].defines.ops[0]) {
+                .temp => |v| {
+                    max_temp_reg = @max(v, max_temp_reg);
+                },
+                else => {},
+            }
+        }
     }
 
-    return .{ .lines = lines, .register_count = reg_count };
+    return Program{ .lines = lines, .register_count = reg_count, .max_temp_reg = max_temp_reg };
 }
