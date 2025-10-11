@@ -39,7 +39,7 @@ pub const Operand = union(enum) {
 };
 
 pub const Operands = struct {
-    ops: []Operand,
+    ops: std.array_list.Managed(Operand),
 
     pub fn toJoinedString(self: Operands, allocator: std.mem.Allocator) ![]u8 {
         var list = std.array_list.Managed(u8).init(allocator);
@@ -53,6 +53,37 @@ pub const Operands = struct {
             try list.appendSlice(s);
         }
         return list.toOwnedSlice();
+    }
+
+    pub fn contains(self: Operands, op: Operand) bool {
+        for (self.ops.items) |self_op| {
+            if (Operand.equal(self_op, op)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// return a new Operand removing op
+    /// requires the elements being removed to be present
+    pub fn remove(self: Operands, op: Operand, allocator: std.mem.Allocator) !Operands {
+        std.debug.assert(self.contains(op));
+        var ops = std.array_list.Managed(Operand).init(allocator);
+        for (self.ops) |loop_op| {
+            if (!loop_op.equal(op)) {
+                ops.append(loop_op);
+            }
+        }
+        return Operands{ .ops = ops.toOwnedSlice() };
+    }
+
+    pub fn init(allocator: std.mem.Allocator) Operands {
+        const ops = std.array_list.Managed(Operand).init(allocator);
+        return Operands{ .ops = ops };
+    }
+
+    pub fn free(self: Operands) void {
+        self.ops.deinit();
     }
 };
 
@@ -71,10 +102,10 @@ pub const Line = struct {
     move: bool,
     line_number: i32,
 
-    pub fn deinit(self: *Line, alloc: std.mem.Allocator) void {
-        alloc.free(self.uses.ops);
-        alloc.free(self.defines.ops);
-        alloc.free(self.live_out.ops);
+    pub fn deinit(self: *Line) void {
+        self.uses.free();
+        self.defines.free();
+        self.live_out.free();
     }
 
     /// compare addresses not data
@@ -91,6 +122,8 @@ pub const Program = struct {
     lines: []Line,
     /// keep track of largest temp used in program
     max_temp_reg: u8,
+    /// keep track of memory uses
+    mem_pointer: u8,
 };
 
 fn parse_temp_reg(s: []const u8) !Operand {
@@ -107,19 +140,20 @@ fn parse_temp_reg(s: []const u8) !Operand {
     return error.UnkownRegister;
 }
 
-fn parse_temp_reg_list(alloc: std.mem.Allocator, ss: [][]const u8) !Operands {
+fn parse_temp_reg_list(alloctor: std.mem.Allocator, ss: [][]const u8) !Operands {
     var count: usize = 0;
     for (ss) |_| {
         count += 1;
     }
 
-    var out = try alloc.alloc(Operand, count);
-    errdefer alloc.free(out);
+    var res = Operands.init(alloctor);
+    errdefer res.free();
 
-    for (ss, 0..) |s, j| {
-        out[j] = try parse_temp_reg(s);
+    for (ss) |s| {
+        const out_val = try parse_temp_reg(s);
+        try res.ops.append(out_val);
     }
-    return .{ .ops = out };
+    return res;
 }
 
 /// Go from file_name -> data struct to test our compiler
@@ -166,7 +200,7 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
     errdefer {
         var k: usize = 0;
         while (k < filled) : (k += 1) {
-            lines[k].deinit(allocator);
+            lines[k].deinit();
         }
         allocator.free(lines);
     }
@@ -180,8 +214,8 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
             .line_number = raw_line.Line,
         };
         filled = i + 1;
-        if (lines[i].defines.ops.len > 0) {
-            switch (lines[i].defines.ops[0]) {
+        if (lines[i].defines.ops.items.len > 0) {
+            switch (lines[i].defines.ops.items[0]) {
                 .temp => |v| {
                     max_temp_reg = @max(v, max_temp_reg);
                 },
@@ -190,5 +224,5 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
         }
     }
 
-    return Program{ .lines = lines, .register_count = reg_count, .max_temp_reg = max_temp_reg };
+    return Program{ .lines = lines, .register_count = reg_count, .max_temp_reg = max_temp_reg, .mem_pointer = 0 };
 }

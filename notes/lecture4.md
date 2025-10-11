@@ -1,1 +1,63 @@
 # Instruction Selection
+
+- how to go from AST -> IR
+- simple ssa
+- x86 and 2-adr instructions
+- made up compiler
+  - lex -> parse (tokens) ->
+  - semantircs -> translation (AST + symbol tables)
+  - (IR) instruction selection -> optimization (Code triples)
+  - optimization -> register allocation -> code generation
+- ex) z = x + 3 * y - 5; return z;
+  - stmt list -> (= -> (z, ...), stmt list -> return -> z)
+- abstract assembly as IR
+  - lowering of AST
+  - makes analysis & optimization easier
+  - help with translating to actual assembly
+  - feats
+    - unlimited regs
+    - no memory restriction
+    - simple operations
+    - dont restrict constant use
+    - can specify special regs
+- forms
+  - dest <- src_1 op src_2 (binary)
+  - dest <- op src (unary)
+  - op (?)
+- src can be intermidate, temporary, register (hard coded)
+- continuing example from earlier
+  - t1 <- x + 3
+  - t2 <- y - 5
+  - z <- t1 * t2
+  - rax <- z
+  - return
+- tree to ordered sequence of triples
+- we also have to generate temps like t1, t2 in our ex
+- can both combine or break up operation in convertion
+- ex)
+  - (= -- (d, s)) d <- s
+  - (return -- s) rax <- s, return
+  - (+ -- (s1, s2)) ? s1 + s2
+  - (d -- c) d <- c
+- idea of whats going on
+  - recursively parse assigning temps
+  - generates suboptimal tiles like
+  - stmt-list ((= d s), return (d))
+  - can be more efficently written as
+  - rax <- s, return
+  - fewer triples
+  - might be simple to leave this to coalescing
+    - keep thing as simple as possible
+- maximal munch
+  - greedy alg to recursively match tree
+  1. choses the tree or subtree with minimal cost
+  2. need to either supply destination or generate a destination
+- codegen
+  - rules
+    - c | d <- c
+    - v | d <- v
+    - e1 + e2 | codegen(t1, e1), codegen(t2, e2), d <- t1 + t2
+    - v = e | codgen(v, e)
+    - return e | codegen(rax, e), return
+  - improve this? so many temps
+  - supply const, special case to recognize pattern, or dont bother

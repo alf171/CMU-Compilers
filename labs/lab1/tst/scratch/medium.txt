@@ -1,27 +1,58 @@
-// target 4
+// target 3
 
 // t1 (t3, t4, t2) == v (x, u, w)
 // t2 (t3, t1, t4, t5) == w (x, v, u, t)
 // t3 (t1, t2, t4, t5) == x (v, w, u, t)
 // t4 (t1, t3, t2, t5) == u (v, x, w, t)
 // t5 (t3, t4, t2) == t (x, u, w)
+
+// let's try to spill %1
+
 [
   %t1 <- 1 ()
   {
     "Uses": [],
     "Defines": ["%t1"],
-    "Live_out": [%t1],
+    "Live_out": ["%t1"],
     "Move": false,
     "Line": 1
   },
-  %t2 <- %t1 + 3
+  M[] <- %t1
   {
     "Uses": ["%t1"],
-    "Defines": ["%t2"],
-    "Live_out": [%t1, %t2],
-    "Move": false,
-    "Line": 2
+    "Defines": [], // we aren't tracking defines
+    "Live_out": [], // should this be live_out still?
+    "Move": false, (technically is a mov but wont due to perf)
+    "Line": current_line + 1,
+  },
+
+  // above is case 1, now we are onto case 2
+  %t6 <- M[]
+  {
+    "Uses": [],
+    "Defines": ["%t6"]
+    Live_out: [prev(Live_out) \ reg_being_spilled] == [],
+    line: current_line
   }
+  // previously was %t2 <- %t1 + 3
+  %t2 <- %t6 + 3
+  {
+    "Uses": prev(Uses) \ reg_being_spilled (%t1) U new_reg (%t6) == ["%t6"],
+    "Defines": ["%t2"], // same as previous defines
+    "Live_out": [%t6, %t2], // replace %t1 with %t6
+    "Move": false, // carry over
+    "Line": current_line
+  },
+  // TODO: fix this one? case 2 again!
+  %t7 <- M[]
+  {
+    "Uses": [],
+    "Defines": ["%t7"], // another new register
+    "Live_out": ["%t6", "%t2"], // add t7?
+    "Move":
+    "Line":
+  }
+  // case 2 again!
   %t3 <- %t2 + %t1
   {
     "Uses": ["%t1", "%t2"],

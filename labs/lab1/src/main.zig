@@ -43,7 +43,7 @@ pub fn main() !void {
     const program: parser.Program = try parser.parse(filename, A);
     defer {
         for (program.lines) |*l| {
-            l.deinit(A);
+            l.deinit();
         }
         A.free(program.lines);
     }
@@ -61,4 +61,8 @@ pub fn main() !void {
 
     std.log.debug("colored graph below", .{});
     try colored_graph.print(A);
+}
+
+test "run all tests in this project" {
+    std.testing.refAllDecls(@This());
 }

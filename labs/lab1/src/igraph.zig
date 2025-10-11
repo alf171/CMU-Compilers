@@ -71,8 +71,8 @@ pub fn createIgraph(lines: []parser.Line, allocator: std.mem.Allocator) !IGraph 
 }
 
 fn placeNodes(igraph: *IGraph, line: parser.Line, allocator: std.mem.Allocator) !void {
-    for (line.defines.ops) |define_op| {
-        for (line.live_out.ops) |live_out_op| {
+    for (line.defines.ops.items) |define_op| {
+        for (line.live_out.ops.items) |live_out_op| {
             try defineNodeIfDoesntExist(igraph, define_op, allocator);
             // build graph
             if (!parser.Operand.equal(define_op, live_out_op)) {
@@ -89,10 +89,10 @@ fn placeNodes(igraph: *IGraph, line: parser.Line, allocator: std.mem.Allocator) 
     }
     // keep track of moves
     if (line.move) {
-        std.debug.assert(line.defines.ops.len == 1);
-        std.debug.assert(line.uses.ops.len == 1);
-        const define = line.defines.ops[0];
-        const uses = line.uses.ops[0];
+        std.debug.assert(line.defines.ops.items.len == 1);
+        std.debug.assert(line.uses.ops.items.len == 1);
+        const define = line.defines.ops.items[0];
+        const uses = line.uses.ops.items[0];
         std.debug.assert(!define.equal(uses));
         try defineNodeIfDoesntExist(igraph, define, allocator);
         try igraph.nodes.getPtr(define).?.moves.put(uses, {});
