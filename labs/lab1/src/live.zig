@@ -3,12 +3,12 @@ const expect = std.testing.expect;
 const parser = @import("parse.zig");
 
 /// handle case where we are last line in addition to other to rest
-pub fn getLiveOut(lines: []parser.Line, index: u8, allocator: std.mem.Allocator) !parser.Operands {
-    if (index + 1 >= lines.len) {
+pub fn getLiveOut(lines: std.array_list.Managed(parser.Line), index: usize, allocator: std.mem.Allocator) !parser.Operands {
+    if (index + 1 >= lines.items.len) {
         return parser.Operands.init(allocator);
     }
 
-    const line = lines[index + 1];
+    const line = lines.items[index + 1];
     return getLiveIn(line, allocator);
 }
 
@@ -39,16 +39,16 @@ test "out of bounds returns empty" {
         .line_number = 0,
     };
 
-    var lines = try allocator.alloc(parser.Line, 1);
-    lines[0] = dummy_line;
+    var lines = std.array_list.Managed(parser.Line).init(allocator);
+    try lines.append(dummy_line);
 
     const result = try getLiveOut(lines, 0, allocator);
     defer result.free();
 
     try std.testing.expectEqual(@as(usize, 0), result.ops.items.len);
 
-    lines[0].deinit();
-    allocator.free(lines);
+    lines.items[0].deinit();
+    lines.deinit();
     try std.testing.expect(gpa.deinit() == .ok);
 }
 
@@ -83,18 +83,18 @@ test "simple example" {
         .line_number = 1,
     };
 
-    var lines = try allocator.alloc(parser.Line, 2);
-    lines[0] = line_1;
-    lines[1] = line_2;
+    var lines = std.array_list.Managed(parser.Line).init(allocator);
+    try lines.append(line_1);
+    try lines.append(line_2);
     const result = try getLiveOut(lines, 0, allocator);
 
     try std.testing.expectEqual(@as(usize, 2), result.ops.items.len);
     try std.testing.expect(result.contains(parser.Operand{ .temp = 0 }));
     try std.testing.expect(result.contains(parser.Operand{ .temp = 2 }));
 
-    lines[0].deinit();
-    lines[1].deinit();
-    allocator.free(lines);
+    lines.items[0].deinit();
+    lines.items[1].deinit();
+    lines.deinit();
     result.free();
     try std.testing.expect(gpa.deinit() == .ok);
 }

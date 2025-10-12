@@ -46,7 +46,7 @@ pub const Operands = struct {
         errdefer list.deinit();
 
         var first = true;
-        for (self.ops) |op| {
+        for (self.ops.items) |op| {
             if (!first) try list.appendSlice(", ") else first = false;
             const s = try op.toString(allocator);
             defer allocator.free(s);
@@ -69,12 +69,12 @@ pub const Operands = struct {
     pub fn remove(self: Operands, op: Operand, allocator: std.mem.Allocator) !Operands {
         std.debug.assert(self.contains(op));
         var ops = std.array_list.Managed(Operand).init(allocator);
-        for (self.ops) |loop_op| {
+        for (self.ops.items) |loop_op| {
             if (!loop_op.equal(op)) {
-                ops.append(loop_op);
+                try ops.append(loop_op);
             }
         }
-        return Operands{ .ops = ops.toOwnedSlice() };
+        return Operands{ .ops = ops };
     }
 
     pub fn init(allocator: std.mem.Allocator) Operands {
@@ -119,7 +119,7 @@ pub const Program = struct {
     /// how many registers the program needs to utilize
     register_count: u8,
     /// the raw lines being passed into the program
-    lines: []Line,
+    lines: std.array_list.Managed(Line),
     /// keep track of largest temp used in program
     max_temp_reg: u8,
     /// keep track of memory uses
@@ -195,27 +195,27 @@ pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
     const parsed = try std.json.parseFromSlice([]RawLine, allocator, json_src, .{});
     defer parsed.deinit();
 
-    var lines = try allocator.alloc(Line, parsed.value.len);
+    var lines = std.array_list.Managed(Line).init(allocator);
     var filled: usize = 0;
     errdefer {
         var k: usize = 0;
         while (k < filled) : (k += 1) {
-            lines[k].deinit();
+            lines.items[k].deinit();
         }
-        allocator.free(lines);
+        lines.deinit();
     }
     var max_temp_reg: u8 = 0;
     for (parsed.value, 0..) |raw_line, i| {
-        lines[i] = Line{
+        try lines.append(Line{
             .uses = try parse_temp_reg_list(allocator, raw_line.Uses),
             .defines = try parse_temp_reg_list(allocator, raw_line.Defines),
             .live_out = try parse_temp_reg_list(allocator, raw_line.Live_out),
             .move = raw_line.Move,
             .line_number = raw_line.Line,
-        };
+        });
         filled = i + 1;
-        if (lines[i].defines.ops.items.len > 0) {
-            switch (lines[i].defines.ops.items[0]) {
+        if (lines.items[i].defines.ops.items.len > 0) {
+            switch (lines.items[i].defines.ops.items[0]) {
                 .temp => |v| {
                     max_temp_reg = @max(v, max_temp_reg);
                 },
