@@ -42,15 +42,9 @@ pub const ColoredGraph = struct {
             const key = entry.key_ptr.*;
             var node_ptr = entry.value_ptr;
 
-            const taken_moves = node_ptr.moves;
-            const taken_neighbors = node_ptr.neighbors;
-
-            // taking ownership of node instead of copying
-            node_ptr.moves = std.AutoHashMap(parser.Operand, void).init(allocator);
-            node_ptr.neighbors = std.AutoHashMap(parser.Operand, void).init(allocator);
-
             // hacky way to have different nodes
-            const moved_node = Node{ .moves = taken_moves, .neighbors = taken_neighbors, .val = node_ptr.val };
+            // TODO: consider sharing memory between igraph and ColoredGraph to avoid cloning memory
+            const moved_node = Node{ .moves = try node_ptr.moves.clone(), .neighbors = try node_ptr.neighbors.clone(), .val = node_ptr.val };
             try cg.nodes.put(key, ColoredNode{
                 .node = moved_node,
                 .register = null,
@@ -183,11 +177,11 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !Co
         } else {
             const str = try id.toString(allocator);
             defer allocator.free(str);
+            std.debug.print("spilling reg for {s}\n", .{str});
             return .{ .spill_register = id };
         }
     }
 
-    // phase 4: spill rewrite (only if needed -- then retry)
     return .{ .graph = new_graph };
 }
 

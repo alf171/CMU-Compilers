@@ -27,9 +27,12 @@ fn print_program(program: parser.Program, A: std.mem.Allocator) !void {
     }
 }
 
+/// feedback loop of program (lines of IR) -> inteference graph -> colored graph
+/// if we spill, create a new IR lines and repeat
 fn loop(init_program: parser.Program, allocator: std.mem.Allocator) !color.ColoredGraph {
     var graph = try igraph.createIgraph(init_program.lines, allocator);
     var graph_attempt = try color.colorGraph(&graph, init_program.register_count, allocator);
+    // std.debug.print("graph attempt: {any}", .{graph_attempt});
 
     var program = init_program;
     while (graph_attempt == .spill_register) {
