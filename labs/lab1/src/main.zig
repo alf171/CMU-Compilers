@@ -2,6 +2,7 @@ const std = @import("std");
 const parser = @import("parse.zig");
 const igraph = @import("igraph.zig");
 const color = @import("color.zig");
+const spill = @import("spill.zig");
 
 fn print_program(program: parser.Program, A: std.mem.Allocator) !void {
     // TODO: move into parser
@@ -9,7 +10,7 @@ fn print_program(program: parser.Program, A: std.mem.Allocator) !void {
     // then pass writter (std.io.getStdOut().writer())
     // this allows less individual heap allocs of strings
     std.debug.print("register count: {d}\n", .{program.register_count});
-    for (program.lines, 0..) |line, i| {
+    for (program.lines.items, 0..) |line, i| {
         const uses = try line.uses.toJoinedString(A);
         defer A.free(uses);
 
@@ -24,6 +25,23 @@ fn print_program(program: parser.Program, A: std.mem.Allocator) !void {
             .{ i, uses, defs, live, line.move, line.line_number },
         );
     }
+}
+
+fn loop(init_program: parser.Program, allocator: std.mem.Allocator) !color.ColoredGraph {
+    var graph = try igraph.createIgraph(init_program.lines, allocator);
+    var graph_attempt = try color.colorGraph(&graph, init_program.register_count, allocator);
+
+    var program = init_program;
+    while (graph_attempt == .spill_register) {
+        // free previous graph
+        graph.deinit();
+        program = try spill.spillReg(program, graph_attempt.spill_register, allocator);
+        graph = try igraph.createIgraph(program.lines, allocator);
+        graph_attempt = try color.colorGraph(&graph, program.register_count, allocator);
+    }
+
+    graph.deinit();
+    return graph_attempt.graph;
 }
 
 pub fn main() !void {
@@ -41,25 +59,15 @@ pub fn main() !void {
 
     const filename = args[1];
     const program: parser.Program = try parser.parse(filename, A);
-    defer {
-        for (program.lines) |*l| {
-            l.deinit();
-        }
-        A.free(program.lines);
-    }
+    defer program.deinit();
 
-    // try print_program(program, A);
+    std.log.debug("init program<>", .{});
+    try print_program(program, A);
 
-    var graph = try igraph.createIgraph(program.lines, A);
-    defer graph.deinit();
-
-    std.log.debug("interference graph below", .{});
-    try graph.print(A);
-
-    var colored_graph = try color.colorGraph(&graph, program.register_count, A);
+    var colored_graph = try loop(program, A);
     defer colored_graph.deinit();
 
-    std.log.debug("colored graph below", .{});
+    // std.log.debug("colored graph below", .{});
     try colored_graph.print(A);
 }
 

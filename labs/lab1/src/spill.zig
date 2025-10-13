@@ -76,7 +76,7 @@ test "spillReg basic spill of defined reg" {
     const uses_ops = parser.Operands.init(allocator);
     const live_out_ops = parser.Operands.init(allocator);
 
-    var line = parser.Line{
+    const line = parser.Line{
         .defines = defines_ops,
         .uses = uses_ops,
         .live_out = live_out_ops,
@@ -96,8 +96,7 @@ test "spillReg basic spill of defined reg" {
 
     const new_prog = try spillReg(program, reg, allocator);
     defer {
-        line.deinit();
-        new_prog.lines.deinit();
+        new_prog.deinit();
         program.lines.deinit();
     }
 

@@ -20,7 +20,6 @@ pub const Node = struct {
     }
 
     pub fn deinit(self: *Node) void {
-        self.neighbors.deinit();
         self.moves.deinit();
     }
 };
@@ -39,17 +38,33 @@ pub const ColoredGraph = struct {
             .nodes = std.AutoHashMap(parser.Operand, ColoredNode).init(allocator),
         };
         var it = input.nodes.iterator();
-        while (it.next()) |v| {
-            const key = v.key_ptr.*;
-            // TODO: hacky way to have different nodes
-            const node = Node{ .moves = v.value_ptr.moves, .neighbors = v.value_ptr.neighbors, .val = v.value_ptr.val };
-            const val = ColoredNode{ .node = node, .register = null };
-            try cg.nodes.put(key, val);
+        while (it.next()) |entry| {
+            const key = entry.key_ptr.*;
+            var node_ptr = entry.value_ptr;
+
+            const taken_moves = node_ptr.moves;
+            const taken_neighbors = node_ptr.neighbors;
+
+            // taking ownership of node instead of copying
+            node_ptr.moves = std.AutoHashMap(parser.Operand, void).init(allocator);
+            node_ptr.neighbors = std.AutoHashMap(parser.Operand, void).init(allocator);
+
+            // hacky way to have different nodes
+            const moved_node = Node{ .moves = taken_moves, .neighbors = taken_neighbors, .val = node_ptr.val };
+            try cg.nodes.put(key, ColoredNode{
+                .node = moved_node,
+                .register = null,
+            });
         }
         return cg;
     }
 
     pub fn deinit(self: *ColoredGraph) void {
+        var it = self.nodes.valueIterator();
+        while (it.next()) |cn| {
+            cn.node.moves.deinit();
+            cn.node.neighbors.deinit();
+        }
         self.nodes.deinit();
     }
 
@@ -76,6 +91,8 @@ pub const ColoredGraph = struct {
     }
 };
 
+const ColorGraphAttempt = union(enum) { graph: ColoredGraph, spill_register: parser.Operand };
+
 /// color a graph and generate a new graph via spilling if needed
 /// at what layer of abstraction should we do all of this is still being decided
 /// could consider doing this in src/main.zig
@@ -85,7 +102,7 @@ pub const ColoredGraph = struct {
 /// 3. implement coalescing
 /// 4. add heuristic for spilling
 /// 5. clean up any code / todos
-pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !ColoredGraph {
+pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !ColorGraphAttempt {
     // things to keep track of
     var simplify = Set(parser.Operand).init(allocator);
     var spill = Set(parser.Operand).init(allocator);
@@ -166,17 +183,16 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !Co
         } else {
             const str = try id.toString(allocator);
             defer allocator.free(str);
-            std.debug.print("TODO: spilling {s}\n", .{str});
+            return .{ .spill_register = id };
         }
     }
 
     // phase 4: spill rewrite (only if needed -- then retry)
-
-    return new_graph;
+    return .{ .graph = new_graph };
 }
 
 /// build our select stack. move things between simplify and spill as needed
-fn removeNode(input: *graph.IGraph, node: graph.Node, select: *std.array_list.Managed(parser.Operand), simplify: *Set(parser.Operand), spill: *Set(parser.Operand), k: u8) !void {
+fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_list.Managed(parser.Operand), simplify: *Set(parser.Operand), spill: *Set(parser.Operand), k: u8) !void {
     std.debug.assert(node.val != .spec_reg);
     std.debug.assert(!node.selected);
     try select.append(node.val);

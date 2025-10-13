@@ -124,6 +124,13 @@ pub const Program = struct {
     max_temp_reg: u8,
     /// keep track of memory uses
     mem_pointer: u8,
+
+    pub fn deinit(program: Program) void {
+        for (program.lines.items) |*line| {
+            line.deinit();
+        }
+        program.lines.deinit();
+    }
 };
 
 fn parse_temp_reg(s: []const u8) !Operand {

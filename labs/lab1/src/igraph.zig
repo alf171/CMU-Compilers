@@ -62,9 +62,9 @@ pub const IGraph = struct {
     }
 };
 
-pub fn createIgraph(lines: []parser.Line, allocator: std.mem.Allocator) !IGraph {
+pub fn createIgraph(lines: std.array_list.Managed(parser.Line), allocator: std.mem.Allocator) !IGraph {
     var igraph = IGraph.init(allocator);
-    for (lines) |line| {
+    for (lines.items) |line| {
         try placeNodes(&igraph, line, allocator);
     }
     return igraph;
