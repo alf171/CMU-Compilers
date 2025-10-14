@@ -32,13 +32,14 @@ fn print_program(program: parser.Program, A: std.mem.Allocator) !void {
 fn loop(init_program: parser.Program, allocator: std.mem.Allocator) !color.ColoredGraph {
     var graph = try igraph.createIgraph(init_program.lines, allocator);
     var graph_attempt = try color.colorGraph(&graph, init_program.register_count, allocator);
-    // std.debug.print("graph attempt: {any}", .{graph_attempt});
 
     var program = init_program;
     while (graph_attempt == .spill_register) {
         // free previous graph
         graph.deinit();
         program = try spill.spillReg(program, graph_attempt.spill_register, allocator);
+        std.log.debug("program after spill", .{});
+        try print_program(program, allocator);
         graph = try igraph.createIgraph(program.lines, allocator);
         graph_attempt = try color.colorGraph(&graph, program.register_count, allocator);
     }

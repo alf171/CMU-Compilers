@@ -110,7 +110,8 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !Co
     while (it.next()) |ptr| {
         const node = ptr.value_ptr;
 
-        if (node.selected or node.val == .spec_reg) {
+        // skip already seen nodes, special registers, and spilled registers
+        if (node.selected or node.val == .spec_reg or node.val == .mem) {
             continue;
         }
 

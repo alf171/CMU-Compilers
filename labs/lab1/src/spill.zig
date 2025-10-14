@@ -15,50 +15,69 @@ const live = @import("live.zig");
 pub fn spillReg(current_program: parser.Program, reg: parser.Operand, allocator: std.mem.Allocator) !parser.Program {
     // create a new program to not intefer with current looping
     var new_program = parser.Program{ .lines = std.array_list.Managed(parser.Line).init(allocator), .register_count = current_program.register_count, .max_temp_reg = current_program.max_temp_reg, .mem_pointer = current_program.mem_pointer + 1 };
-    for (current_program.lines.items) |line| {
+    outer: for (current_program.lines.items, 0..) |line, i| {
         // case 1: spill reg == the register defined in the line
+        // introduce another temp to reduce complexity of reusing spill_reg
+        // let coalescing handle copies
         if (line.defines.ops.items.len > 0 and parser.Operand.equal(line.defines.ops.items[0], reg)) {
-            try new_program.lines.append(line);
-            const new_uses = parser.Operands{ .ops = try line.defines.ops.clone() };
-            const new_live_out = parser.Operands{ .ops = try line.live_out.ops.clone() };
-            const new_defines = parser.Operands.init(allocator);
-            const new_line_number: i32 = @intCast(new_program.lines.items.len - 1);
-            const new_line = parser.Line{ .uses = new_uses, .live_out = new_live_out, .defines = new_defines, .line_number = new_line_number, .move = false };
+            // p1: temp_new <- expr
+            var temp = parser.Operands.init(allocator);
+            try temp.ops.append(parser.Operand{ .temp = new_program.max_temp_reg });
+            const temp_line_number: i32 = @intCast(new_program.lines.items.len + 1);
+            const p1 = parser.Line{ .uses = parser.Operands{ .ops = try line.uses.ops.clone() }, .live_out = parser.Operands.init(allocator), .defines = temp, .line_number = temp_line_number, .move = line.move };
+            try new_program.lines.append(p1);
+            // p2: M[] <- temp_new
+            var mem = parser.Operands.init(allocator);
+            try mem.ops.append(parser.Operand{ .mem = new_program.mem_pointer });
+            const new_live_out = try live.getLiveOut(current_program.lines, i, allocator);
+            const new_defines = try temp.clone(allocator);
+            const new_line_number: i32 = @intCast(new_program.lines.items.len + 1);
+            const new_line = parser.Line{ .uses = mem, .live_out = new_live_out, .defines = new_defines, .line_number = new_line_number, .move = false };
             try new_program.lines.append(new_line);
-            continue;
+            new_program.max_temp_reg += 1;
+            continue :outer;
         }
         // case 2: spill reg is in use list
         for (line.uses.ops.items) |op| {
             if (op.equal(reg)) {
-                const new_op = parser.Operand{ .mem = current_program.mem_pointer - 1 };
-                var new_ops = std.array_list.Managed(parser.Operand).init(allocator);
-                try new_ops.append(new_op);
-                const new_operands = parser.Operands{ .ops = new_ops };
-                const new_line_live_out = try live.getLiveOut(current_program.lines, new_program.lines.items.len, allocator);
-                const new_line_number: i32 = @intCast(new_program.lines.items.len);
-                const new_line = parser.Line{ .live_out = new_line_live_out, .defines = new_operands, .line_number = new_line_number, .move = line.move, .uses = parser.Operands{ .ops = try line.defines.ops.clone() } };
+                // p1: temp_i <- load mem_j
+                var temp = parser.Operands.init(allocator);
+                try temp.ops.append(parser.Operand{ .temp = new_program.max_temp_reg });
+                var mem = parser.Operands.init(allocator);
+                try mem.ops.append(parser.Operand{ .mem = new_program.mem_pointer });
+                new_program.max_temp_reg += 1;
+                new_program.mem_pointer += 1;
+
+                const new_line_number: i32 = @intCast(new_program.lines.items.len + 1);
+                const new_line = parser.Line{ .live_out = parser.Operands.init(allocator), .defines = temp, .line_number = new_line_number, .move = line.move, .uses = mem };
                 try new_program.lines.append(new_line);
-                // mutate current line to consume new temp reg
-                var mut_uses = try parser.Operands.remove(line.uses, reg, allocator);
-                try mut_uses.ops.append(parser.Operand{ .mem = current_program.mem_pointer - 1 });
+                // p2: replace reg_{spill} with temp_i
+                // TODO: DONT MUTATE
+                var mut_uses = try parser.Operands.remove(parser.Operands{ .ops = try line.uses.ops.clone() }, reg, allocator);
+                try mut_uses.ops.append(parser.Operand{ .mem = new_program.mem_pointer - 1 });
                 const mut_defines = parser.Operands{ .ops = try line.defines.ops.clone() };
-                const mut_live_out = parser.Operands{ .ops = try line.live_out.ops.clone() };
-                const mut_line_count: i32 = @intCast(new_program.lines.items.len - 2);
+                const mut_live_out = try live.getLiveOut(current_program.lines, i, allocator);
+                const mut_line_count: i32 = @intCast(new_program.lines.items.len + 1);
                 const rewritten_line = parser.Line{ .uses = mut_uses, .defines = mut_defines, .live_out = mut_live_out, .move = line.move, .line_number = mut_line_count };
                 try new_program.lines.append(rewritten_line);
-                continue;
+                continue :outer;
             }
         }
         // case 3: spill reg is in the live_out only
+        // TODO: maybe just reset spill reg and have another step to handle recalculating live_out
         if (line.live_out.contains(reg)) {
-            const new_live_out = try parser.Operands.remove(line.live_out, reg, allocator);
-            const new_defines = parser.Operands{ .ops = try line.defines.ops.clone() };
-            const new_uses = parser.Operands{ .ops = try line.uses.ops.clone() };
-            const new_line_number: i32 = @intCast(new_program.lines.items.len - 1);
-            const new_line = parser.Line{ .live_out = new_live_out, .defines = new_defines, .line_number = new_line_number, .move = line.move, .uses = new_uses };
+            const new_live_out = try parser.Operands.remove(try line.live_out.clone(allocator), reg, allocator);
+            const new_line_number: i32 = @intCast(new_program.lines.items.len + 1);
+            const new_line = parser.Line{ .live_out = new_live_out, .defines = try line.defines.clone(allocator), .line_number = new_line_number, .move = line.move, .uses = try line.uses.clone(allocator) };
             try new_program.lines.append(new_line);
-            continue;
+            continue :outer;
         }
+
+        // default: just copy untouched line
+        // line number needs to be recalculated at least!
+        const new_line_number: i32 = @intCast(new_program.lines.items.len + 1);
+        const new_line = parser.Line{ .uses = try line.uses.clone(allocator), .defines = try line.defines.clone(allocator), .live_out = try line.live_out.clone(allocator), .move = line.move, .line_number = new_line_number };
+        try new_program.lines.append(new_line);
     }
     // std.log.debug("", .{ spill_info.def, spill_info.uses });
     return new_program;

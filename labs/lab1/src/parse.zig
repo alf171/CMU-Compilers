@@ -77,6 +77,14 @@ pub const Operands = struct {
         return Operands{ .ops = ops };
     }
 
+    pub fn clone(self: Operands, allocator: std.mem.Allocator) !Operands {
+        var new = Operands.init(allocator);
+        for (self.ops.items) |item| {
+            try new.ops.append(item);
+        }
+        return new;
+    }
+
     pub fn init(allocator: std.mem.Allocator) Operands {
         const ops = std.array_list.Managed(Operand).init(allocator);
         return Operands{ .ops = ops };
