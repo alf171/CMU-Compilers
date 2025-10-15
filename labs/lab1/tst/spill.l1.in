@@ -37,8 +37,8 @@
   },
   {
     "Uses": ["%t2", "%t3"],
-    "Defines": ["%t4", "%t5"],
-    "Live_out": ["%t5"],
+    "Defines": [],
+    "Live_out": ["%t4", "%t5"],
     "Move": false,
     "Line": 6
   },

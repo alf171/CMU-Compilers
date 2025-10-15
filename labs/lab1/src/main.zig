@@ -4,7 +4,9 @@ const igraph = @import("igraph.zig");
 const color = @import("color.zig");
 const spill = @import("spill.zig");
 
-fn print_program(program: parser.Program, A: std.mem.Allocator) !void {
+/// TODO: rewrite as a print line method
+/// should print more like t1 <- f(t_2, t3, t4)
+fn print_program(program: *parser.Program, A: std.mem.Allocator) !void {
     // TODO: move into parser
     // call each print method uniquely
     // then pass writter (std.io.getStdOut().writer())
@@ -29,22 +31,26 @@ fn print_program(program: parser.Program, A: std.mem.Allocator) !void {
 
 /// feedback loop of program (lines of IR) -> inteference graph -> colored graph
 /// if we spill, create a new IR lines and repeat
-fn loop(init_program: parser.Program, allocator: std.mem.Allocator) !color.ColoredGraph {
+fn loop(init_program: *parser.Program, allocator: std.mem.Allocator) !color.ColoredGraph {
     var graph = try igraph.createIgraph(init_program.lines, allocator);
     var graph_attempt = try color.colorGraph(&graph, init_program.register_count, allocator);
 
     var program = init_program;
+    defer graph.deinit();
+
     while (graph_attempt == .spill_register) {
         // free previous graph
         graph.deinit();
-        program = try spill.spillReg(program, graph_attempt.spill_register, allocator);
+        const new_program = try spill.spillReg(program, graph_attempt.spill_register, allocator);
+        program.deinit();
+        program.* = new_program;
         std.log.debug("program after spill", .{});
         try print_program(program, allocator);
         graph = try igraph.createIgraph(program.lines, allocator);
         graph_attempt = try color.colorGraph(&graph, program.register_count, allocator);
     }
 
-    graph.deinit();
+    // graph.deinit();
     return graph_attempt.graph;
 }
 
@@ -62,13 +68,13 @@ pub fn main() !void {
     }
 
     const filename = args[1];
-    const program: parser.Program = try parser.parse(filename, A);
+    var program: parser.Program = try parser.parse(filename, A);
     defer program.deinit();
 
     std.log.debug("init program<>", .{});
-    try print_program(program, A);
+    try print_program(&program, A);
 
-    var colored_graph = try loop(program, A);
+    var colored_graph = try loop(&program, A);
     defer colored_graph.deinit();
 
     // std.log.debug("colored graph below", .{});

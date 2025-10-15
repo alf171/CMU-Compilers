@@ -42,9 +42,14 @@ pub const ColoredGraph = struct {
             const key = entry.key_ptr.*;
             var node_ptr = entry.value_ptr;
 
+            var neighbors = try node_ptr.neighbors.clone();
+            errdefer neighbors.deinit();
+            var moves = try node_ptr.moves.clone();
+            errdefer moves.deinit();
+
             // hacky way to have different nodes
             // TODO: consider sharing memory between igraph and ColoredGraph to avoid cloning memory
-            const moved_node = Node{ .moves = try node_ptr.moves.clone(), .neighbors = try node_ptr.neighbors.clone(), .val = node_ptr.val };
+            const moved_node = Node{ .moves = moves, .neighbors = neighbors, .val = node_ptr.val };
             try cg.nodes.put(key, ColoredNode{
                 .node = moved_node,
                 .register = null,
@@ -54,6 +59,7 @@ pub const ColoredGraph = struct {
     }
 
     pub fn deinit(self: *ColoredGraph) void {
+        std.log.debug("Deinit colored graph", .{});
         var it = self.nodes.valueIterator();
         while (it.next()) |cn| {
             cn.node.moves.deinit();
