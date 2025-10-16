@@ -33,7 +33,7 @@ pub const Operand = union(enum) {
         return switch (op) {
             .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t + 1}),
             .spec_reg => |s| std.fmt.allocPrint(allocator, "%{s}", .{@tagName(s)}),
-            .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t}),
+            .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t + 1}),
         };
     }
 };

@@ -3,7 +3,9 @@ const parser = @import("parse.zig");
 const igraph = @import("igraph.zig");
 const color = @import("color.zig");
 const spill = @import("spill.zig");
+const live = @import("live.zig");
 
+/// TODO: reread project. & should be for modifications while nothing is for just read
 /// TODO: rewrite as a print line method
 /// should print more like t1 <- f(t_2, t3, t4)
 fn print_program(program: *parser.Program, A: std.mem.Allocator) !void {
@@ -13,18 +15,18 @@ fn print_program(program: *parser.Program, A: std.mem.Allocator) !void {
     // this allows less individual heap allocs of strings
     std.debug.print("register count: {d}\n", .{program.register_count});
     for (program.lines.items, 0..) |line, i| {
-        const uses = try line.uses.toJoinedString(A);
-        defer A.free(uses);
+        const uses_str = try line.uses.toJoinedString(A);
+        defer A.free(uses_str);
 
-        const defs = try line.defines.toJoinedString(A);
-        defer A.free(defs);
+        const defs_str = try line.defines.toJoinedString(A);
+        defer A.free(defs_str);
 
-        const live = try line.live_out.toJoinedString(A);
-        defer A.free(live);
+        const live_str = try line.live_out.toJoinedString(A);
+        defer A.free(live_str);
 
         std.debug.print(
             "line[{d}] = (uses: {s}, defines: {s}, live_out: {s}, move: {}, line num: {d})\n",
-            .{ i, uses, defs, live, line.move, line.line_number },
+            .{ i, uses_str, defs_str, live_str, line.move, line.line_number },
         );
     }
 }
@@ -42,6 +44,8 @@ fn loop(init_program: *parser.Program, allocator: std.mem.Allocator) !color.Colo
         // free previous graph
         graph.deinit();
         const new_program = try spill.spillReg(program, graph_attempt.spill_register, allocator);
+        // TODO: enable to recalculate live_out
+        try live.calculateLiveOut(new_program.lines);
         program.deinit();
         program.* = new_program;
         std.log.debug("program after spill", .{});
@@ -71,7 +75,6 @@ pub fn main() !void {
     var program: parser.Program = try parser.parse(filename, A);
     defer program.deinit();
 
-    std.log.debug("init program<>", .{});
     try print_program(&program, A);
 
     var colored_graph = try loop(&program, A);
