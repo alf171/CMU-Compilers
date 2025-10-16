@@ -46,9 +46,10 @@ fn loop(init_program: *parser.Program, allocator: std.mem.Allocator) !color.Colo
         const new_program = try spill.spillReg(program, graph_attempt.spill_register, allocator);
         // TODO: enable to recalculate live_out
         try live.calculateLiveOut(new_program.lines);
+        // std.debug.print("before spill ptr={*}\n", .{program.lines.items.ptr});
         program.deinit();
         program.* = new_program;
-        std.log.debug("program after spill", .{});
+        // std.debug.print("after spill ptr={*}\n", .{program.lines.items.ptr});
         try print_program(program, allocator);
         graph = try igraph.createIgraph(program.lines, allocator);
         graph_attempt = try color.colorGraph(&graph, program.register_count, allocator);

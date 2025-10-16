@@ -25,7 +25,7 @@ pub fn spillReg(current_program: *const parser.Program, reg: parser.Operand, all
         if (line.defines.ops.items.len > 0 and parser.Operand.equal(line.defines.ops.items[0], reg)) {
             // p1: temp_new <- expr
             var temp = parser.Operands.init(allocator);
-            try temp.ops.append(parser.Operand{ .temp = new_program.max_temp_reg });
+            try temp.ops.append(parser.Operand{ .temp = new_program.max_temp_reg + 1 });
             const temp_line_number: i32 = @intCast(new_program.lines.items.len + 1);
             const p1 = parser.Line{ .uses = try line.uses.clone(allocator), .live_out = parser.Operands.init(allocator), .defines = temp, .line_number = temp_line_number, .move = line.move };
             try new_program.lines.append(p1);
@@ -44,15 +44,16 @@ pub fn spillReg(current_program: *const parser.Program, reg: parser.Operand, all
             if (op.equal(reg)) {
                 // p1: temp_i <- load mem_j
                 var temp = parser.Operands.init(allocator);
-                try temp.ops.append(parser.Operand{ .temp = new_program.max_temp_reg });
+                try temp.ops.append(parser.Operand{ .temp = new_program.max_temp_reg + 1 });
                 var mem = parser.Operands.init(allocator);
                 try mem.ops.append(parser.Operand{ .mem = memory_pointer });
                 const new_line_number: i32 = @intCast(new_program.lines.items.len + 1);
                 const new_line = parser.Line{ .live_out = parser.Operands.init(allocator), .defines = temp, .line_number = new_line_number, .move = line.move, .uses = mem };
                 try new_program.lines.append(new_line);
                 // p2: replace reg_{spill} with temp_i
+                // std.debug.print("trying to remove {any} from line.uses: {any}", .{ reg, line.uses.ops.items });
                 var mut_uses = try parser.Operands.remove(line.uses, reg, allocator);
-                try mut_uses.ops.append(parser.Operand{ .temp = new_program.max_temp_reg });
+                try mut_uses.ops.append(parser.Operand{ .temp = new_program.max_temp_reg + 1 });
                 const mut_defines = try line.defines.clone(allocator);
                 const mut_line_count: i32 = @intCast(new_program.lines.items.len + 1);
                 const rewritten_line = parser.Line{ .uses = mut_uses, .defines = mut_defines, .live_out = parser.Operands.init(allocator), .move = line.move, .line_number = mut_line_count };

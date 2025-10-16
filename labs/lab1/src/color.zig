@@ -179,12 +179,12 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !Co
                 try spill.put(id, {});
                 continue;
             };
-            // std.debug.print("assigning reg for {s}\n", .{str});
+            std.debug.print("assigning reg for {s}\n", .{str});
             graph_node.register = reg;
         } else {
             const str = try id.toString(allocator);
             defer allocator.free(str);
-            // std.debug.print("spilling reg for {s}\n", .{str});
+            std.debug.print("spilling reg for {s}\n", .{str});
             new_graph.deinit();
             return .{ .spill_register = id };
         }
@@ -209,7 +209,7 @@ fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_l
             return error.CantFindNode;
         };
 
-        if (n.selected or n.val == .spec_reg) {
+        if (n.selected or n.val == .spec_reg or n.val == .mem) {
             continue;
         }
 
