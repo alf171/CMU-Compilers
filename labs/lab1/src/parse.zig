@@ -36,6 +36,13 @@ pub const Operand = union(enum) {
             .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t + 1}),
         };
     }
+    pub fn print(op: Operand, stdout: *std.io.Writer) !void {
+        switch (op) {
+            .temp => |t| try stdout.print("%t{d}", .{t + 1}),
+            .spec_reg => |s| try stdout.print("%{s}", .{@tagName(s)}),
+            .mem => |t| try stdout.print("spill{d}", .{t + 1}),
+        }
+    }
 };
 
 pub const Operands = struct {
@@ -115,11 +122,6 @@ pub const Line = struct {
         self.defines.free();
         self.live_out.free();
     }
-
-    /// compare addresses not data
-    pub fn equals(self: Line, other: Line) bool {
-        return &self == &other;
-    }
 };
 
 /// keep track of the largest temp currently used to easy implement spilling
@@ -132,6 +134,41 @@ pub const Program = struct {
     max_temp_reg: u8,
     /// keep track of memory uses
     mem_pointer: u8,
+
+    pub fn print(program: Program) !void {
+        var stdout_buffer: [1024]u8 = undefined;
+        // Create a writer for stdout, associating it with the buffer
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        // Get the Writer interface from the writer
+        const stdout = &stdout_writer.interface;
+        try stdout.print("register count: {d}\n", .{program.register_count});
+
+        for (program.lines.items) |line| {
+            try stdout.print("[{d}] ", .{line.line_number});
+            if (line.defines.ops.items.len == 0) {
+                try stdout.print("_ <- ", .{});
+            } else {
+                // assume we only define a single temp
+                try line.defines.ops.items[0].print(stdout);
+                try stdout.print(" <- ", .{});
+            }
+            if (line.uses.ops.items.len > 0) {
+                try stdout.print("op(", .{});
+                for (line.uses.ops.items, 0..) |use, i| {
+                    try use.print(stdout);
+                    // if not last element
+                    if (i + 1 != line.uses.ops.items.len) {
+                        try stdout.print(", ", .{});
+                    }
+                }
+                try stdout.print(")", .{});
+            } else {
+                try stdout.print("_", .{});
+            }
+            try stdout.print("\n", .{});
+        }
+        try stdout.flush();
+    }
 
     pub fn deinit(program: Program) void {
         for (program.lines.items) |*line| {

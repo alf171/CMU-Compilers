@@ -5,31 +5,31 @@ const color = @import("color.zig");
 const spill = @import("spill.zig");
 const live = @import("live.zig");
 
-/// TODO: reread project. & should be for modifications while nothing is for just read
-/// TODO: rewrite as a print line method
-/// should print more like t1 <- f(t_2, t3, t4)
-fn print_program(program: *parser.Program, A: std.mem.Allocator) !void {
-    // TODO: move into parser
-    // call each print method uniquely
-    // then pass writter (std.io.getStdOut().writer())
-    // this allows less individual heap allocs of strings
-    std.debug.print("register count: {d}\n", .{program.register_count});
-    for (program.lines.items, 0..) |line, i| {
-        const uses_str = try line.uses.toJoinedString(A);
-        defer A.free(uses_str);
-
-        const defs_str = try line.defines.toJoinedString(A);
-        defer A.free(defs_str);
-
-        const live_str = try line.live_out.toJoinedString(A);
-        defer A.free(live_str);
-
-        std.debug.print(
-            "line[{d}] = (uses: {s}, defines: {s}, live_out: {s}, move: {}, line num: {d})\n",
-            .{ i, uses_str, defs_str, live_str, line.move, line.line_number },
-        );
-    }
-}
+// /// TODO: reread project. & should be for modifications while nothing is for just read
+// /// TODO: rewrite as a print line method
+// /// should print more like t1 <- f(t_2, t3, t4)
+// fn print_program(program: *parser.Program, A: std.mem.Allocator) !void {
+//     // TODO: move into parser
+//     // call each print method uniquely
+//     // then pass writter (std.io.getStdOut().writer())
+//     // this allows less individual heap allocs of strings
+//     std.debug.print("register count: {d}\n", .{program.register_count});
+//     for (program.lines.items, 0..) |line, i| {
+//         const uses_str = try line.uses.toJoinedString(A);
+//         defer A.free(uses_str);
+//
+//         const defs_str = try line.defines.toJoinedString(A);
+//         defer A.free(defs_str);
+//
+//         const live_str = try line.live_out.toJoinedString(A);
+//         defer A.free(live_str);
+//
+//         std.debug.print(
+//             "line[{d}] = (uses: {s}, defines: {s}, live_out: {s}, move: {}, line num: {d})\n",
+//             .{ i, uses_str, defs_str, live_str, line.move, line.line_number },
+//         );
+//     }
+// }
 
 /// feedback loop of program (lines of IR) -> inteference graph -> colored graph
 /// if we spill, create a new IR lines and repeat
@@ -50,9 +50,10 @@ fn loop(init_program: *parser.Program, allocator: std.mem.Allocator) !color.Colo
         program.deinit();
         program.* = new_program;
         // std.debug.print("after spill ptr={*}\n", .{program.lines.items.ptr});
-        try print_program(program, allocator);
+        try program.print();
         graph = try igraph.createIgraph(program.lines, allocator);
         graph_attempt = try color.colorGraph(&graph, program.register_count, allocator);
+        break;
     }
 
     // graph.deinit();
@@ -76,7 +77,7 @@ pub fn main() !void {
     var program: parser.Program = try parser.parse(filename, A);
     defer program.deinit();
 
-    try print_program(&program, A);
+    // try print_program(&program, A);
 
     var colored_graph = try loop(&program, A);
     defer colored_graph.deinit();

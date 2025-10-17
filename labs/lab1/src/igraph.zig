@@ -2,11 +2,14 @@
 const std = @import("std");
 const parser = @import("parse.zig");
 
+const Line = parser.Line;
+const Operand = parser.Operand;
+
 pub const Node = struct {
     // TODO: consider value of duplicate term
-    val: parser.Operand,
-    neighbors: std.AutoHashMap(parser.Operand, void),
-    moves: std.AutoHashMap(parser.Operand, void),
+    val: Operand,
+    neighbors: std.AutoHashMap(Operand, void),
+    moves: std.AutoHashMap(Operand, void),
     // only field which is different from color.Node
     // TODO: consider using composition / inheritence to fix this
     selected: bool = false,
@@ -14,8 +17,8 @@ pub const Node = struct {
     static_degree: u8 = 0,
     cur_degree: u8 = 0,
 
-    pub fn init(val: parser.Operand, allocator: std.mem.Allocator) Node {
-        return Node{ .val = val, .neighbors = std.AutoHashMap(parser.Operand, void).init(allocator), .moves = std.AutoHashMap(parser.Operand, void).init(allocator) };
+    pub fn init(val: Operand, allocator: std.mem.Allocator) Node {
+        return Node{ .val = val, .neighbors = std.AutoHashMap(Operand, void).init(allocator), .moves = std.AutoHashMap(Operand, void).init(allocator) };
     }
 
     pub fn deinit(self: *Node) void {
@@ -25,10 +28,10 @@ pub const Node = struct {
 };
 
 pub const IGraph = struct {
-    nodes: std.AutoHashMap(parser.Operand, Node),
+    nodes: std.AutoHashMap(Operand, Node),
 
     pub fn init(allocator: std.mem.Allocator) IGraph {
-        return IGraph{ .nodes = std.AutoHashMap(parser.Operand, Node).init(allocator) };
+        return IGraph{ .nodes = std.AutoHashMap(Operand, Node).init(allocator) };
     }
 
     pub fn deinit(self: *IGraph) void {
@@ -62,7 +65,7 @@ pub const IGraph = struct {
     }
 };
 
-pub fn createIgraph(lines: std.array_list.Managed(parser.Line), allocator: std.mem.Allocator) !IGraph {
+pub fn createIgraph(lines: std.array_list.Managed(Line), allocator: std.mem.Allocator) !IGraph {
     var igraph = IGraph.init(allocator);
     for (lines.items) |line| {
         try placeNodes(&igraph, line, allocator);
@@ -70,12 +73,12 @@ pub fn createIgraph(lines: std.array_list.Managed(parser.Line), allocator: std.m
     return igraph;
 }
 
-fn placeNodes(igraph: *IGraph, line: parser.Line, allocator: std.mem.Allocator) !void {
+fn placeNodes(igraph: *IGraph, line: Line, allocator: std.mem.Allocator) !void {
     for (line.defines.ops.items) |define_op| {
         for (line.live_out.ops.items) |live_out_op| {
             try defineNodeIfDoesntExist(igraph, define_op, allocator);
             // build graph
-            if (!parser.Operand.equal(define_op, live_out_op)) {
+            if (!Operand.equal(define_op, live_out_op)) {
                 std.debug.assert(igraph.nodes.contains(live_out_op));
                 std.debug.assert(igraph.nodes.contains(define_op));
                 try igraph.nodes.getPtr(define_op).?.neighbors.put(live_out_op, {});
@@ -101,7 +104,7 @@ fn placeNodes(igraph: *IGraph, line: parser.Line, allocator: std.mem.Allocator) 
     }
 }
 
-fn defineNodeIfDoesntExist(graph: *IGraph, val: parser.Operand, allocator: std.mem.Allocator) !void {
+fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, allocator: std.mem.Allocator) !void {
     if (!graph.nodes.contains(val)) {
         try graph.nodes.put(val, Node.init(val, allocator));
     }

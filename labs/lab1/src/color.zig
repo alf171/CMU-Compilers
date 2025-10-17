@@ -3,6 +3,9 @@ const std = @import("std");
 const parser = @import("parse.zig");
 const graph = @import("igraph.zig");
 
+const Operands = parser.Operands;
+const Operand = parser.Operand;
+
 pub fn Set(comptime K: type) type {
     return std.AutoHashMap(K, void);
 }
@@ -11,12 +14,12 @@ pub fn Set(comptime K: type) type {
 pub const Node = struct {
     // TODO: consider value of duplicate term
     // allows us to make our key in our maps smaller i.e. us a NodeId of some sort :)
-    val: parser.Operand,
-    neighbors: Set(parser.Operand),
-    moves: Set(parser.Operand),
+    val: Operand,
+    neighbors: Set(Operand),
+    moves: Set(Operand),
 
-    pub fn init(val: parser.Operand, allocator: std.mem.Allocator) Node {
-        return Node{ .val = val, .neighbors = Set(parser.Operand).init(allocator), .moves = Set(parser.Operand).init(allocator) };
+    pub fn init(val: Operand, allocator: std.mem.Allocator) Node {
+        return Node{ .val = val, .neighbors = Set(Operand).init(allocator), .moves = Set(Operand).init(allocator) };
     }
 
     pub fn deinit(self: *Node) void {
@@ -30,12 +33,12 @@ pub const ColoredNode = struct {
 };
 
 pub const ColoredGraph = struct {
-    nodes: std.AutoHashMap(parser.Operand, ColoredNode),
+    nodes: std.AutoHashMap(Operand, ColoredNode),
 
     // compose a node with a register since we need it for coloring
     pub fn init(input: *graph.IGraph, allocator: std.mem.Allocator) !ColoredGraph {
         var cg = ColoredGraph{
-            .nodes = std.AutoHashMap(parser.Operand, ColoredNode).init(allocator),
+            .nodes = std.AutoHashMap(Operand, ColoredNode).init(allocator),
         };
         var it = input.nodes.iterator();
         while (it.next()) |entry| {
@@ -90,7 +93,7 @@ pub const ColoredGraph = struct {
     }
 };
 
-const ColorGraphAttempt = union(enum) { graph: ColoredGraph, spill_register: parser.Operand };
+const ColorGraphAttempt = union(enum) { graph: ColoredGraph, spill_register: Operand };
 
 /// color a graph and generate a new graph via spilling if needed
 /// at what layer of abstraction should we do all of this is still being decided
@@ -103,8 +106,8 @@ const ColorGraphAttempt = union(enum) { graph: ColoredGraph, spill_register: par
 /// 5. clean up any code / todos
 pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !ColorGraphAttempt {
     // things to keep track of
-    var simplify = Set(parser.Operand).init(allocator);
-    var spill = Set(parser.Operand).init(allocator);
+    var simplify = Set(Operand).init(allocator);
+    var spill = Set(Operand).init(allocator);
     defer {
         simplify.deinit();
         spill.deinit();
@@ -131,7 +134,7 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !Co
     // TODO: run tiny pass coloring all nodes which have a spec_reg
 
     // TODO: consider presizing stack since we have some knowledge at runtime
-    var select = std.array_list.Managed(parser.Operand).init(allocator);
+    var select = std.array_list.Managed(Operand).init(allocator);
     defer select.deinit();
 
     // phase 2: build select
@@ -194,7 +197,7 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !Co
 }
 
 /// build our select stack. move things between simplify and spill as needed
-fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_list.Managed(parser.Operand), simplify: *Set(parser.Operand), spill: *Set(parser.Operand), k: u8) !void {
+fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_list.Managed(Operand), simplify: *Set(Operand), spill: *Set(Operand), k: u8) !void {
     std.debug.assert(node.val != .spec_reg);
     std.debug.assert(!node.selected);
     try select.append(node.val);
@@ -226,7 +229,7 @@ fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_l
 
 /// remove a node from map and return it to the caller
 /// this fun is not fun is not deterministic
-fn takeAny(s: *std.AutoHashMap(parser.Operand, void)) !parser.Operand {
+fn takeAny(s: *std.AutoHashMap(Operand, void)) !Operand {
     var it = s.keyIterator();
     if (it.next()) |p| {
         const id = p.*;
