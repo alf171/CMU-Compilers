@@ -70,7 +70,8 @@ pub const ColoredGraph = struct {
         self.nodes.deinit();
     }
 
-    pub fn print(self: *ColoredGraph, allocator: std.mem.Allocator) !void {
+    pub fn print(self: *ColoredGraph, allocator: std.mem.Allocator, stdout: *std.io.Writer) !void {
+        try stdout.print("colored graph: [register] temp -> interfer temp/s\n", .{});
         var it = self.nodes.iterator();
         while (it.next()) |node_ptr| {
             const key_str = try node_ptr.key_ptr.*.toString(allocator);
@@ -80,14 +81,18 @@ pub const ColoredGraph = struct {
             var buf = std.array_list.Managed(u8).init(allocator);
             var inner_it = value.node.neighbors.iterator();
             const reg = value.register;
-            while (inner_it.next()) |value_ptr| {
+            var i: usize = 0;
+            while (inner_it.next()) |value_ptr| : (i += 1) {
                 const str = try value_ptr.key_ptr.toString(allocator);
                 defer allocator.free(str);
                 try buf.appendSlice(str);
-                try buf.appendSlice(", ");
+                if (i + 1 != value.node.neighbors.count()) {
+                    try buf.appendSlice(", ");
+                }
             }
 
-            std.debug.print("[{?d}] {s} -> {s}\n", .{ reg, key_str, buf.items });
+            try stdout.print("[{?d}] {s} -> ({s})\n", .{ reg, key_str, buf.items });
+            try stdout.flush();
             defer buf.deinit();
         }
     }
@@ -149,8 +154,8 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !Co
                 node.spill = false;
             }
         } else {
-            // TODO: add some heuristic to know what to spill
-            const id = try takeAny(&spill);
+            // spill node with most edges
+            const id = try takeNodeWithMostEdges(input.nodes, &spill);
             const node = input.nodes.getPtr(id) orelse {
                 return error.CantFindNode;
             };
@@ -182,12 +187,12 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !Co
                 try spill.put(id, {});
                 continue;
             };
-            std.debug.print("assigning reg for {s}\n", .{str});
+            // std.debug.print("assigning reg for {s}\n", .{str});
             graph_node.register = reg;
         } else {
             const str = try id.toString(allocator);
             defer allocator.free(str);
-            std.debug.print("spilling reg for {s}\n", .{str});
+            // std.debug.print("spilling reg for {s}\n", .{str});
             new_graph.deinit();
             return .{ .spill_register = id };
         }
@@ -225,6 +230,24 @@ fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_l
         }
         n.cur_degree -= 1;
     }
+}
+
+fn takeNodeWithMostEdges(input_graph: std.AutoHashMap(Operand, graph.Node), s: *std.AutoHashMap(Operand, void)) !Operand {
+    var it = s.keyIterator();
+    var best_id: ?Operand = null;
+    var max_edges: u32 = 0;
+    while (it.next()) |p| {
+        const temp = p.*;
+        const node = input_graph.get(temp) orelse continue;
+        const edges = node.neighbors.count();
+        if (edges > max_edges) {
+            max_edges = node.neighbors.count();
+            best_id = temp;
+        }
+    }
+    const id = best_id orelse return error.IllegalGraph;
+    _ = s.remove(id);
+    return id;
 }
 
 /// remove a node from map and return it to the caller

@@ -1,0 +1,32 @@
+register count: 3
+[1] %t1 <- _
+[2] %t2 <- op(%t1)
+[3] %t3 <- op(%t1, %t2)
+[4] %t4 <- op(%t1)
+[5] %t5 <- op(%t1, %t4)
+[6] _ <- op(%t2, %t3)
+[7] _ <- op(%t5)
+[8] _ <- op(%t4)
+
+assigning reg for %t4
+assigning reg for %t3
+assigning reg for %t2
+spilling reg for %t5
+register count: 3
+
+[1] %t1 <- _
+[2] %t2 <- op(%t1)
+[3] %t3 <- op(%t1, %t2)
+[4] %t4 <- op(%t1)
+// write to a new temp
+[5] %t6 <- op(%t1, %t4)
+// spill new temp into memory
+[6] spill1 <- op(%t6)
+[7] _ <- op(%t2, %t3)
+// another temp we are going to pull from spill
+[8] %t7 <- op(spill1)
+[9] _ <- op(%t7)
+[10] _ <- op(%t4)
+assigning reg for %t4
+assigning reg for %t2
+spilling reg for %t3

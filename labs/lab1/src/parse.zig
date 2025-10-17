@@ -135,12 +135,7 @@ pub const Program = struct {
     /// keep track of memory uses
     mem_pointer: u8,
 
-    pub fn print(program: Program) !void {
-        var stdout_buffer: [1024]u8 = undefined;
-        // Create a writer for stdout, associating it with the buffer
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-        // Get the Writer interface from the writer
-        const stdout = &stdout_writer.interface;
+    pub fn print(program: Program, stdout: *std.io.Writer) !void {
         try stdout.print("register count: {d}\n", .{program.register_count});
 
         for (program.lines.items) |line| {
@@ -165,6 +160,19 @@ pub const Program = struct {
             } else {
                 try stdout.print("_", .{});
             }
+
+            // print spill info
+            try stdout.print(" [", .{});
+            for (line.live_out.ops.items, 0..) |live_out, i| {
+                if (i != 0) {
+                    try stdout.print("", .{});
+                }
+                try live_out.print(stdout);
+                if (i + 1 != line.live_out.ops.items.len) {
+                    try stdout.print(", ", .{});
+                }
+            }
+            try stdout.print("]", .{});
             try stdout.print("\n", .{});
         }
         try stdout.flush();

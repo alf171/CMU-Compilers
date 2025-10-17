@@ -6,12 +6,9 @@ const Line = parser.Line;
 const Operand = parser.Operand;
 
 pub const Node = struct {
-    // TODO: consider value of duplicate term
     val: Operand,
     neighbors: std.AutoHashMap(Operand, void),
     moves: std.AutoHashMap(Operand, void),
-    // only field which is different from color.Node
-    // TODO: consider using composition / inheritence to fix this
     selected: bool = false,
     spill: bool = false,
     static_degree: u8 = 0,
@@ -42,7 +39,7 @@ pub const IGraph = struct {
         self.nodes.deinit();
     }
 
-    pub fn print(self: *IGraph, allocator: std.mem.Allocator) !void {
+    pub fn print(self: *IGraph, allocator: std.mem.Allocator, writer: std.io.Writer) !void {
         var it = self.nodes.iterator();
         while (it.next()) |node_ptr| {
             // we store val on node itself too now
@@ -59,11 +56,62 @@ pub const IGraph = struct {
                 try buf.appendSlice(", ");
             }
 
-            std.debug.print("{s} -> {s}\n", .{ key_str, buf.items });
+            writer.print("{s} -> {s}\n", .{ key_str, buf.items });
             defer buf.deinit();
         }
     }
+
+    /// merge dst and src into a single node. dst will represent both nodes.
+    /// not concerned with validility or merge just functionality.
+    /// TODO: need a graph wide swap now of dst <- src
+    pub fn mergeNodes(self: *IGraph, dst: Operand, src: Operand) !void {
+        var dst_node = self.nodes.get(dst) orelse {
+            return error.IllegalGraph;
+        };
+        var src_node = self.nodes.get(src) orelse {
+            return error.IllegalGraph;
+        };
+
+        defer src_node.deinit();
+        _ = self.nodes.remove(src);
+
+        var it = src_node.neighbors.keyIterator();
+        // union of nbors \ eachother
+        while (it.next()) |k| {
+            try dst_node.neighbors.put(k.*, {});
+        }
+        _ = dst_node.neighbors.remove(src);
+        _ = dst_node.neighbors.remove(dst);
+
+        // union of moves \ eachother
+        var moves_it = src_node.moves.keyIterator();
+        while (moves_it.next()) |nbor| {
+            try dst_node.moves.put(nbor.*, {});
+        }
+        _ = dst_node.moves.remove(src);
+        _ = dst_node.moves.remove(dst);
+
+        dst_node.selected = false;
+        dst_node.spill = src_node.spill or dst_node.spill;
+        // do we have sleeper nodes like mem and special?
+        const degree: u8 = @intCast(dst_node.neighbors.count());
+        dst_node.cur_degree = degree;
+        dst_node.static_degree = degree;
+    }
 };
+
+pub fn swapNode(igraph: IGraph, new: Operand, remove: Operand) !void {
+    var node_it = igraph.nodes.valueIterator();
+    while (node_it.next()) |node| {
+        var nbor_it = node.neighbors.keyIterator();
+        while (nbor_it.next()) |nbor_id| {
+            if (nbor_id.equal(remove)) {
+                _ = node.neighbors.remove(nbor_id.*);
+                try node.neighbors.put(new, {});
+            }
+        }
+    }
+}
 
 pub fn createIgraph(lines: std.array_list.Managed(Line), allocator: std.mem.Allocator) !IGraph {
     var igraph = IGraph.init(allocator);
@@ -73,9 +121,29 @@ pub fn createIgraph(lines: std.array_list.Managed(Line), allocator: std.mem.Allo
     return igraph;
 }
 
+pub fn checkForPossibleMerges(igraph: IGraph, k: u8) !?struct { nodeA: Operand, nodeB: Operand } {
+    var node_it = igraph.nodes.valueIterator();
+    while (node_it.next()) |node| {
+        var nbor_it = node.neighbors.keyIterator();
+        while (nbor_it.next()) |nbor_id| {
+            const nbor_node = igraph.nodes.get(nbor_id.*) orelse {
+                return error.IllegalGraph;
+            };
+            if (node.neighbors.count() + nbor_node.neighbors.count() - 2 < k) {
+                return .{ .nodeA = node.val, .nodeB = nbor_id.* };
+            }
+        }
+    }
+    return null;
+}
+
 fn placeNodes(igraph: *IGraph, line: Line, allocator: std.mem.Allocator) !void {
     for (line.defines.ops.items) |define_op| {
         for (line.live_out.ops.items) |live_out_op| {
+            // skip memory or special registers
+            if (define_op == .mem or live_out_op == .mem or define_op == .spec_reg or live_out_op == .spec_reg) {
+                continue;
+            }
             try defineNodeIfDoesntExist(igraph, define_op, allocator);
             // build graph
             if (!Operand.equal(define_op, live_out_op)) {
