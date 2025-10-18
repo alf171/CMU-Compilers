@@ -4,15 +4,13 @@ const igraph = @import("igraph.zig");
 const color = @import("color.zig");
 const spill = @import("spill.zig");
 const live = @import("live.zig");
+const coalesce = @import("coalesce.zig");
 
 /// feedback loop of program (lines of IR) -> inteference graph -> colored graph
 /// if we spill, create a new IR lines and repeat
-fn loop(init_program: *parser.Program, allocator: std.mem.Allocator, _: *std.io.Writer) !color.ColoredGraph {
+fn loop(init_program: *parser.Program, allocator: std.mem.Allocator, stdout: *std.io.Writer) !color.ColoredGraph {
     var graph = try igraph.createIgraph(init_program.lines, allocator);
-    if (try igraph.checkForPossibleMerges(graph, init_program.register_count)) |pair| {
-        // TODO: find out who is source and who is dest
-        try graph.mergeNodes(pair.nodeA, pair.nodeB);
-    }
+    try coalesce.run(&graph, init_program.register_count, stdout);
     var graph_attempt = try color.colorGraph(&graph, init_program.register_count, allocator);
 
     var program = init_program;
@@ -25,15 +23,9 @@ fn loop(init_program: *parser.Program, allocator: std.mem.Allocator, _: *std.io.
         try live.calculateLiveOut(new_program.lines);
         program.deinit();
         program.* = new_program;
-        // try program.print(writer);
+        // try program.print(stdout);
         graph = try igraph.createIgraph(program.lines, allocator);
-        // TODO: this should actually be a loop and we keep trying to merge until we cant anymore
-        if (try igraph.checkForPossibleMerges(graph, program.register_count)) |pair| {
-            std.log.debug("merging {any} and {any}", .{ pair.nodeA, pair.nodeB });
-            // TODO: find out who is source and who is dest
-            try graph.mergeNodes(pair.nodeA, pair.nodeB);
-            try igraph.swapNode(graph, pair.nodeA, pair.nodeB);
-        }
+        try coalesce.run(&graph, program.register_count, stdout);
         graph_attempt = try color.colorGraph(&graph, program.register_count, allocator);
         std.debug.print("tag = {s}\n", .{@tagName(graph_attempt)});
     }
@@ -46,7 +38,7 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const alloctar = gpa.allocator();
-    // Grab command-line arguments
+    // Grab cli args
     const args = try std.process.argsAlloc(alloctar);
     defer std.process.argsFree(alloctar, args);
 
@@ -64,7 +56,6 @@ pub fn main() !void {
     defer program.deinit();
 
     // try program.print(stdout);
-
     var colored_graph = try loop(&program, alloctar, stdout);
     defer colored_graph.deinit();
 

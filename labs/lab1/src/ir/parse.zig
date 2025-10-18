@@ -148,7 +148,9 @@ pub const Program = struct {
                 try stdout.print(" <- ", .{});
             }
             if (line.uses.ops.items.len > 0) {
-                try stdout.print("op(", .{});
+                if (!line.move) {
+                    try stdout.print("op(", .{});
+                }
                 for (line.uses.ops.items, 0..) |use, i| {
                     try use.print(stdout);
                     // if not last element
@@ -156,12 +158,14 @@ pub const Program = struct {
                         try stdout.print(", ", .{});
                     }
                 }
-                try stdout.print(")", .{});
+                if (!line.move) {
+                    try stdout.print(")", .{});
+                }
             } else {
                 try stdout.print("_", .{});
             }
 
-            // print spill info
+            // print live_out info
             try stdout.print(" [", .{});
             for (line.live_out.ops.items, 0..) |live_out, i| {
                 if (i != 0) {
@@ -173,6 +177,7 @@ pub const Program = struct {
                 }
             }
             try stdout.print("]", .{});
+
             try stdout.print("\n", .{});
         }
         try stdout.flush();

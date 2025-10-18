@@ -100,41 +100,12 @@ pub const IGraph = struct {
     }
 };
 
-pub fn swapNode(igraph: IGraph, new: Operand, remove: Operand) !void {
-    var node_it = igraph.nodes.valueIterator();
-    while (node_it.next()) |node| {
-        var nbor_it = node.neighbors.keyIterator();
-        while (nbor_it.next()) |nbor_id| {
-            if (nbor_id.equal(remove)) {
-                _ = node.neighbors.remove(nbor_id.*);
-                try node.neighbors.put(new, {});
-            }
-        }
-    }
-}
-
 pub fn createIgraph(lines: std.array_list.Managed(Line), allocator: std.mem.Allocator) !IGraph {
     var igraph = IGraph.init(allocator);
     for (lines.items) |line| {
         try placeNodes(&igraph, line, allocator);
     }
     return igraph;
-}
-
-pub fn checkForPossibleMerges(igraph: IGraph, k: u8) !?struct { nodeA: Operand, nodeB: Operand } {
-    var node_it = igraph.nodes.valueIterator();
-    while (node_it.next()) |node| {
-        var nbor_it = node.neighbors.keyIterator();
-        while (nbor_it.next()) |nbor_id| {
-            const nbor_node = igraph.nodes.get(nbor_id.*) orelse {
-                return error.IllegalGraph;
-            };
-            if (node.neighbors.count() + nbor_node.neighbors.count() - 2 < k) {
-                return .{ .nodeA = node.val, .nodeB = nbor_id.* };
-            }
-        }
-    }
-    return null;
 }
 
 fn placeNodes(igraph: *IGraph, line: Line, allocator: std.mem.Allocator) !void {
