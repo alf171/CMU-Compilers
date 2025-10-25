@@ -1,7 +1,8 @@
-// GOAL is to build an interference graph from live_out struct
 const std = @import("std");
 const parser = @import("parse.zig");
 
+const Allocator = std.mem.Allocator;
+const Writer = std.io.Writer;
 const Line = parser.Line;
 const Operand = parser.Operand;
 
@@ -14,7 +15,7 @@ pub const Node = struct {
     static_degree: u8 = 0,
     cur_degree: u8 = 0,
 
-    pub fn init(val: Operand, allocator: std.mem.Allocator) Node {
+    pub fn init(val: Operand, allocator: Allocator) Node {
         return Node{ .val = val, .neighbors = std.AutoHashMap(Operand, void).init(allocator), .moves = std.AutoHashMap(Operand, void).init(allocator) };
     }
 
@@ -27,7 +28,7 @@ pub const Node = struct {
 pub const IGraph = struct {
     nodes: std.AutoHashMap(Operand, Node),
 
-    pub fn init(allocator: std.mem.Allocator) IGraph {
+    pub fn init(allocator: Allocator) IGraph {
         return IGraph{ .nodes = std.AutoHashMap(Operand, Node).init(allocator) };
     }
 
@@ -39,7 +40,7 @@ pub const IGraph = struct {
         self.nodes.deinit();
     }
 
-    pub fn print(self: *IGraph, allocator: std.mem.Allocator, writer: std.io.Writer) !void {
+    pub fn print(self: *IGraph, allocator: Allocator, writer: Writer) !void {
         var it = self.nodes.iterator();
         while (it.next()) |node_ptr| {
             // we store val on node itself too now
@@ -100,7 +101,7 @@ pub const IGraph = struct {
     }
 };
 
-pub fn createIgraph(lines: std.array_list.Managed(Line), allocator: std.mem.Allocator) !IGraph {
+pub fn createIgraph(lines: std.array_list.Managed(Line), allocator: Allocator) !IGraph {
     var igraph = IGraph.init(allocator);
     for (lines.items) |line| {
         try placeNodes(&igraph, line, allocator);
@@ -108,7 +109,7 @@ pub fn createIgraph(lines: std.array_list.Managed(Line), allocator: std.mem.Allo
     return igraph;
 }
 
-fn placeNodes(igraph: *IGraph, line: Line, allocator: std.mem.Allocator) !void {
+fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
     for (line.defines.ops.items) |define_op| {
         for (line.live_out.ops.items) |live_out_op| {
             // skip memory or special registers
@@ -143,7 +144,7 @@ fn placeNodes(igraph: *IGraph, line: Line, allocator: std.mem.Allocator) !void {
     }
 }
 
-fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, allocator: std.mem.Allocator) !void {
+fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, allocator: Allocator) !void {
     if (!graph.nodes.contains(val)) {
         try graph.nodes.put(val, Node.init(val, allocator));
     }

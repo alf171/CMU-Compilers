@@ -1,5 +1,8 @@
 const std = @import("std");
 
+const Allocator = std.mem.Allocator;
+const Writer = std.io.Writer;
+
 pub const SpecialRegs = enum { eax };
 const SpecRegsMap = std.StaticStringMap(SpecialRegs);
 const spec_reg_map = SpecRegsMap.initComptime(.{
@@ -29,14 +32,14 @@ pub const Operand = union(enum) {
         };
     }
 
-    pub fn toString(op: Operand, allocator: std.mem.Allocator) ![]u8 {
+    pub fn toString(op: Operand, allocator: Allocator) ![]u8 {
         return switch (op) {
             .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t + 1}),
             .spec_reg => |s| std.fmt.allocPrint(allocator, "%{s}", .{@tagName(s)}),
             .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t + 1}),
         };
     }
-    pub fn print(op: Operand, stdout: *std.io.Writer) !void {
+    pub fn print(op: Operand, stdout: *Writer) !void {
         switch (op) {
             .temp => |t| try stdout.print("%t{d}", .{t + 1}),
             .spec_reg => |s| try stdout.print("%{s}", .{@tagName(s)}),
@@ -48,7 +51,7 @@ pub const Operand = union(enum) {
 pub const Operands = struct {
     ops: std.array_list.Managed(Operand),
 
-    pub fn toJoinedString(self: Operands, allocator: std.mem.Allocator) ![]u8 {
+    pub fn toJoinedString(self: Operands, allocator: Allocator) ![]u8 {
         var list = std.array_list.Managed(u8).init(allocator);
         errdefer list.deinit();
 
@@ -73,7 +76,7 @@ pub const Operands = struct {
 
     /// return a new Operand removing op
     /// requires the elements being removed to be present
-    pub fn remove(self: Operands, op: Operand, allocator: std.mem.Allocator) !Operands {
+    pub fn remove(self: Operands, op: Operand, allocator: Allocator) !Operands {
         std.debug.assert(self.contains(op));
         var ops = std.array_list.Managed(Operand).init(allocator);
         for (self.ops.items) |loop_op| {
@@ -84,7 +87,7 @@ pub const Operands = struct {
         return Operands{ .ops = ops };
     }
 
-    pub fn clone(self: Operands, allocator: std.mem.Allocator) !Operands {
+    pub fn clone(self: Operands, allocator: Allocator) !Operands {
         var new = Operands.init(allocator);
         for (self.ops.items) |item| {
             try new.ops.append(item);
@@ -92,7 +95,7 @@ pub const Operands = struct {
         return new;
     }
 
-    pub fn init(allocator: std.mem.Allocator) Operands {
+    pub fn init(allocator: Allocator) Operands {
         const ops = std.array_list.Managed(Operand).init(allocator);
         return Operands{ .ops = ops };
     }
@@ -135,7 +138,7 @@ pub const Program = struct {
     /// keep track of memory uses
     mem_pointer: u8,
 
-    pub fn print(program: Program, stdout: *std.io.Writer) !void {
+    pub fn print(program: Program, stdout: *Writer) !void {
         try stdout.print("register count: {d}\n", .{program.register_count});
 
         for (program.lines.items) |line| {
@@ -205,7 +208,7 @@ fn parse_temp_reg(s: []const u8) !Operand {
     return error.UnkownRegister;
 }
 
-fn parse_temp_reg_list(alloctor: std.mem.Allocator, ss: [][]const u8) !Operands {
+fn parse_temp_reg_list(alloctor: Allocator, ss: [][]const u8) !Operands {
     var count: usize = 0;
     for (ss) |_| {
         count += 1;
@@ -223,7 +226,7 @@ fn parse_temp_reg_list(alloctor: std.mem.Allocator, ss: [][]const u8) !Operands 
 
 /// Go from file_name -> data struct to test our compiler
 /// within this middle step of the compiler
-pub fn parse(filename: []const u8, allocator: std.mem.Allocator) !Program {
+pub fn parse(filename: []const u8, allocator: Allocator) !Program {
     std.debug.print("Got filename: {s}\n", .{filename});
     const file = try std.fs.cwd().openFile(filename, .{
         .mode = .read_only,

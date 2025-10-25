@@ -61,3 +61,40 @@
     - return e | codegen(rax, e), return
   - improve this? so many temps
   - supply const, special case to recognize pattern, or dont bother
+  - we could make passes shorter by removing some temps but cant remove all
+- types of code gens to simplify code gen generation
+  - constant propogation = replace temp with constant in expr
+    - ex) t_4 <- 3, t_1 = t_2 + t4 (replace with 3)
+    - can only propogate until redef
+  - copy progogation = value used later so we dont have to move to interm
+    - ex) t_4 <- y, t_z = t_4 (replace with y)
+- one of the reason for static single assignment
+  - helps with codegen optimization
+  - each variable on left is defined once
+- constant propogation can't handle t_1 <- 3 + 5 easily
+  - we could add a bunch of complexity
+  - or introduce a constant evaluation pass to the compiler
+  - the order of passes also matters in addition to repeating passes recursively
+- how to generate SSA
+  - give each variable a version
+  - scan in program order
+  - when we encounter a def, increment the def
+  - when we find a use, use the most recently assigned version number
+  - rather easy for straight line code -- joins increase complexity tho
+- x86 and 2-adr instruction
+  - there are no 3 adr instruction d <- s_1 + s_2
+  - triple: d <- s_1 + s_2
+  - 2-adr: d <- s_1, d <- d + s_2
+  - MOVx s_1, d, ADDx s_2, d
+  - AST -> triple -> ... -> 2-adr -> pick op codes
+    - after triples is in SSA
+  - triple: d <- s_1 * s_2
+  - 2-adr: d <- s_1, d <- d * s_2
+  - x86: MOVL s_1, rax, IMUL s_2, MOVL rax, d
+- interference graph can have special regs but also some regs that aren't listed
+  - IMUL interfers with rdx also
+  - graphs can also have memory 
+    - more to come of this later
+- there is a complicated interaction between the ordering of passes and flexibility
+  - lots of work with integrating instruction selection and register allocation
+  - different programming techniques to combine these where they are aware of eachother

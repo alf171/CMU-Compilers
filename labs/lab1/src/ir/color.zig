@@ -3,6 +3,8 @@ const std = @import("std");
 const parser = @import("parse.zig");
 const graph = @import("igraph.zig");
 
+const Allocator = std.mem.Allocator;
+const Writer = std.io.Writer;
 const Operands = parser.Operands;
 const Operand = parser.Operand;
 
@@ -18,7 +20,7 @@ pub const Node = struct {
     neighbors: Set(Operand),
     moves: Set(Operand),
 
-    pub fn init(val: Operand, allocator: std.mem.Allocator) Node {
+    pub fn init(val: Operand, allocator: Allocator) Node {
         return Node{ .val = val, .neighbors = Set(Operand).init(allocator), .moves = Set(Operand).init(allocator) };
     }
 
@@ -36,7 +38,7 @@ pub const ColoredGraph = struct {
     nodes: std.AutoHashMap(Operand, ColoredNode),
 
     // compose a node with a register since we need it for coloring
-    pub fn init(input: *graph.IGraph, allocator: std.mem.Allocator) !ColoredGraph {
+    pub fn init(input: *graph.IGraph, allocator: Allocator) !ColoredGraph {
         var cg = ColoredGraph{
             .nodes = std.AutoHashMap(Operand, ColoredNode).init(allocator),
         };
@@ -70,7 +72,7 @@ pub const ColoredGraph = struct {
         self.nodes.deinit();
     }
 
-    pub fn print(self: *ColoredGraph, allocator: std.mem.Allocator, stdout: *std.io.Writer) !void {
+    pub fn print(self: *ColoredGraph, allocator: Allocator, stdout: *Writer) !void {
         try stdout.print("colored graph: [register] temp -> interfer temp/s\n", .{});
         var it = self.nodes.iterator();
         while (it.next()) |node_ptr| {
@@ -109,7 +111,7 @@ const ColorGraphAttempt = union(enum) { graph: ColoredGraph, spill_register: Ope
 /// 3. implement coalescing
 /// 4. add heuristic for spilling
 /// 5. clean up any code / todos
-pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: std.mem.Allocator) !ColorGraphAttempt {
+pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraphAttempt {
     // things to keep track of
     var simplify = Set(Operand).init(allocator);
     var spill = Set(Operand).init(allocator);

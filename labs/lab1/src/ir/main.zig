@@ -6,9 +6,12 @@ const spill = @import("spill.zig");
 const live = @import("live.zig");
 const coalesce = @import("coalesce.zig");
 
+const Allocator = std.mem.Allocator;
+const Writer = std.io.Writer;
+
 /// feedback loop of program (lines of IR) -> inteference graph -> colored graph
 /// if we spill, create a new IR lines and repeat
-fn loop(init_program: *parser.Program, allocator: std.mem.Allocator, stdout: *std.io.Writer) !color.ColoredGraph {
+fn loop(init_program: *parser.Program, allocator: Allocator, stdout: *Writer) !color.ColoredGraph {
     var graph = try igraph.createIgraph(init_program.lines, allocator);
     try coalesce.run(&graph, init_program.register_count, stdout);
     var graph_attempt = try color.colorGraph(&graph, init_program.register_count, allocator);
