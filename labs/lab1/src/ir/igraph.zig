@@ -19,7 +19,7 @@ pub const Node = struct {
         return Node{ .val = val, .neighbors = std.AutoHashMap(Operand, void).init(allocator), .moves = std.AutoHashMap(Operand, void).init(allocator) };
     }
 
-    pub fn deinit(self: *Node) void {
+    pub fn deinit(self: *@This()) void {
         self.neighbors.deinit();
         self.moves.deinit();
     }
@@ -28,11 +28,11 @@ pub const Node = struct {
 pub const IGraph = struct {
     nodes: std.AutoHashMap(Operand, Node),
 
-    pub fn init(allocator: Allocator) IGraph {
+    pub fn init(allocator: Allocator) @This() {
         return IGraph{ .nodes = std.AutoHashMap(Operand, Node).init(allocator) };
     }
 
-    pub fn deinit(self: *IGraph) void {
+    pub fn deinit(self: *@This()) void {
         var it = self.nodes.valueIterator();
         while (it.next()) |n| {
             n.deinit();
@@ -40,7 +40,7 @@ pub const IGraph = struct {
         self.nodes.deinit();
     }
 
-    pub fn print(self: *IGraph, allocator: Allocator, writer: Writer) !void {
+    pub fn print(self: *@This(), allocator: Allocator, writer: Writer) !void {
         var it = self.nodes.iterator();
         while (it.next()) |node_ptr| {
             // we store val on node itself too now
@@ -65,7 +65,7 @@ pub const IGraph = struct {
     /// merge dst and src into a single node. dst will represent both nodes.
     /// not concerned with validility or merge just functionality.
     /// TODO: need a graph wide swap now of dst <- src
-    pub fn mergeNodes(self: *IGraph, dst: Operand, src: Operand) !void {
+    pub fn mergeNodes(self: *@This(), dst: Operand, src: Operand) !void {
         var dst_node = self.nodes.get(dst) orelse {
             return error.IllegalGraph;
         };

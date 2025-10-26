@@ -15,7 +15,7 @@ pub const Operand = union(enum) {
     spec_reg: SpecialRegs,
     mem: u8,
 
-    pub fn equal(self: Operand, other: Operand) bool {
+    pub fn equal(self: @This(), other: @This()) bool {
         return switch (self) {
             .temp => |t1| switch (other) {
                 .temp => |t2| t1 == t2,
@@ -32,14 +32,14 @@ pub const Operand = union(enum) {
         };
     }
 
-    pub fn toString(op: Operand, allocator: Allocator) ![]u8 {
+    pub fn toString(op: @This(), allocator: Allocator) ![]u8 {
         return switch (op) {
             .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t + 1}),
             .spec_reg => |s| std.fmt.allocPrint(allocator, "%{s}", .{@tagName(s)}),
             .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t + 1}),
         };
     }
-    pub fn print(op: Operand, stdout: *Writer) !void {
+    pub fn print(op: @This(), stdout: *Writer) !void {
         switch (op) {
             .temp => |t| try stdout.print("%t{d}", .{t + 1}),
             .spec_reg => |s| try stdout.print("%{s}", .{@tagName(s)}),
@@ -51,7 +51,7 @@ pub const Operand = union(enum) {
 pub const Operands = struct {
     ops: std.array_list.Managed(Operand),
 
-    pub fn toJoinedString(self: Operands, allocator: Allocator) ![]u8 {
+    pub fn toJoinedString(self: @This(), allocator: Allocator) ![]u8 {
         var list = std.array_list.Managed(u8).init(allocator);
         errdefer list.deinit();
 
@@ -65,7 +65,7 @@ pub const Operands = struct {
         return list.toOwnedSlice();
     }
 
-    pub fn contains(self: Operands, op: Operand) bool {
+    pub fn contains(self: @This(), op: Operand) bool {
         for (self.ops.items) |self_op| {
             if (Operand.equal(self_op, op)) {
                 return true;
@@ -76,7 +76,7 @@ pub const Operands = struct {
 
     /// return a new Operand removing op
     /// requires the elements being removed to be present
-    pub fn remove(self: Operands, op: Operand, allocator: Allocator) !Operands {
+    pub fn remove(self: @This(), op: Operand, allocator: Allocator) !@This() {
         std.debug.assert(self.contains(op));
         var ops = std.array_list.Managed(Operand).init(allocator);
         for (self.ops.items) |loop_op| {
@@ -100,7 +100,7 @@ pub const Operands = struct {
         return Operands{ .ops = ops };
     }
 
-    pub fn free(self: Operands) void {
+    pub fn free(self: @This()) void {
         self.ops.deinit();
     }
 };
@@ -120,7 +120,7 @@ pub const Line = struct {
     move: bool,
     line_number: i32,
 
-    pub fn deinit(self: *Line) void {
+    pub fn deinit(self: *@This()) void {
         self.uses.free();
         self.defines.free();
         self.live_out.free();
@@ -138,7 +138,7 @@ pub const Program = struct {
     /// keep track of memory uses
     mem_pointer: u8,
 
-    pub fn print(program: Program, stdout: *Writer) !void {
+    pub fn print(program: @This(), stdout: *Writer) !void {
         try stdout.print("register count: {d}\n", .{program.register_count});
 
         for (program.lines.items) |line| {

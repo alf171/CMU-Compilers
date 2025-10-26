@@ -24,7 +24,7 @@ pub const Node = struct {
         return Node{ .val = val, .neighbors = Set(Operand).init(allocator), .moves = Set(Operand).init(allocator) };
     }
 
-    pub fn deinit(self: *Node) void {
+    pub fn deinit(self: *@This()) void {
         self.moves.deinit();
     }
 };
@@ -63,7 +63,7 @@ pub const ColoredGraph = struct {
         return cg;
     }
 
-    pub fn deinit(self: *ColoredGraph) void {
+    pub fn deinit(self: *@This()) void {
         var it = self.nodes.valueIterator();
         while (it.next()) |cn| {
             cn.node.moves.deinit();
@@ -72,7 +72,7 @@ pub const ColoredGraph = struct {
         self.nodes.deinit();
     }
 
-    pub fn print(self: *ColoredGraph, allocator: Allocator, stdout: *Writer) !void {
+    pub fn print(self: *@This(), allocator: Allocator, stdout: *Writer) !void {
         try stdout.print("colored graph: [register] temp -> interfer temp/s\n", .{});
         var it = self.nodes.iterator();
         while (it.next()) |node_ptr| {
