@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const exe = b.addExecutable(.{
-        .name = "lab1",
+        .name = "ir",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/ir/main.zig"),
             .target = target,
@@ -13,7 +13,26 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    const codegen = b.addExecutable(.{
+        .name = "ast",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/ast/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    // codegen is using cypthon for the parser
+    codegen.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
+    codegen.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
+    codegen.linkSystemLibrary("python3.13");
+
     b.installArtifact(exe);
+
+    b.installArtifact(codegen);
+    const codegen_run = b.addRunArtifact(codegen);
+    const run_codegen_step = b.step("codegen-run", "run CPython parser demo");
+    run_codegen_step.dependOn(&codegen_run.step);
 
     const run_step = b.step("run", "Run the app");
     const run_cmd = b.addRunArtifact(exe);
