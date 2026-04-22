@@ -87,7 +87,7 @@ pub fn spillReg(current_program: *const Program, reg: Operand, allocator: std.me
 }
 
 test "spillReg basic spill of defined reg" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
 
     const reg = Operand{ .temp = 1 };

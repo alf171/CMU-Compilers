@@ -23,9 +23,9 @@ pub fn build(b: *std.Build) void {
     });
 
     // codegen is using cypthon for the parser
-    codegen.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
-    codegen.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
-    codegen.linkSystemLibrary("python3.13");
+    codegen.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
+    codegen.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
+    codegen.root_module.linkSystemLibrary("python3.13", .{});
 
     b.installArtifact(exe);
 

@@ -7,7 +7,7 @@ const live = @import("live.zig");
 const coalesce = @import("coalesce.zig");
 
 const Allocator = std.mem.Allocator;
-const Writer = std.io.Writer;
+const Writer = std.Io.Writer;
 
 /// feedback loop of program (lines of IR) -> inteference graph -> colored graph
 /// if we spill, create a new IR lines and repeat
@@ -37,13 +37,10 @@ fn loop(init_program: *parser.Program, allocator: Allocator, stdout: *Writer) !c
     return graph_attempt.graph;
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const alloctar = gpa.allocator();
-    // Grab cli args
-    const args = try std.process.argsAlloc(alloctar);
-    defer std.process.argsFree(alloctar, args);
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const arena = init.arena;
+    const args = try init.minimal.args.toSlice(arena.allocator());
 
     if (args.len < 2) {
         std.debug.print("usage: {s} <filename>\n", .{args[0]});
@@ -51,18 +48,18 @@ pub fn main() !void {
     }
 
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
     const filename = args[1];
-    var program: parser.Program = try parser.parse(filename, alloctar);
+    var program: parser.Program = try parser.parse(filename, init.io, allocator);
     defer program.deinit();
 
     // try program.print(stdout);
-    var colored_graph = try loop(&program, alloctar, stdout);
+    var colored_graph = try loop(&program, allocator, stdout);
     defer colored_graph.deinit();
 
-    try colored_graph.print(alloctar, stdout);
+    try colored_graph.print(allocator, stdout);
 }
 
 test "run all tests in this project" {

@@ -30,6 +30,7 @@ pub fn walk_ast(obj: ?*c.PyObject) void {
     var i: usize = 0;
     while (i < n) : (i += 1) {
         const stmt = c.PyList_GetItem(body, i);
+        _ = stmt;
         // stmt: assign
         // expr: BinOp, Constant, Name
     }

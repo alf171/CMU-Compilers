@@ -226,15 +226,15 @@ fn parse_temp_reg_list(alloctor: Allocator, ss: [][]const u8) !Operands {
 
 /// Go from file_name -> data struct to test our compiler
 /// within this middle step of the compiler
-pub fn parse(filename: []const u8, allocator: Allocator) !Program {
+pub fn parse(filename: []const u8, io: std.Io, allocator: Allocator) !Program {
     std.debug.print("Got filename: {s}\n", .{filename});
-    const file = try std.fs.cwd().openFile(filename, .{
+    const file = try std.Io.Dir.cwd().openFile(io, filename, .{
         .mode = .read_only,
     });
-    defer file.close();
+    defer file.close(io);
 
-    // cap read to 1 MiB; adjust as needed
-    const bytes = try file.readToEndAlloc(allocator, 1 << 20);
+    // cap read to 1mb; adjust as needed
+    const bytes = try std.Io.Dir.cwd().readFileAlloc(io, filename, allocator, .limited(1 << 20));
     defer allocator.free(bytes);
 
     // Find the delim line //target
@@ -248,7 +248,7 @@ pub fn parse(filename: []const u8, allocator: Allocator) !Program {
     var after: []const u8 = bytes[dpos + delim.len ..];
 
     // skip spaces/tabs
-    after = std.mem.trimLeft(u8, after, " \t");
+    after = std.mem.trim(u8, after, " \t");
 
     // take remaining of line
     const nl = std.mem.indexOfScalar(u8, after, '\n') orelse return error.SyntaxError;

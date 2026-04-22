@@ -4,7 +4,7 @@ const parser = @import("parse.zig");
 const graph = @import("igraph.zig");
 
 const Allocator = std.mem.Allocator;
-const Writer = std.io.Writer;
+const Writer = std.Io.Writer;
 const Operands = parser.Operands;
 const Operand = parser.Operand;
 
