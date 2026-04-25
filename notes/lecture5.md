@@ -1,4 +1,4 @@
-## SSA
+# SSA
 
 - static assignment is an IR where each variable has one def in the program
   - could be a loop which is executed dynamically many times
