@@ -1,13 +1,9 @@
 const std = @import("std");
+const SpecialRegs = @import("common").SpecialRegs;
+const spec_reg_map = @import("common").spec_reg_map;
 
 const Allocator = std.mem.Allocator;
 const Writer = std.io.Writer;
-
-pub const SpecialRegs = enum { eax };
-const SpecRegsMap = std.StaticStringMap(SpecialRegs);
-const spec_reg_map = SpecRegsMap.initComptime(.{
-    .{ "eax", .eax },
-});
 
 pub const Operand = union(enum) {
     // 256 temps are possible currently

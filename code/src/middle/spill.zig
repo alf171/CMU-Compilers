@@ -116,7 +116,7 @@ test "spillReg basic spill of defined reg" {
         .mem_pointer = 10,
     };
 
-    const new_prog = try spillReg(program, reg, allocator);
+    const new_prog = try spillReg(&program, reg, allocator);
     defer {
         new_prog.deinit();
     }
