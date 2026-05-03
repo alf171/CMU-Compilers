@@ -31,18 +31,17 @@ pub const IrBuilder = struct {
             .current_block = 0,
             .next_local = 0,
             .next_temp = 0,
-            .locals = ArrayList(LocalId).init(alloc)
+            .locals = std.StringHashMap(LocalId).init(alloc)
         };
     }
 
-    pub fn deinit(self: *IrBuilder) void {
-        for (self.program.blocks.items) |*block| {
-            block.instructions.deinit();
-            block.successor.deinit();
-        }
-
-        self.program.blocks.deinit();
-        self.locals.deinit();
+    /// free all but the generated program
+    pub fn deinit(self: *IrBuilder, alloc: std.mem.Allocator) void {
+      var it = self.locals.keyIterator();
+      while (it.next()) |key| {
+          alloc.free(key.*);
+      }
+      self.locals.deinit();
     }
 
     pub fn nextTemp(self: *@This()) Operand {
@@ -51,8 +50,20 @@ pub const IrBuilder = struct {
         return Operand{.temp = id };
     }
 
-    pub fn emit(self: *@This(), instruct: Instruction) void {
-        self.program.blocks.items[self.current_block].instructions.append(instruct);
+    pub fn getOrCreateLocal(self: *@This(), name: []const u8, alloc: std.mem.Allocator) !LocalId {
+        if (self.locals.get(name)) |local| {
+            return local;
+        }
+
+        const local = self.next_local;
+        const owned_name = try alloc.dupe(u8, name);
+        try self.locals.put(owned_name, local);
+        self.next_local += 1;
+        return local;
+    }
+
+    pub fn emit(self: *@This(), instruct: Instruction) !void {
+        try self.program.blocks.items[self.current_block].instructions.append(instruct);
     }
 };
 
@@ -63,6 +74,52 @@ pub const Program = struct {
         const blocks = ArrayList(BasicBlock).init(alloc);
         return Program{.blocks = blocks };
     }
+
+    pub fn deinit(self: *@This()) void {
+        for (self.blocks.items) |*block| {
+            block.instructions.deinit();
+            block.successors.deinit();
+        }
+        self.blocks.deinit();
+    }
+
+    pub fn print(self: @This()) void {
+        for (self.blocks.items) |block| {
+            std.debug.print("block{d}:\n", .{block.id});
+
+            for (block.instructions.items) |instruction| {
+                switch (instruction) {
+                    .constant => |c| {
+                        c.dst.print();
+                        std.debug.print(" <- const {d}\n", .{c.value});
+                    },
+                    .binop => |binop| {
+                        binop.dst.print();
+                        std.debug.print(" <- {s} ", .{@tagName(binop.op)});
+                        binop.lhs.print();
+                        std.debug.print(", ", .{});
+                        binop.rhs.print();
+                        std.debug.print("\n", .{});
+                    },
+                    .store_local => |sl| {
+                        std.debug.print("local{d} <- ", .{sl.local});
+                        sl.src.print();
+                        std.debug.print("\n", .{});
+                    },
+                    .load_local => |ll| {
+                        ll.dst.print();
+                        std.debug.print(" <- local{d}\n", .{ll.local});
+                    },
+                    .move => |m| {
+                        m.dst.print();
+                        std.debug.print(" <- ", .{});
+                        m.src.print();
+                        std.debug.print("\n", .{});
+                    }
+                }
+            }
+        }
+    }
 };
 
 pub const BasicBlock = struct {
@@ -72,6 +129,14 @@ pub const BasicBlock = struct {
 };
 
 pub const Instruction = union(enum) {
+    store_local: struct {
+        local: LocalId,
+        src: Operand
+    },
+    load_local: struct {
+        dst: Operand,
+        local: LocalId
+    },
     constant: struct {
         dst: Operand,
         value: i64
@@ -86,16 +151,25 @@ pub const Instruction = union(enum) {
         dst: Operand,
         src: Operand
     },
-    jump: struct {
-        target: BlockId
-    }
+    // TODO: jump
+    // jump: struct {
+    //     target: BlockId
+    // }
     // TODO: branch
 };
 
 pub const Operand = union(enum) {
-    temp: u8,
+    temp: TempId,
     spec_reg: SpecialRegs,
-    mem: u8
+    mem: u8,
+
+    pub fn print(self: @This()) void {
+        switch (self) {
+            .temp => |id| std.debug.print("temp{d}", .{id}),
+            .spec_reg => |reg| std.debug.print("%{s}", .{@tagName(reg)}),
+            .mem => |id| std.debug.print("mem{d}", .{id})
+        }
+    }
 };
 
 pub const BinOp = enum {
@@ -107,7 +181,8 @@ pub const BinOp = enum {
 
 test "create ir builder" {
     const alloc = std.testing.allocator;
-    const irBuilder = try IrBuilder.init(alloc);
-    irBuilder.deinit();
+    var irBuilder = try IrBuilder.init(alloc);
+    defer irBuilder.deinit(alloc);
+    defer irBuilder.program.deinit();
 }
 

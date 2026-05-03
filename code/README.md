@@ -8,7 +8,7 @@ The goal of this project is to learn more about compilers from a lower level. Pr
   - this runs register generates an igraph, spills the graph, and does coalescing on the IR
   - does nothing with colored graph currently
 
-`zig build codegen-run`
+`zig build frontend-run`
   - go from python code to AST
   - eventually, this will 
 

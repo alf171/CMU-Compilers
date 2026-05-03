@@ -41,8 +41,8 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(frontend);
 
     const frontend_run = b.addRunArtifact(frontend);
-    const run_codegen_step = b.step("codegen-run", "run CPython parser demo");
-    run_codegen_step.dependOn(&frontend_run.step);
+    const run_frontend_step = b.step("frontend-run", "run CPython parser demo");
+    run_frontend_step.dependOn(&frontend_run.step);
 
     // ir testing
     const middle_tests = b.addTest(.{
@@ -57,7 +57,7 @@ pub fn build(b: *std.Build) void {
         .root_module = frontend.root_module,
     });
     const run_frontend_tests = b.addRunArtifact(frontend_tests);
-    const frontend_test_step = b.step("fe-test", "Run frontend tests");
+    const frontend_test_step = b.step("frontend-test", "Run frontend tests");
     frontend_test_step.dependOn(&run_frontend_tests.step);
 
     const run_step = b.step("run", "Run the app");
