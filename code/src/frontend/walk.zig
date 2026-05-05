@@ -4,6 +4,7 @@ const Program = @import("program.zig").Program;
 const Operand = @import("program.zig").Operand;
 const Instruction = @import("program.zig").Instruction;
 const BinOp = @import("program.zig").BinOp;
+const UnaryOp = @import("program.zig").UnaryOp;
 const IrBuilder = @import("program.zig").IrBuilder;
 
 const PyObject = c.PyObject;
@@ -16,8 +17,9 @@ const StmtKind = enum {
 
 const ExprKind = enum {
     BinOp,
+    UnaryOp,
     Constant,
-    // TODO: Name
+    Name,
     Unknown
 };
 
@@ -39,7 +41,7 @@ pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
             .Assign => try walkAssignment(raw_stmt, &irBuilder, alloc),
             .Expr => {
                 const value = c.PyObject_GetAttrString(raw_stmt, "value");
-                _ = try walkExpr(value, &irBuilder);
+                _ = try walkExpr(value, &irBuilder, alloc);
             },
             .Unknown => {
                 std.debug.panic("unkown statement: {*}", .{raw_stmt});
@@ -64,7 +66,7 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
     const id = c.PyUnicode_AsUTF8(id_obj);
 
     const rhs = c.PyObject_GetAttrString(stmt, "value");
-    const rhs_value = try walkExpr(rhs, irBuilder);
+    const rhs_value = try walkExpr(rhs, irBuilder, alloc);
 
     const local = try irBuilder.getOrCreateLocal(std.mem.span(id), alloc);
     try irBuilder.emit(Instruction{
@@ -72,7 +74,7 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
     });
 }
 
-fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder) !Operand {
+fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !Operand {
     switch (getExprKind(stmt)) {
         .BinOp => {
             const left = c.PyObject_GetAttrString(stmt, "left");
@@ -80,8 +82,8 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder) !Operand {
 
             const op = try getBinOp(stmt);
             // order here will impact temp numbering
-            const lhs = try walkExpr(left, irBuilder);
-            const rhs = try walkExpr(right, irBuilder);
+            const lhs = try walkExpr(left, irBuilder, alloc);
+            const rhs = try walkExpr(right, irBuilder, alloc);
             const dst = irBuilder.nextTemp();
 
             const instruction = Instruction{.binop = .{
@@ -93,12 +95,33 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder) !Operand {
             try irBuilder.emit(instruction);
             return dst;
         },
+        .UnaryOp => {
+            const operand_obj = c.PyObject_GetAttrString(stmt, "operand");
+            const src = try walkExpr(operand_obj, irBuilder, alloc);
+            const dst = irBuilder.nextTemp();
+            const op = try getUnaryOp(stmt);
+            try irBuilder.emit(Instruction{ .unaryop = .{ .dst = dst, .op = op, .src = src } });
+            return dst;
+        },
         .Constant => {
             const value_obj = c.PyObject_GetAttrString(stmt, "value");
             const value = c.PyLong_AS_LONG(value_obj);
 
             const dst = irBuilder.nextTemp();
             try irBuilder.emit(Instruction{.constant = .{ .dst = dst, .value = value }});
+            return dst;
+        },
+        .Name => {
+            const id_obj = c.PyObject_GetAttrString(stmt, "id");
+            std.debug.assert(id_obj != null);
+
+            const id = c.PyUnicode_AsUTF8(id_obj);
+            std.debug.assert(id != null);
+
+            const dst = irBuilder.nextTemp();
+            const local = try irBuilder.getOrCreateLocal(std.mem.span(id), alloc);
+
+            try irBuilder.emit(Instruction{.load_local = .{ .dst = dst, .local = local }});
             return dst;
         },
         .Unknown => {
@@ -112,6 +135,7 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder) !Operand {
 
 fn getBinOp(expr: *PyObject) !BinOp {
     const op_obj = c.PyObject_GetAttrString(expr, "op");
+    std.debug.assert(op_obj != null);
     const name = getPyType(op_obj);
 
     if (std.mem.eql(u8, name, "Add")) return .add;
@@ -120,6 +144,17 @@ fn getBinOp(expr: *PyObject) !BinOp {
     if (std.mem.eql(u8, name, "Div")) return .div;
 
     std.debug.panic("unsupported binop: {s}", .{name});
+    return error.NotFound;
+}
+
+fn getUnaryOp(expr: *PyObject) !UnaryOp {
+    const op_obj = c.PyObject_GetAttrString(expr, "op");
+    std.debug.assert(op_obj != null);
+    const name = getPyType(op_obj);
+
+    if (std.mem.eql(u8, name, "USub")) return .neg;
+
+    std.debug.panic("unsupported unaryop: {s}", .{name});
     return error.NotFound;
 }
 
@@ -134,7 +169,9 @@ fn getStmtKind(stmt: *PyObject) StmtKind {
 fn getExprKind(stmt: *PyObject) ExprKind {
     const name = getPyType(stmt);
     if (std.mem.eql(u8, name, "BinOp")) return .BinOp;
+    if (std.mem.eql(u8, name, "UnaryOp")) return .UnaryOp;
     if (std.mem.eql(u8, name, "Constant")) return .Constant;
+    if (std.mem.eql(u8, name, "Name")) return .Name;
 
     return .Unknown;
 }

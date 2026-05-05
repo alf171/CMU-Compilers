@@ -110,6 +110,13 @@ pub const Program = struct {
                         ll.dst.print();
                         std.debug.print(" <- local{d}\n", .{ll.local});
                     },
+                    .unaryop => |uop| {
+                        uop.dst.print();
+                        std.debug.print(" <- {s} ", .{@tagName(uop.op)});
+                        uop.src.print();
+                        std.debug.print("\n", .{});
+
+                    },
                     .move => |m| {
                         m.dst.print();
                         std.debug.print(" <- ", .{});
@@ -151,6 +158,11 @@ pub const Instruction = union(enum) {
         dst: Operand,
         src: Operand
     },
+    unaryop: struct {
+        dst: Operand,
+        op: UnaryOp,
+        src: Operand,
+    },
     // TODO: jump
     // jump: struct {
     //     target: BlockId
@@ -177,6 +189,10 @@ pub const BinOp = enum {
     sub,
     mul,
     div
+};
+
+pub const UnaryOp = enum {
+    neg
 };
 
 test "create ir builder" {
