@@ -18,36 +18,26 @@ pub const IrBuilder = struct {
     pub fn init(alloc: std.mem.Allocator) !IrBuilder {
         var program = Program.init(alloc);
 
-        const entry = BasicBlock{
-            .id = 0,
-            .instructions = ArrayList(Instruction).init(alloc),
-            .successors = ArrayList(BlockId).init(alloc)
-        };
+        const entry = BasicBlock{ .id = 0, .instructions = ArrayList(Instruction).init(alloc), .successors = ArrayList(BlockId).init(alloc) };
 
         try program.blocks.append(entry);
 
-        return IrBuilder{
-            .program = program,
-            .current_block = 0,
-            .next_local = 0,
-            .next_temp = 0,
-            .locals = std.StringHashMap(LocalId).init(alloc)
-        };
+        return IrBuilder{ .program = program, .current_block = 0, .next_local = 0, .next_temp = 0, .locals = std.StringHashMap(LocalId).init(alloc) };
     }
 
     /// free all but the generated program
     pub fn deinit(self: *IrBuilder, alloc: std.mem.Allocator) void {
-      var it = self.locals.keyIterator();
-      while (it.next()) |key| {
-          alloc.free(key.*);
-      }
-      self.locals.deinit();
+        var it = self.locals.keyIterator();
+        while (it.next()) |key| {
+            alloc.free(key.*);
+        }
+        self.locals.deinit();
     }
 
     pub fn nextTemp(self: *@This()) Operand {
         const id = self.next_temp;
         self.next_temp += 1;
-        return Operand{.temp = id };
+        return Operand{ .temp = id };
     }
 
     pub fn getOrCreateLocal(self: *@This(), name: []const u8, alloc: std.mem.Allocator) !LocalId {
@@ -72,7 +62,7 @@ pub const Program = struct {
 
     pub fn init(alloc: std.mem.Allocator) Program {
         const blocks = ArrayList(BasicBlock).init(alloc);
-        return Program{.blocks = blocks };
+        return Program{ .blocks = blocks };
     }
 
     pub fn deinit(self: *@This()) void {
@@ -115,53 +105,50 @@ pub const Program = struct {
                         std.debug.print(" <- {s} ", .{@tagName(uop.op)});
                         uop.src.print();
                         std.debug.print("\n", .{});
-
                     },
                     .move => |m| {
                         m.dst.print();
                         std.debug.print(" <- ", .{});
                         m.src.print();
                         std.debug.print("\n", .{});
-                    }
+                    },
+                    .compare => |c| {
+                        c.dst.print();
+                        std.debug.print(" <- ", .{});
+                        c.lhs.print();
+                        std.debug.print(" {s} ", .{c.op.symbol()});
+                        c.rhs.print();
+                        std.debug.print("\n", .{});
+                    },
                 }
             }
         }
     }
 };
 
-pub const BasicBlock = struct {
-    id: BlockId,
-    instructions: ArrayList(Instruction),
-    successors: ArrayList(BlockId)
-};
+pub const BasicBlock = struct { id: BlockId, instructions: ArrayList(Instruction), successors: ArrayList(BlockId) };
 
 pub const Instruction = union(enum) {
-    store_local: struct {
-        local: LocalId,
-        src: Operand
-    },
-    load_local: struct {
-        dst: Operand,
-        local: LocalId
-    },
-    constant: struct {
-        dst: Operand,
-        value: i64
-    },
+    store_local: struct { local: LocalId, src: Operand },
+    load_local: struct { dst: Operand, local: LocalId },
+    constant: struct { dst: Operand, value: i64 },
     binop: struct {
         dst: Operand,
         op: BinOp,
         lhs: Operand,
         rhs: Operand,
     },
-    move: struct {
-        dst: Operand,
-        src: Operand
-    },
+    move: struct { dst: Operand, src: Operand },
     unaryop: struct {
         dst: Operand,
         op: UnaryOp,
         src: Operand,
+    },
+    compare: struct {
+        dst: Operand,
+        op: CmpOp,
+        lhs: Operand,
+        rhs: Operand,
     },
     // TODO: jump
     // jump: struct {
@@ -179,20 +166,33 @@ pub const Operand = union(enum) {
         switch (self) {
             .temp => |id| std.debug.print("temp{d}", .{id}),
             .spec_reg => |reg| std.debug.print("%{s}", .{@tagName(reg)}),
-            .mem => |id| std.debug.print("mem{d}", .{id})
+            .mem => |id| std.debug.print("mem{d}", .{id}),
         }
     }
 };
 
-pub const BinOp = enum {
-    add,
-    sub,
-    mul,
-    div
-};
+pub const BinOp = enum { add, sub, mul, div };
 
-pub const UnaryOp = enum {
-    neg
+pub const UnaryOp = enum { neg };
+
+pub const CmpOp = enum {
+    eq,
+    neq,
+    lt,
+    lte,
+    gt,
+    gte,
+
+    pub fn symbol(self: @This()) []const u8 {
+        return switch (self) {
+            .eq => "==",
+            .neq => "!=",
+            .lt => "<",
+            .lte => "<=",
+            .gt => ">",
+            .gte => ">=",
+        };
+    }
 };
 
 test "create ir builder" {
@@ -201,4 +201,3 @@ test "create ir builder" {
     defer irBuilder.deinit(alloc);
     defer irBuilder.program.deinit();
 }
-

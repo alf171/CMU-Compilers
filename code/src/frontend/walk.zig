@@ -4,24 +4,15 @@ const Program = @import("program.zig").Program;
 const Operand = @import("program.zig").Operand;
 const Instruction = @import("program.zig").Instruction;
 const BinOp = @import("program.zig").BinOp;
+const CmpOp = @import("program.zig").CmpOp;
 const UnaryOp = @import("program.zig").UnaryOp;
 const IrBuilder = @import("program.zig").IrBuilder;
 
 const PyObject = c.PyObject;
 
-const StmtKind = enum {
-    Assign,
-    Expr,
-    Unknown
-};
+const StmtKind = enum { Assign, Expr, Unknown };
 
-const ExprKind = enum {
-    BinOp,
-    UnaryOp,
-    Constant,
-    Name,
-    Unknown
-};
+const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Unknown };
 
 pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
     var irBuilder = try IrBuilder.init(alloc);
@@ -45,7 +36,7 @@ pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
             },
             .Unknown => {
                 std.debug.panic("unkown statement: {*}", .{raw_stmt});
-            }
+            },
         }
     }
 
@@ -69,9 +60,7 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
     const rhs_value = try walkExpr(rhs, irBuilder, alloc);
 
     const local = try irBuilder.getOrCreateLocal(std.mem.span(id), alloc);
-    try irBuilder.emit(Instruction{
-        .store_local = .{ .local = local, .src = rhs_value }
-    });
+    try irBuilder.emit(Instruction{ .store_local = .{ .local = local, .src = rhs_value } });
 }
 
 fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !Operand {
@@ -86,12 +75,12 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !O
             const rhs = try walkExpr(right, irBuilder, alloc);
             const dst = irBuilder.nextTemp();
 
-            const instruction = Instruction{.binop = .{
+            const instruction = Instruction{ .binop = .{
                 .dst = dst,
                 .op = op,
                 .lhs = lhs,
                 .rhs = rhs,
-            }};
+            } };
             try irBuilder.emit(instruction);
             return dst;
         },
@@ -105,10 +94,10 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !O
         },
         .Constant => {
             const value_obj = c.PyObject_GetAttrString(stmt, "value");
-            const value = c.PyLong_AS_LONG(value_obj);
+            const value = c.PyLong_AsLong(value_obj);
 
             const dst = irBuilder.nextTemp();
-            try irBuilder.emit(Instruction{.constant = .{ .dst = dst, .value = value }});
+            try irBuilder.emit(Instruction{ .constant = .{ .dst = dst, .value = value } });
             return dst;
         },
         .Name => {
@@ -121,7 +110,25 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !O
             const dst = irBuilder.nextTemp();
             const local = try irBuilder.getOrCreateLocal(std.mem.span(id), alloc);
 
-            try irBuilder.emit(Instruction{.load_local = .{ .dst = dst, .local = local }});
+            try irBuilder.emit(Instruction{ .load_local = .{ .dst = dst, .local = local } });
+            return dst;
+        },
+        // Compare(left=Constant(1),ops=[Lt()],comparators=[Constant(2)])
+        .Compare => {
+            const left_obj = c.PyObject_GetAttrString(stmt, "left");
+            const comparators = c.PyObject_GetAttrString(stmt, "comparators");
+            std.debug.assert(left_obj != null);
+            std.debug.assert(comparators != null);
+            const right_obj = c.PyList_GetItem(comparators, 0);
+            std.debug.assert(right_obj != null);
+
+            const lhs = try walkExpr(left_obj, irBuilder, alloc);
+            const rhs = try walkExpr(right_obj, irBuilder, alloc);
+            const dst = irBuilder.nextTemp();
+            const op = try getCompareOp(stmt);
+
+            try irBuilder.emit(Instruction{ .compare = .{ .dst = dst, .lhs = lhs, .op = op, .rhs = rhs } });
+
             return dst;
         },
         .Unknown => {
@@ -129,7 +136,7 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !O
             std.debug.print("unsupported expr type: {s}: ", .{name});
             printAstDump(stmt);
             return error.ExprUnknown;
-        }
+        },
     }
 }
 
@@ -158,6 +165,25 @@ fn getUnaryOp(expr: *PyObject) !UnaryOp {
     return error.NotFound;
 }
 
+fn getCompareOp(expr: *PyObject) !CmpOp {
+    const ops = c.PyObject_GetAttrString(expr, "ops");
+    std.debug.assert(ops != null);
+    const ops_obj = c.PyList_GetItem(ops, 0);
+    std.debug.assert(ops_obj != null);
+
+    const name = getPyType(ops_obj);
+
+    if (std.mem.eql(u8, name, "Eq")) return .eq;
+    if (std.mem.eql(u8, name, "NotEq")) return .neq;
+    if (std.mem.eql(u8, name, "Lt")) return .lt;
+    if (std.mem.eql(u8, name, "LtE")) return .lte;
+    if (std.mem.eql(u8, name, "Gt")) return .gt;
+    if (std.mem.eql(u8, name, "GtE")) return .gte;
+
+    std.debug.panic("unsupported compare op: {s}", .{name});
+    return error.NotFound;
+}
+
 fn getStmtKind(stmt: *PyObject) StmtKind {
     const name = getPyType(stmt);
 
@@ -169,6 +195,7 @@ fn getStmtKind(stmt: *PyObject) StmtKind {
 fn getExprKind(stmt: *PyObject) ExprKind {
     const name = getPyType(stmt);
     if (std.mem.eql(u8, name, "BinOp")) return .BinOp;
+    if (std.mem.eql(u8, name, "Compare")) return .Compare;
     if (std.mem.eql(u8, name, "UnaryOp")) return .UnaryOp;
     if (std.mem.eql(u8, name, "Constant")) return .Constant;
     if (std.mem.eql(u8, name, "Name")) return .Name;

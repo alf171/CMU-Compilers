@@ -8,9 +8,10 @@ pub fn main(init: std.process.Init) !void {
 
     const alloc = init.gpa;
     const code: [*:0]const u8 =
-      \\x = -1 + 2
-      \\y = x + 3
-      ;
+        \\x = -1 + 2
+        \\y = x + 3
+        \\z = x > 1
+    ;
 
     const ast_module = c.PyImport_ImportModule("ast");
     const parse_fn = c.PyObject_GetAttrString(ast_module, "parse");
@@ -47,7 +48,7 @@ test "x = 1 + 2" {
             try std.testing.expectEqual(@as(u32, 0), instruction.dst.temp);
             try std.testing.expectEqual(@as(i64, 1), instruction.value);
         },
-        else => return error.ExpectedConstant
+        else => return error.ExpectedConstant,
     }
     // temp1 <- const 2
     switch (instructions[1]) {
@@ -55,24 +56,79 @@ test "x = 1 + 2" {
             try std.testing.expectEqual(@as(u32, 1), instruction.dst.temp);
             try std.testing.expectEqual(@as(i64, 2), instruction.value);
         },
-        else => return error.ExpectedConstant
+        else => return error.ExpectedConstant,
     }
     // temp2 <- add temp0, temp1
     switch (instructions[2]) {
         .binop => |instruction| {
-          try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp);
-          try std.testing.expectEqual(.add, instruction.op);
-          try std.testing.expectEqual(@as(u32, 0), instruction.lhs.temp);
-          try std.testing.expectEqual(@as(u32, 1), instruction.rhs.temp);
+            try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp);
+            try std.testing.expectEqual(.add, instruction.op);
+            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.temp);
+            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.temp);
         },
-        else => return error.ExpectedBinop
+        else => return error.ExpectedBinop,
     }
     // local0 <- temp2
     switch (instructions[3]) {
         .store_local => |instruction| {
-          try std.testing.expectEqual(@as(u32, 0), instruction.local);
-          try std.testing.expectEqual(@as(u32, 2), instruction.src.temp);
+            try std.testing.expectEqual(@as(u32, 0), instruction.local);
+            try std.testing.expectEqual(@as(u32, 2), instruction.src.temp);
         },
-        else => return error.ExpectedBinop
+        else => return error.ExpectedBinop,
+    }
+}
+
+test "x = true != false" {
+    c.Py_Initialize();
+    defer _ = c.Py_FinalizeEx();
+
+    const alloc = std.testing.allocator;
+    const code: [*:0]const u8 = "x = True != False";
+
+    const ast_module = c.PyImport_ImportModule("ast");
+    const parse_fn = c.PyObject_GetAttrString(ast_module, "parse");
+    const tree = c.PyObject_CallFunction(parse_fn, "s", code);
+    std.debug.assert(tree != null);
+
+    var program = try walkAst(tree, alloc);
+    defer program.deinit();
+    try std.testing.expectEqual(program.blocks.items.len, 1);
+    // block0:
+    try std.testing.expectEqual(program.blocks.items[0].id, 0);
+    const instructions = program.blocks.items[0].instructions.items;
+    try std.testing.expectEqual(instructions.len, 4);
+    // temp0 <- const 1
+    switch (instructions[0]) {
+        .constant => |instruction| {
+            try std.testing.expectEqual(@as(u32, 0), instruction.dst.temp);
+            try std.testing.expectEqual(@as(i64, 1), instruction.value);
+        },
+        else => return error.ExpectedConstant,
+    }
+    // temp1 <- const 0
+    switch (instructions[1]) {
+        .constant => |instruction| {
+            try std.testing.expectEqual(@as(u32, 1), instruction.dst.temp);
+            try std.testing.expectEqual(@as(i64, 0), instruction.value);
+        },
+        else => return error.ExpectedConstant,
+    }
+    // temp2 <- temp0 != temp1
+    switch (instructions[2]) {
+        .compare => |instruction| {
+            try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp);
+            try std.testing.expectEqual(.neq, instruction.op);
+            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.temp);
+            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.temp);
+        },
+        else => return error.ExpectedBinop,
+    }
+    // local0 <- temp2
+    switch (instructions[3]) {
+        .store_local => |instruction| {
+            try std.testing.expectEqual(@as(u32, 0), instruction.local);
+            try std.testing.expectEqual(@as(u32, 2), instruction.src.temp);
+        },
+        else => return error.ExpectedBinop,
     }
 }
