@@ -15,6 +15,7 @@ const ArrayList = std.array_list.Managed;
 pub const IrBuilder = struct {
     program: Program,
     current_block: BlockId,
+    next_block: BlockId,
     next_local: LocalId,
     next_temp: TempId,
     locals: std.StringHashMap(LocalId),
@@ -26,7 +27,7 @@ pub const IrBuilder = struct {
 
         try program.blocks.append(entry);
 
-        return IrBuilder{ .program = program, .current_block = 0, .next_local = 0, .next_temp = 0, .locals = std.StringHashMap(LocalId).init(alloc) };
+        return IrBuilder{ .program = program, .current_block = 0, .next_block = 1, .next_local = 0, .next_temp = 0, .locals = std.StringHashMap(LocalId).init(alloc) };
     }
 
     /// free all but the generated program
@@ -59,6 +60,27 @@ pub const IrBuilder = struct {
     pub fn emit(self: *@This(), instruct: Instruction) !void {
         try self.program.blocks.items[self.current_block].instructions.append(instruct);
     }
+
+    pub fn newBlock(self: *@This(), alloc: std.mem.Allocator) !BlockId {
+        const id = self.next_block;
+        self.next_block += 1;
+        const new_block = BasicBlock{
+            .id = id,
+            .instructions = ArrayList(Instruction).init(alloc),
+            .successors = ArrayList(BlockId).init(alloc),
+        };
+
+        try self.program.blocks.append(new_block);
+        return self.current_block;
+    }
+
+    pub fn setCurrentBlock(self: *@This(), id: BlockId) void {
+        self.current_block = id;
+    }
+
+    pub fn addSuccessor(self: *@This(), from: BlockId, to: BlockId) !void {
+        try self.program.blocks.items[from].successors.append(to);
+    }
 };
 
 test "create ir builder" {
@@ -66,4 +88,8 @@ test "create ir builder" {
     var irBuilder = try IrBuilder.init(alloc);
     defer irBuilder.deinit(alloc);
     defer irBuilder.program.deinit();
+
+    try std.testing.expectEqual(0, irBuilder.current_block);
+    _ = try irBuilder.newBlock(alloc);
+    try std.testing.expectEqual(1, irBuilder.current_block);
 }

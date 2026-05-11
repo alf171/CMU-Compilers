@@ -12,8 +12,12 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - go from python code to AST
 - eventually, this will 
 
-`zig build integration-test && clang /tmp/out.s -o /tmp/out && /tmp/out`
-- super hacky running entire pipeline
+`zig build integration-test -- tst/python/simple.py /tmp/out.s`
+- run python program and output asm
+`clang /tmp/out.s -o /tmp/out`
+- generate executable
+`/tmp/out`
+- run file
 
 ## Design Choices
 - leverage python subset of python syntax
@@ -27,3 +31,7 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - [x] target a specific ISA
 - [ ] add support for branching logic
 - [ ] TBD
+
+## Reading Materials
+- https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms
+- https://student.cs.uwaterloo.ca/~cs452/docs/ts7200/arm-architecture.pdf

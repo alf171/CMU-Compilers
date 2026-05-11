@@ -8,7 +8,7 @@ const CmpOp = @import("common").ir.CmpOp;
 const Program = @import("common").ir.Program;
 const UnaryOp = @import("common").ir.UnaryOp;
 
-const IrBuilder = @import("program.zig").IrBuilder;
+const IrBuilder = @import("builder.zig").IrBuilder;
 
 const PyObject = c.PyObject;
 

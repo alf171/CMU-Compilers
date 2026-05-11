@@ -8,22 +8,31 @@ const igraph = @import("middle").igraph;
 const color = @import("middle").color;
 const emit = @import("backend").emit;
 
-test "python source lowers to allocation lines" {
+pub fn main(init: std.process.Init) !void {
     c.Py_Initialize();
     defer _ = c.Py_FinalizeEx();
 
-    const alloc = std.testing.allocator;
-    const io = std.testing.io;
+    const arena = init.arena;
+    const args = try init.minimal.args.toSlice(arena.allocator());
+    const io = init.io;
+    const alloc = arena.allocator();
 
-    const code: [*:0]const u8 =
-        \\a = 5
-        \\b = 10
-        \\print(a + b)
-    ;
+    if (args.len == 4) {
+        std.debug.print("usage: {s} <input file> <output file>\n", .{args[0]});
+        return;
+    }
+
+    const input_file = args[1];
+    const output_file = args[2];
+
+    const code = try std.Io.Dir.cwd().readFileAlloc(io, input_file, alloc, .limited(1 << 20));
+    const code_z = try alloc.dupeSentinel(u8, code, 0);
+
+    std.debug.print("running program:\n{s}", .{code});
 
     const ast_module = c.PyImport_ImportModule("ast");
     const parse_fn = c.PyObject_GetAttrString(ast_module, "parse");
-    const tree = c.PyObject_CallFunction(parse_fn, "s", code);
+    const tree = c.PyObject_CallFunction(parse_fn, "s", code_z.ptr);
     std.debug.assert(tree != null);
 
     var ir_program = try walkAst(tree, alloc);
@@ -32,7 +41,7 @@ test "python source lowers to allocation lines" {
     var alloc_program = try lower.lowerAlloc(ir_program, alloc);
     defer alloc_program.deinit();
 
-    try std.testing.expectEqual(@as(usize, 8), alloc_program.lines.items.len);
+    try std.testing.expect(alloc_program.lines.items.len > 0);
 
     try live.calculateLiveOut(alloc_program.lines);
 
@@ -42,7 +51,7 @@ test "python source lowers to allocation lines" {
 
     var attempt = try color.colorGraph(&graph, alloc_program.register_count, alloc);
 
-    const file = try std.Io.Dir.createFileAbsolute(io, "/tmp/out.s", .{});
+    const file = try std.Io.Dir.createFileAbsolute(io, output_file, .{});
     var file_buf: [1028]u8 = undefined;
     var file_writer: std.Io.File.Writer = .init(file, io, &file_buf);
 
@@ -58,8 +67,6 @@ test "python source lowers to allocation lines" {
 
             try std.testing.expect(std.mem.indexOf(u8, asm_text, "_main") != null);
             try std.testing.expect(std.mem.indexOf(u8, asm_text, "bl _printf") != null);
-
-            std.debug.print("{s}\n", .{asm_text});
 
             try file_writer.interface.writeAll(asm_text);
             try file_writer.interface.flush();

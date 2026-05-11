@@ -17,20 +17,6 @@ const RawLine = struct {
     Line: i32,
 };
 
-// pub const Line = struct {
-//     uses: Operands,
-//     defines: Operands,
-//     live_out: Operands,
-//     move: bool,
-//     line_number: i32,
-//
-//     pub fn deinit(self: *@This()) void {
-//         self.uses.free();
-//         self.defines.free();
-//         self.live_out.free();
-//     }
-// };
-
 /// keep track of the largest temp currently used to easy implement spilling
 pub const Program = struct {
     /// how many registers the program needs to utilize

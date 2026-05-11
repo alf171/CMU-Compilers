@@ -37,6 +37,15 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    const integration_test = b.addExecutable(.{
+        .name = "integration_test",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/integration/test.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
     const frontend_mod = b.createModule(.{
         .root_source_file = b.path("src/frontend/root.zig"),
         .target = target,
@@ -55,14 +64,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const integration_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/integration/test.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-
     // share irs between stages
     frontend.root_module.addImport("common", common);
     frontend_mod.addImport("common", common);
@@ -73,10 +74,10 @@ pub fn build(b: *std.Build) void {
     backend_mod.addImport("common", common);
     backend_mod.addImport("middle", middle_mod);
 
-    integration_tests.root_module.addImport("common", common);
-    integration_tests.root_module.addImport("frontend", frontend_mod);
-    integration_tests.root_module.addImport("middle", middle_mod);
-    integration_tests.root_module.addImport("backend", backend_mod);
+    integration_test.root_module.addImport("common", common);
+    integration_test.root_module.addImport("frontend", frontend_mod);
+    integration_test.root_module.addImport("middle", middle_mod);
+    integration_test.root_module.addImport("backend", backend_mod);
 
     // frontend is using cypthon for the parser
     frontend.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
@@ -86,13 +87,14 @@ pub fn build(b: *std.Build) void {
     frontend_mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
     frontend_mod.linkSystemLibrary("python3.13", .{});
     // needed for integ tests too
-    integration_tests.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
-    integration_tests.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
-    integration_tests.root_module.linkSystemLibrary("python3.13", .{});
+    integration_test.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
+    integration_test.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
+    integration_test.root_module.linkSystemLibrary("python3.13", .{});
 
-    const run_integration_tests = b.addRunArtifact(integration_tests);
-    const integration_test_step = b.step("integration-test", "Run frontend-to-middle integration tests");
+    const run_integration_tests = b.addRunArtifact(integration_test);
+    const integration_test_step = b.step("integration-test", "run integration test");
     integration_test_step.dependOn(&run_integration_tests.step);
+    if (b.args) |args| run_integration_tests.addArgs(args);
 
     b.installArtifact(middle);
     b.installArtifact(frontend);
