@@ -3,8 +3,8 @@ const parser = @import("parse.zig");
 
 const Allocator = std.mem.Allocator;
 const Writer = std.io.Writer;
-const Line = parser.Line;
-const Operand = parser.Operand;
+const Line = @import("common").alloc.AllocLine;
+const Operand = @import("common").alloc.Operand;
 
 pub const Node = struct {
     val: Operand,

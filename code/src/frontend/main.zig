@@ -8,9 +8,9 @@ pub fn main(init: std.process.Init) !void {
 
     const alloc = init.gpa;
     const code: [*:0]const u8 =
-        \\x = -1 + 2
-        \\y = x + 3
-        \\z = x > 1
+        \\a = 5
+        \\b = 10
+        \\print(a + b)
     ;
 
     const ast_module = c.PyImport_ImportModule("ast");

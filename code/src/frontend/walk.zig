@@ -1,18 +1,20 @@
 const std = @import("std");
 const c = @import("python.zig").c;
-const Program = @import("program.zig").Program;
-const Operand = @import("program.zig").Operand;
-const Instruction = @import("program.zig").Instruction;
-const BinOp = @import("program.zig").BinOp;
-const CmpOp = @import("program.zig").CmpOp;
-const UnaryOp = @import("program.zig").UnaryOp;
+
+const Operand = @import("common").alloc.Operand;
+const Instruction = @import("common").ir.Instruction;
+const BinOp = @import("common").ir.BinOp;
+const CmpOp = @import("common").ir.CmpOp;
+const Program = @import("common").ir.Program;
+const UnaryOp = @import("common").ir.UnaryOp;
+
 const IrBuilder = @import("program.zig").IrBuilder;
 
 const PyObject = c.PyObject;
 
 const StmtKind = enum { Assign, Expr, Unknown };
 
-const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Unknown };
+const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Unknown, Call };
 
 pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
     var irBuilder = try IrBuilder.init(alloc);
@@ -131,6 +133,30 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !O
 
             return dst;
         },
+        // Expr(value=Call(func=Name(id="print"),args=[BinOp(...)]))
+        .Call => {
+            const func = c.PyObject_GetAttrString(stmt, "func");
+            std.debug.assert(func != null);
+
+            const func_id = c.PyObject_GetAttrString(func, "id");
+            std.debug.assert(func_id != null);
+
+            const name = c.PyUnicode_AsUTF8(func_id);
+            std.debug.assert(name != null);
+
+            if (!std.mem.eql(u8, std.mem.span(name), "print")) {
+                return error.UnsupportedCall;
+            }
+            const args = c.PyObject_GetAttrString(stmt, "args");
+            std.debug.assert(args != null);
+            std.debug.assert(c.PyList_Size(args) == 1);
+            const arg0 = c.PyList_GetItem(args, 0);
+            std.debug.assert(arg0 != null);
+
+            const src = try walkExpr(arg0, irBuilder, alloc);
+            try irBuilder.emit(Instruction{ .print_int = .{ .src = src } });
+            return src;
+        },
         .Unknown => {
             const name = getPyType(stmt);
             std.debug.print("unsupported expr type: {s}: ", .{name});
@@ -199,6 +225,7 @@ fn getExprKind(stmt: *PyObject) ExprKind {
     if (std.mem.eql(u8, name, "UnaryOp")) return .UnaryOp;
     if (std.mem.eql(u8, name, "Constant")) return .Constant;
     if (std.mem.eql(u8, name, "Name")) return .Name;
+    if (std.mem.eql(u8, name, "Call")) return .Call;
 
     return .Unknown;
 }

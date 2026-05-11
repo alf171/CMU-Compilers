@@ -5,18 +5,9 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const common = b.createModule(.{
-        .root_source_file = b.path("src/common/ir.zig"),
+        .root_source_file = b.path("src/common/root.zig"),
         .target = target,
         .optimize = optimize,
-    });
-
-    const middle = b.addExecutable(.{
-        .name = "middle",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/middle/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
     });
 
     const frontend = b.addExecutable(.{
@@ -28,14 +19,60 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    // import common into both
+    const middle = b.addExecutable(.{
+        .name = "middle",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/middle/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    const frontend_mod = b.createModule(.{
+        .root_source_file = b.path("src/frontend/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const middle_mod = b.createModule(.{
+        .root_source_file = b.path("src/middle/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const integration_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/integration/test.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    // share irs between stages
     frontend.root_module.addImport("common", common);
     middle.root_module.addImport("common", common);
+    frontend_mod.addImport("common", common);
+    middle_mod.addImport("common", common);
+
+    integration_tests.root_module.addImport("common", common);
+    integration_tests.root_module.addImport("frontend", frontend_mod);
+    integration_tests.root_module.addImport("middle", middle_mod);
 
     // frontend is using cypthon for the parser
     frontend.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
     frontend.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
     frontend.root_module.linkSystemLibrary("python3.13", .{});
+    frontend_mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
+    frontend_mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
+    frontend_mod.linkSystemLibrary("python3.13", .{});
+    // needed for integ tests too
+    integration_tests.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
+    integration_tests.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
+    integration_tests.root_module.linkSystemLibrary("python3.13", .{});
+
+    const run_integration_tests = b.addRunArtifact(integration_tests);
+    const integration_test_step = b.step("integration-test", "Run frontend-to-middle integration tests");
+    integration_test_step.dependOn(&run_integration_tests.step);
 
     b.installArtifact(middle);
     b.installArtifact(frontend);
@@ -60,11 +97,14 @@ pub fn build(b: *std.Build) void {
     const frontend_test_step = b.step("frontend-test", "Run frontend tests");
     frontend_test_step.dependOn(&run_frontend_tests.step);
 
-    const run_step = b.step("run", "Run the app");
-    const run_cmd = b.addRunArtifact(middle);
-    run_step.dependOn(&run_cmd.step);
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    const run_middle_step = b.step("middle-run", "Run liveness demo");
+    const run_middle_cmd = b.addRunArtifact(middle);
+    run_middle_step.dependOn(&run_middle_cmd.step);
+    run_middle_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_middle_cmd.addArgs(args);
+
+    // run and end2end demo
+    // alaffont@ TODO
 
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_middle_tests.step);

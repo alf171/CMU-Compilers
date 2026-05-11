@@ -2,9 +2,10 @@ const std = @import("std");
 const expect = std.testing.expect;
 const parser = @import("parse.zig");
 
-const Line = parser.Line;
-const Operands = parser.Operands;
-const Operand = parser.Operand;
+// const Line = parser.Line;
+const Line = @import("common").alloc.AllocLine;
+const Operands = @import("common").alloc.Operands;
+const Operand = @import("common").alloc.Operand;
 
 /// handle case where we are last line in addition to other to rest
 pub fn calculateLiveOut(lines: std.array_list.Managed(Line)) !void {

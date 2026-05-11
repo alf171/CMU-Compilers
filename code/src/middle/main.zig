@@ -5,6 +5,7 @@ const color = @import("color.zig");
 const spill = @import("spill.zig");
 const live = @import("live.zig");
 const coalesce = @import("coalesce.zig");
+const lower = @import("lower.zig");
 
 const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
@@ -64,4 +65,5 @@ pub fn main(init: std.process.Init) !void {
 
 test "run all tests in this project" {
     std.testing.refAllDecls(@This());
+    std.testing.refAllDecls(lower);
 }

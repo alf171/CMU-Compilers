@@ -4,8 +4,8 @@ const live = @import("live.zig");
 
 const Program = parser.Program;
 const Line = parser.Line;
-const Operands = parser.Operands;
-const Operand = parser.Operand;
+const Operands = @import("common").alloc.Operands;
+const Operand = @import("common").alloc.Operand;
 
 /// build a new program which spill the register provided
 /// general alg:

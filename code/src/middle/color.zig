@@ -5,8 +5,8 @@ const graph = @import("igraph.zig");
 
 const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
-const Operands = parser.Operands;
-const Operand = parser.Operand;
+const Operands = @import("common").alloc.Operands;
+const Operand = @import("common").alloc.Operand;
 
 pub fn Set(comptime K: type) type {
     return std.AutoHashMap(K, void);

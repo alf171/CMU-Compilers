@@ -1,105 +1,13 @@
 const std = @import("std");
-const SpecialRegs = @import("common").SpecialRegs;
-const spec_reg_map = @import("common").spec_reg_map;
+const SpecialRegs = @import("common").ir.SpecialRegs;
+const spec_reg_map = @import("common").ir.spec_reg_map;
+
+const Operands = @import("common").alloc.Operands;
+const Operand = @import("common").alloc.Operand;
+const Line = @import("common").alloc.AllocLine;
 
 const Allocator = std.mem.Allocator;
 const Writer = std.io.Writer;
-
-pub const Operand = union(enum) {
-    // 256 temps are possible currently
-    temp: u8,
-    spec_reg: SpecialRegs,
-    mem: u8,
-
-    pub fn equal(self: @This(), other: @This()) bool {
-        return switch (self) {
-            .temp => |t1| switch (other) {
-                .temp => |t2| t1 == t2,
-                else => false,
-            },
-            .spec_reg => |t1| switch (other) {
-                .spec_reg => |t2| return t1 == t2,
-                else => false,
-            },
-            .mem => |t1| switch (other) {
-                .mem => |t2| return t1 == t2,
-                else => false,
-            },
-        };
-    }
-
-    pub fn toString(op: @This(), allocator: Allocator) ![]u8 {
-        return switch (op) {
-            .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t + 1}),
-            .spec_reg => |s| std.fmt.allocPrint(allocator, "%{s}", .{@tagName(s)}),
-            .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t + 1}),
-        };
-    }
-    pub fn print(op: @This(), stdout: *Writer) !void {
-        switch (op) {
-            .temp => |t| try stdout.print("%t{d}", .{t + 1}),
-            .spec_reg => |s| try stdout.print("%{s}", .{@tagName(s)}),
-            .mem => |t| try stdout.print("spill{d}", .{t + 1}),
-        }
-    }
-};
-
-pub const Operands = struct {
-    ops: std.array_list.Managed(Operand),
-
-    pub fn toJoinedString(self: @This(), allocator: Allocator) ![]u8 {
-        var list = std.array_list.Managed(u8).init(allocator);
-        errdefer list.deinit();
-
-        var first = true;
-        for (self.ops.items) |op| {
-            if (!first) try list.appendSlice(", ") else first = false;
-            const s = try op.toString(allocator);
-            defer allocator.free(s);
-            try list.appendSlice(s);
-        }
-        return list.toOwnedSlice();
-    }
-
-    pub fn contains(self: @This(), op: Operand) bool {
-        for (self.ops.items) |self_op| {
-            if (Operand.equal(self_op, op)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// return a new Operand removing op
-    /// requires the elements being removed to be present
-    pub fn remove(self: @This(), op: Operand, allocator: Allocator) !@This() {
-        std.debug.assert(self.contains(op));
-        var ops = std.array_list.Managed(Operand).init(allocator);
-        for (self.ops.items) |loop_op| {
-            if (!loop_op.equal(op)) {
-                try ops.append(loop_op);
-            }
-        }
-        return Operands{ .ops = ops };
-    }
-
-    pub fn clone(self: Operands, allocator: Allocator) !Operands {
-        var new = Operands.init(allocator);
-        for (self.ops.items) |item| {
-            try new.ops.append(item);
-        }
-        return new;
-    }
-
-    pub fn init(allocator: Allocator) Operands {
-        const ops = std.array_list.Managed(Operand).init(allocator);
-        return Operands{ .ops = ops };
-    }
-
-    pub fn free(self: @This()) void {
-        self.ops.deinit();
-    }
-};
 
 const RawLine = struct {
     Uses: [][]const u8,
@@ -109,19 +17,19 @@ const RawLine = struct {
     Line: i32,
 };
 
-pub const Line = struct {
-    uses: Operands,
-    defines: Operands,
-    live_out: Operands,
-    move: bool,
-    line_number: i32,
-
-    pub fn deinit(self: *@This()) void {
-        self.uses.free();
-        self.defines.free();
-        self.live_out.free();
-    }
-};
+// pub const Line = struct {
+//     uses: Operands,
+//     defines: Operands,
+//     live_out: Operands,
+//     move: bool,
+//     line_number: i32,
+//
+//     pub fn deinit(self: *@This()) void {
+//         self.uses.free();
+//         self.defines.free();
+//         self.live_out.free();
+//     }
+// };
 
 /// keep track of the largest temp currently used to easy implement spilling
 pub const Program = struct {

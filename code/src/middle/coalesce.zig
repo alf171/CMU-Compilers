@@ -4,7 +4,7 @@ const igraph = @import("igraph.zig");
 const parser = @import("parse.zig");
 
 const Writer = std.Io.Writer;
-const Operand = parser.Operand;
+const Operand = @import("common").alloc.Operand;
 
 /// merge either src or dest into later if live_out and degree let's us do so
 pub fn run(graph: *igraph.IGraph, reg_count: u8, stdout: *Writer) !void {
