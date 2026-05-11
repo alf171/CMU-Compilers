@@ -5,22 +5,25 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 ## Run Commands
 
 `zig build -Doptimize=Debug run -- tst/medium.l1.in`
-  - this runs register generates an igraph, spills the graph, and does coalescing on the IR
-  - does nothing with colored graph currently
+- this runs register generates an igraph, spills the graph, and does coalescing on the IR
+- does nothing with colored graph currently
 
 `zig build frontend-run`
-  - go from python code to AST
-  - eventually, this will 
+- go from python code to AST
+- eventually, this will 
+
+`zig build integration-test && clang /tmp/out.s -o /tmp/out && /tmp/out`
+- super hacky running entire pipeline
 
 ## Design Choices
-
-TODO: fill out
+- leverage python subset of python syntax
+- modular
+- compiled not interpreted
 
 ## Goals
-
 - [x] color ir graph
-- [ ] Go from python AST to IR
-- [ ] hook up AST and IR modules
-- [ ] target a specific ISA
+- [x] Go from python AST to IR
+- [x] hook up AST and IR modules
+- [x] target a specific ISA
 - [ ] add support for branching logic
 - [ ] TBD
