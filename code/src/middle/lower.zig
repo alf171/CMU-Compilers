@@ -52,10 +52,15 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
                 .print_int => |pi| {
                     try line.uses.ops.append(pi.src);
                 },
+                .print_string => {},
                 .compare => |c| {
                     try line.defines.ops.append(c.dst);
                     try line.uses.ops.append(c.lhs);
                     try line.uses.ops.append(c.rhs);
+                },
+                .jump => {},
+                .branch => |b| {
+                    try line.uses.ops.append(b.condition);
                 },
                 else => {
                     return error.NotImplemented;

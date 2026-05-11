@@ -71,7 +71,7 @@ pub const IrBuilder = struct {
         };
 
         try self.program.blocks.append(new_block);
-        return self.current_block;
+        return id;
     }
 
     pub fn setCurrentBlock(self: *@This(), id: BlockId) void {

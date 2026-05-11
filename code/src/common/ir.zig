@@ -39,11 +39,6 @@ pub const CmpOp = enum {
     }
 };
 
-// TODO: jump
-// jump: struct {
-//     target: BlockId
-// }
-// TODO: branch
 pub const Instruction = union(enum) {
     store_local: struct { local: LocalId, src: Operand },
     load_local: struct { dst: Operand, local: LocalId },
@@ -69,6 +64,17 @@ pub const Instruction = union(enum) {
     print_int: struct {
         src: Operand,
     },
+    print_string: struct {
+        src: []const u8,
+    },
+    jump: struct {
+        target: BlockId,
+    },
+    branch: struct {
+        condition: Operand,
+        then_block: BlockId,
+        else_block: BlockId,
+    },
 };
 
 pub const BasicBlock = struct { id: BlockId, instructions: ArrayList(Instruction), successors: ArrayList(BlockId) };
@@ -89,7 +95,7 @@ pub const Program = struct {
         self.blocks.deinit();
     }
 
-    pub fn print(self: @This()) void {
+    pub fn print(self: @This()) !void {
         for (self.blocks.items) |block| {
             std.debug.print("block{d}:\n", .{block.id});
 
@@ -140,6 +146,12 @@ pub const Program = struct {
                         std.debug.print("print_int ", .{});
                         p.src.print();
                         std.debug.print("\n", .{});
+                    },
+                    .print_string => |p| {
+                        std.debug.print("print_string {s}\n", .{p.src});
+                    },
+                    else => {
+                        return error.NotImplemented;
                     },
                 }
             }

@@ -14,7 +14,12 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
     var locals = std.AutoHashMap(common.ir.LocalId, common.alloc.Operand).init(alloc);
     defer locals.deinit();
 
+    var strings = ArrayList([]const u8).init(alloc);
+    var string_count: usize = 0;
+    defer strings.deinit();
+
     for (program.blocks.items) |block| {
+        try out.print("L{d}:\n", .{block.id});
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .constant => |c| {
@@ -39,6 +44,15 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                     try out.appendSlice("\tbl _printf\n");
                     try out.appendSlice("\tadd sp, sp, #16\n");
                 },
+                .print_string => |p| {
+                    const label_id = string_count;
+                    string_count += 1;
+                    try strings.append(p.src);
+
+                    try out.print("\tadrp x0, str{d}@PAGE\n", .{label_id});
+                    try out.print("\tadd x0, x0, str{d}@PAGEOFF\n", .{label_id});
+                    try out.appendSlice("\tbl _puts\n");
+                },
                 .compare => |c| {
                     const lhs = try regFor(c.lhs, colors);
                     const rhs = try regFor(c.rhs, colors);
@@ -56,13 +70,22 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                         else => return error.NotSupported,
                     }
                 },
+                .branch => |b| {
+                    const cond = try regFor(b.condition, colors);
+                    try out.print("\tcmp {s}, #0\n", .{cond});
+                    try out.print("\tb.ne L{d}\n", .{b.then_block});
+                    try out.print("\tb L{d}\n", .{b.else_block});
+                },
+                .jump => |j| {
+                    try out.print("\tb L{d}\n", .{j.target});
+                },
                 else => {
                     return error.NotSupported;
                 },
             }
         }
     }
-    try createFooter(&out);
+    try createFooter(&out, strings.items);
 
     return out.toOwnedSlice();
 }
@@ -103,13 +126,18 @@ pub fn createHeader(out: *ArrayList(u8)) !void {
 // .asciz "%ld\n"
 //   Emit a null-terminated C string for printf: print a 64-bit integer,
 //   followed by a newline.
-pub fn createFooter(out: *ArrayList(u8)) !void {
+pub fn createFooter(out: *ArrayList(u8), strings: []const []const u8) !void {
     try out.appendSlice("\tmov w0, #0\n");
     try out.appendSlice("\tldp x29, x30, [sp], #16\n");
     try out.appendSlice("\tret\n");
     try out.appendSlice("\n.section __TEXT,__cstring\n");
     try out.appendSlice("fmt:\n");
     try out.appendSlice("\t.asciz \"%ld\\n\"\n");
+
+    for (strings, 0..) |s, i| {
+        try out.print("str{d}:\n", .{i});
+        try out.print("\t.asciz \"{s}\"\n", .{s});
+    }
 }
 
 fn condForCmp(op: common.ir.CmpOp) []const u8 {

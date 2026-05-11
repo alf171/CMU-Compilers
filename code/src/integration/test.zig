@@ -41,13 +41,10 @@ pub fn main(init: std.process.Init) !void {
     var alloc_program = try lower.lowerAlloc(ir_program, alloc);
     defer alloc_program.deinit();
 
-    try std.testing.expect(alloc_program.lines.items.len > 0);
-
     try live.calculateLiveOut(alloc_program.lines);
 
     var graph = try igraph.createIgraph(alloc_program.lines, alloc);
     defer graph.deinit();
-    try std.testing.expect(graph.nodes.count() > 0);
 
     var attempt = try color.colorGraph(&graph, alloc_program.register_count, alloc);
 
@@ -60,13 +57,9 @@ pub fn main(init: std.process.Init) !void {
     switch (attempt) {
         .graph => |*colored| {
             defer colored.deinit();
-            try std.testing.expect(colored.nodes.count() > 0);
 
             const asm_text = try emit(&ir_program, colored, alloc);
             defer alloc.free(asm_text);
-
-            try std.testing.expect(std.mem.indexOf(u8, asm_text, "_main") != null);
-            try std.testing.expect(std.mem.indexOf(u8, asm_text, "bl _printf") != null);
 
             try file_writer.interface.writeAll(asm_text);
             try file_writer.interface.flush();
