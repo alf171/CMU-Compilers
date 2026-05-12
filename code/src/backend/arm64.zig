@@ -26,10 +26,12 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                     const dst = try regFor(c.dst, colors);
                     try out.print("\tmov {s}, #{d}\n", .{ dst, c.value });
                 },
+                // str: src, dst (register -> memory)
                 .store_local => |sl| {
                     const src = try regFor(sl.src, colors);
                     try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, localOffset(sl.local) });
                 },
+                // ldr: dst, src (memory -> register)
                 .load_local => |ll| {
                     const dst = try regFor(ll.dst, colors);
                     try out.print("\tldr {s}, [x29, #-{d}]\n", .{ dst, localOffset(ll.local) });

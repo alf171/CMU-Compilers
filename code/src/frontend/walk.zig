@@ -72,6 +72,7 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
     const rhs_value = try walkExpr(rhs, irBuilder, alloc);
 
     const local = try irBuilder.getOrCreateLocal(std.mem.span(id), alloc);
+    try irBuilder.local_values.put(local, rhs_value);
     try irBuilder.emit(Instruction{ .store_local = .{ .local = local, .src = rhs_value } });
 }
 
@@ -119,9 +120,13 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !O
             const id = c.PyUnicode_AsUTF8(id_obj);
             std.debug.assert(id != null);
 
-            const dst = irBuilder.nextTemp();
             const local = try irBuilder.getOrCreateLocal(std.mem.span(id), alloc);
 
+            if (irBuilder.local_values.get(local)) |value| {
+                return value;
+            }
+
+            const dst = irBuilder.nextTemp();
             try irBuilder.emit(Instruction{ .load_local = .{ .dst = dst, .local = local } });
             return dst;
         },
@@ -193,6 +198,9 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !O
 
 // If(test=Compare(...), body=[...], orelse=[...])
 pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!void {
+    var before_values = try irBuilder.cloneLocalValues(alloc);
+    defer before_values.deinit();
+
     const test_ = c.PyObject_GetAttrString(stmt, "test");
     const body = c.PyObject_GetAttrString(stmt, "body");
     const orelse_ = c.PyObject_GetAttrString(stmt, "orelse");
@@ -214,7 +222,12 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
 
     // then block
     irBuilder.setCurrentBlock(then_block);
+    // restore in case condition set variables
+    try irBuilder.restoreLocalValues(&before_values);
     try walkStmtList(body, irBuilder, alloc);
+    // save then locals
+    var then_values = try irBuilder.cloneLocalValues(alloc);
+    defer then_values.deinit();
     try irBuilder.emit(Instruction{
         .jump = .{ .target = merge_block },
     });
@@ -222,13 +235,31 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
 
     // else block
     irBuilder.setCurrentBlock(else_block);
+    // restore in case condition set variables
+    try irBuilder.restoreLocalValues(&before_values);
     try walkStmtList(orelse_, irBuilder, alloc);
+    // save else locals
+    var else_values = try irBuilder.cloneLocalValues(alloc);
+    defer else_values.deinit();
     try irBuilder.emit(Instruction{
         .jump = .{ .target = merge_block },
     });
     try irBuilder.addSuccessor(else_block, merge_block);
 
     irBuilder.setCurrentBlock(merge_block);
+    // Keep a variable's version only if:
+    // 1. then branch has the same version as before
+    // 2. else branch has the same version as before
+    irBuilder.local_values.clearRetainingCapacity();
+    var it = before_values.iterator();
+    while (it.next()) |entry| {
+        const local = entry.key_ptr.*;
+        const before = entry.value_ptr.*;
+
+        if (before.sameOperand(then_values.get(local)) and before.sameOperand(else_values.get(local))) {
+            try irBuilder.local_values.put(local, before);
+        }
+    }
 }
 
 fn getBinOp(expr: *PyObject) !BinOp {

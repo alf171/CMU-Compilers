@@ -88,6 +88,10 @@ pub const Operand = union(enum) {
         };
     }
 
+    pub fn sameOperand(self: @This(), other: ?@This()) bool {
+        return if (other) |value| self.equal(value) else false;
+    }
+
     pub fn toString(op: @This(), allocator: std.mem.Allocator) ![]u8 {
         return switch (op) {
             .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t + 1}),

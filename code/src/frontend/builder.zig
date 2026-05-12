@@ -11,6 +11,7 @@ const Instruction = @import("common").ir.Instruction;
 const SpecialRegs = @import("common").ir.SpecialRegs;
 
 const ArrayList = std.array_list.Managed;
+pub const LocalValues = std.AutoHashMap(LocalId, Operand);
 
 pub const IrBuilder = struct {
     program: Program,
@@ -19,6 +20,7 @@ pub const IrBuilder = struct {
     next_local: LocalId,
     next_temp: TempId,
     locals: std.StringHashMap(LocalId),
+    local_values: LocalValues,
 
     pub fn init(alloc: std.mem.Allocator) !IrBuilder {
         var program = Program.init(alloc);
@@ -27,7 +29,15 @@ pub const IrBuilder = struct {
 
         try program.blocks.append(entry);
 
-        return IrBuilder{ .program = program, .current_block = 0, .next_block = 1, .next_local = 0, .next_temp = 0, .locals = std.StringHashMap(LocalId).init(alloc) };
+        return IrBuilder{
+            .program = program,
+            .current_block = 0,
+            .next_block = 1,
+            .next_local = 0,
+            .next_temp = 0,
+            .locals = std.StringHashMap(LocalId).init(alloc),
+            .local_values = LocalValues.init(alloc),
+        };
     }
 
     /// free all but the generated program
@@ -37,6 +47,7 @@ pub const IrBuilder = struct {
             alloc.free(key.*);
         }
         self.locals.deinit();
+        self.local_values.deinit();
     }
 
     pub fn nextTemp(self: *@This()) Operand {
@@ -81,6 +92,19 @@ pub const IrBuilder = struct {
     pub fn addSuccessor(self: *@This(), from: BlockId, to: BlockId) !void {
         try self.program.blocks.items[from].successors.append(to);
     }
+
+    pub fn cloneLocalValues(self: *@This(), alloc: std.mem.Allocator) !LocalValues {
+        return try self.local_values.cloneWithAllocator(alloc);
+    }
+
+    pub fn restoreLocalValues(self: *@This(), locals: *const LocalValues) !void {
+        self.local_values.clearRetainingCapacity();
+
+        var it = locals.iterator();
+        while (it.next()) |entry| {
+            try self.local_values.put(entry.key_ptr.*, entry.value_ptr.*);
+        }
+    }
 };
 
 test "create ir builder" {
@@ -89,7 +113,7 @@ test "create ir builder" {
     defer irBuilder.deinit(alloc);
     defer irBuilder.program.deinit();
 
-    try std.testing.expectEqual(0, irBuilder.current_block);
-    _ = try irBuilder.newBlock(alloc);
-    try std.testing.expectEqual(1, irBuilder.current_block);
+    const block = try irBuilder.newBlock(alloc);
+    try std.testing.expectEqual(@as(BlockId, 1), block);
+    try std.testing.expectEqual(@as(BlockId, 0), irBuilder.current_block);
 }
