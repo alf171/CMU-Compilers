@@ -9,10 +9,10 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
     var out = ArrayList(u8).init(alloc);
     errdefer out.deinit();
 
-    try createHeader(&out);
+    const local_count = countLocals(program);
+    const local_stack_size = std.mem.alignForward(usize, local_count * 8, 16);
 
-    var locals = std.AutoHashMap(common.ir.LocalId, common.alloc.Operand).init(alloc);
-    defer locals.deinit();
+    try createHeader(&out, local_stack_size);
 
     var strings = ArrayList([]const u8).init(alloc);
     var string_count: usize = 0;
@@ -27,13 +27,12 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                     try out.print("\tmov {s}, #{d}\n", .{ dst, c.value });
                 },
                 .store_local => |sl| {
-                    try locals.put(sl.local, sl.src);
+                    const src = try regFor(sl.src, colors);
+                    try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, localOffset(sl.local) });
                 },
                 .load_local => |ll| {
-                    const src_op = locals.get(ll.local) orelse return error.LocalNotFound;
                     const dst = try regFor(ll.dst, colors);
-                    const src = try regFor(src_op, colors);
-                    try out.print("\tmov {s}, {s}\n", .{ dst, src });
+                    try out.print("\tldr {s}, [x29, #-{d}]\n", .{ dst, localOffset(ll.local) });
                 },
                 .print_int => |pi| {
                     const src = try regFor(pi.src, colors);
@@ -85,7 +84,7 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
             }
         }
     }
-    try createFooter(&out, strings.items);
+    try createFooter(&out, strings.items, local_stack_size);
 
     return out.toOwnedSlice();
 }
@@ -104,12 +103,15 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
 //   The ! means pre-indexed addressing: update sp first, then store.
 // mov x29, sp
 //   Set this function's frame pointer to the current stack pointer.
-pub fn createHeader(out: *ArrayList(u8)) !void {
+// sub sp, sp, #local_stack_size
+//   offset my number of local variables
+pub fn createHeader(out: *ArrayList(u8), local_stack_size: usize) !void {
     try out.appendSlice(".section __TEXT,__text\n");
     try out.appendSlice(".global _main\n");
     try out.appendSlice("_main:\n");
     try out.appendSlice("\tstp x29, x30, [sp, #-16]!\n");
     try out.appendSlice("\tmov x29, sp\n");
+    try out.print("\tsub sp, sp, #{d}\n", .{local_stack_size});
 }
 
 // mov w0, #0
@@ -126,8 +128,13 @@ pub fn createHeader(out: *ArrayList(u8)) !void {
 // .asciz "%ld\n"
 //   Emit a null-terminated C string for printf: print a 64-bit integer,
 //   followed by a newline.
-pub fn createFooter(out: *ArrayList(u8), strings: []const []const u8) !void {
+fn createFooter(out: *ArrayList(u8), strings: []const []const u8, local_stack_size: usize) !void {
     try out.appendSlice("\tmov w0, #0\n");
+
+    if (local_stack_size > 0) {
+        try out.print("\tadd sp, sp, #{d}\n", .{local_stack_size});
+    }
+
     try out.appendSlice("\tldp x29, x30, [sp], #16\n");
     try out.appendSlice("\tret\n");
     try out.appendSlice("\n.section __TEXT,__cstring\n");
@@ -138,6 +145,28 @@ pub fn createFooter(out: *ArrayList(u8), strings: []const []const u8) !void {
         try out.print("str{d}:\n", .{i});
         try out.print("\t.asciz \"{s}\"\n", .{s});
     }
+}
+
+fn countLocals(program: *const common.ir.Program) usize {
+    var max_local: ?common.ir.LocalId = null;
+    for (program.blocks.items) |block| {
+        for (block.instructions.items) |instruction| {
+            switch (instruction) {
+                .store_local => |sl| {
+                    max_local = if (max_local) |m| @max(m, sl.local) else sl.local;
+                },
+                .load_local => |ll| {
+                    max_local = if (max_local) |m| @max(m, ll.local) else ll.local;
+                },
+                else => {},
+            }
+        }
+    }
+    return if (max_local) |m| @as(usize, m) + 1 else 0;
+}
+
+fn localOffset(local: common.ir.LocalId) usize {
+    return (@as(usize, local) + 1) * 8;
 }
 
 fn condForCmp(op: common.ir.CmpOp) []const u8 {
