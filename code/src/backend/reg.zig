@@ -1,9 +1,8 @@
 const common = @import("common");
 const color = @import("middle").color;
 
-const arm_regs = [_][]const u8{
-    "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x16",
-};
+/// callee safe registers
+pub const callee_safe_regs = [_][]const u8{ "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28" };
 
 pub fn regFor(op: common.alloc.Operand, colors: *const color.ColoredGraph) ![]const u8 {
     switch (op) {
@@ -11,8 +10,8 @@ pub fn regFor(op: common.alloc.Operand, colors: *const color.ColoredGraph) ![]co
             const node = colors.nodes.get(op) orelse return error.MissingColor;
             const reg_id = node.register orelse return error.MissingColor;
 
-            if (reg_id >= arm_regs.len) return error.RegisterOutOfRange;
-            return arm_regs[reg_id];
+            if (reg_id >= callee_safe_regs.len) return error.RegisterOutOfRange;
+            return callee_safe_regs[reg_id];
         },
         else => return error.UnsupportedOperand,
     }

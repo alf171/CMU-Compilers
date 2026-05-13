@@ -6,6 +6,7 @@ const lower = @import("middle").lower;
 const live = @import("middle").live;
 const igraph = @import("middle").igraph;
 const color = @import("middle").color;
+const phi = @import("middle").phi;
 const emit = @import("backend").emit;
 
 pub fn main(init: std.process.Init) !void {
@@ -38,10 +39,12 @@ pub fn main(init: std.process.Init) !void {
     var ir_program = try walkAst(tree, alloc);
     defer ir_program.deinit();
 
+    try phi.eliminatePhi(&ir_program, alloc);
+
     var alloc_program = try lower.lowerAlloc(ir_program, alloc);
     defer alloc_program.deinit();
 
-    try live.calculateLiveOut(alloc_program.lines);
+    try live.calculateLiveOut(alloc_program);
 
     var graph = try igraph.createIgraph(alloc_program.lines, alloc);
     defer graph.deinit();

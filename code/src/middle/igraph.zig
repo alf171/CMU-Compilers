@@ -110,32 +110,34 @@ pub fn createIgraph(lines: std.array_list.Managed(Line), allocator: Allocator) !
 }
 
 fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
-    for (line.defines.ops.items) |define_op| {
-        for (line.live_out.ops.items) |live_out_op| {
+    var it = line.defines.ops.keyIterator();
+    while (it.next()) |define_op| {
+        var live_out_it = line.live_out.ops.keyIterator();
+        while (live_out_it.next()) |live_out_op| {
             // skip memory or special registers
-            if (define_op == .mem or live_out_op == .mem or define_op == .spec_reg or live_out_op == .spec_reg) {
+            if (define_op.* == .mem or live_out_op.* == .mem or define_op.* == .spec_reg or live_out_op.* == .spec_reg) {
                 continue;
             }
-            try defineNodeIfDoesntExist(igraph, define_op, allocator);
+            try defineNodeIfDoesntExist(igraph, define_op.*, allocator);
             // build graph
-            if (!Operand.equal(define_op, live_out_op)) {
-                std.debug.assert(igraph.nodes.contains(live_out_op));
-                std.debug.assert(igraph.nodes.contains(define_op));
-                try igraph.nodes.getPtr(define_op).?.neighbors.put(live_out_op, {});
-                igraph.nodes.getPtr(define_op).?.static_degree += 1;
-                igraph.nodes.getPtr(define_op).?.cur_degree += 1;
-                try igraph.nodes.getPtr(live_out_op).?.neighbors.put(define_op, {});
-                igraph.nodes.getPtr(live_out_op).?.static_degree += 1;
-                igraph.nodes.getPtr(live_out_op).?.cur_degree += 1;
+            if (!Operand.equal(define_op.*, live_out_op.*)) {
+                std.debug.assert(igraph.nodes.contains(live_out_op.*));
+                std.debug.assert(igraph.nodes.contains(define_op.*));
+                try igraph.nodes.getPtr(define_op.*).?.neighbors.put(live_out_op.*, {});
+                igraph.nodes.getPtr(define_op.*).?.static_degree += 1;
+                igraph.nodes.getPtr(define_op.*).?.cur_degree += 1;
+                try igraph.nodes.getPtr(live_out_op.*).?.neighbors.put(define_op.*, {});
+                igraph.nodes.getPtr(live_out_op.*).?.static_degree += 1;
+                igraph.nodes.getPtr(live_out_op.*).?.cur_degree += 1;
             }
         }
     }
     // keep track of moves
     if (line.move) {
-        std.debug.assert(line.defines.ops.items.len == 1);
-        std.debug.assert(line.uses.ops.items.len == 1);
-        const define = line.defines.ops.items[0];
-        const uses = line.uses.ops.items[0];
+        std.debug.assert(line.defines.ops.count() == 1);
+        std.debug.assert(line.uses.ops.count() == 1);
+        const define = try line.defines.single();
+        const uses = try line.uses.single();
         std.debug.assert(!define.equal(uses));
         try defineNodeIfDoesntExist(igraph, define, allocator);
         try igraph.nodes.getPtr(define).?.moves.put(uses, {});

@@ -6,6 +6,7 @@ const Instruction = @import("common").ir.Instruction;
 const BinOp = @import("common").ir.BinOp;
 const CmpOp = @import("common").ir.CmpOp;
 const Program = @import("common").ir.Program;
+const PhiInput = @import("common").ir.PhiInput;
 const UnaryOp = @import("common").ir.UnaryOp;
 
 const IrBuilder = @import("builder.zig").IrBuilder;
@@ -251,13 +252,26 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     // 1. then branch has the same version as before
     // 2. else branch has the same version as before
     irBuilder.local_values.clearRetainingCapacity();
-    var it = before_values.iterator();
-    while (it.next()) |entry| {
-        const local = entry.key_ptr.*;
-        const before = entry.value_ptr.*;
+    var it = before_values.keyIterator();
+    while (it.next()) |local| {
+        const then_value = then_values.get(local.*);
+        const else_value = else_values.get(local.*);
+        // same value in both branches
+        if (then_value != null and else_value != null and then_value.?.equal(else_value.?)) {
+            try irBuilder.local_values.put(local.*, then_value.?);
+        } else if (then_value != null and else_value != null) {
+            const dst = irBuilder.nextTemp();
+            const inputs = try alloc.dupe(PhiInput, &.{
+                .{ .pred = then_block, .value = then_value.? },
+                .{ .pred = else_block, .value = else_value.? },
+            });
 
-        if (before.sameOperand(then_values.get(local)) and before.sameOperand(else_values.get(local))) {
-            try irBuilder.local_values.put(local, before);
+            try irBuilder.emit(Instruction{
+                .phi = .{ .dst = dst, .inputs = inputs, .local = local.* },
+            });
+            try irBuilder.local_values.put(local.*, dst);
+        } else {
+            return error.NotImplemented;
         }
     }
 }

@@ -3,6 +3,7 @@ const ArrayList = std.array_list.Managed;
 
 const common = @import("common");
 const AllocProgram = common.alloc.AllocProgram;
+const AllocBlock = common.alloc.AllocBlock;
 const AllocLine = common.alloc.AllocLine;
 const Operands = common.alloc.Operands;
 const FrontEndProgram = common.ir.Program;
@@ -11,6 +12,7 @@ const FrontEndProgram = common.ir.Program;
 pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProgram {
     var res = AllocProgram{
         .lines = ArrayList(AllocLine).init(alloc),
+        .blocks = ArrayList(AllocBlock).init(alloc),
         .register_count = common.alloc.REG_COUNT,
     };
 
@@ -19,6 +21,7 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
 
     var instruction_index: usize = 0;
     for (program.blocks.items) |block| {
+        const start = res.lines.items.len;
         for (block.instructions.items) |instruction| {
             var line = AllocLine{
                 .instruction_index = instruction_index,
@@ -30,37 +33,42 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
 
             switch (instruction) {
                 .constant => |c| {
-                    try line.defines.ops.append(c.dst);
+                    try line.defines.ops.put(c.dst, {});
                 },
                 .binop => |binop| {
-                    try line.defines.ops.append(binop.dst);
-                    try line.uses.ops.append(binop.lhs);
-                    try line.uses.ops.append(binop.rhs);
+                    try line.defines.ops.put(binop.dst, {});
+                    try line.uses.ops.put(binop.lhs, {});
+                    try line.uses.ops.put(binop.rhs, {});
                 },
                 .store_local => |sl| {
                     try locals.put(sl.local, sl.src);
-                    try line.uses.ops.append(sl.src);
+                    try line.uses.ops.put(sl.src, {});
                 },
                 .load_local => |ll| {
                     const src = locals.get(ll.local) orelse {
                         return error.LocalNotFound;
                     };
-                    try line.defines.ops.append(ll.dst);
-                    try line.uses.ops.append(src);
+                    try line.defines.ops.put(ll.dst, {});
+                    try line.uses.ops.put(src, {});
+                    line.move = true;
+                },
+                .move => |m| {
+                    try line.defines.ops.put(m.dst, {});
+                    try line.uses.ops.put(m.src, {});
                     line.move = true;
                 },
                 .print_int => |pi| {
-                    try line.uses.ops.append(pi.src);
+                    try line.uses.ops.put(pi.src, {});
                 },
                 .print_string => {},
                 .compare => |c| {
-                    try line.defines.ops.append(c.dst);
-                    try line.uses.ops.append(c.lhs);
-                    try line.uses.ops.append(c.rhs);
+                    try line.defines.ops.put(c.dst, {});
+                    try line.uses.ops.put(c.lhs, {});
+                    try line.uses.ops.put(c.rhs, {});
                 },
                 .jump => {},
                 .branch => |b| {
-                    try line.uses.ops.append(b.condition);
+                    try line.uses.ops.put(b.condition, {});
                 },
                 else => {
                     return error.NotImplemented;
@@ -70,6 +78,16 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
             try res.lines.append(line);
             instruction_index += 1;
         }
+        const end = res.lines.items.len;
+        var successors = ArrayList(u32).init(alloc);
+        try successors.appendSlice(block.successors.items);
+
+        try res.blocks.append(AllocBlock{
+            .id = block.id,
+            .start = start,
+            .end = end,
+            .successors = successors,
+        });
     }
 
     return res;

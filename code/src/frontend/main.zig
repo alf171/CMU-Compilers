@@ -20,7 +20,7 @@ pub fn main(init: std.process.Init) !void {
 
     var program = try walkAst(tree, alloc);
     defer program.deinit();
-    program.print();
+    try program.print();
 }
 
 test "x = 1 + 2" {

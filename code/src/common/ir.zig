@@ -19,6 +19,8 @@ pub const BinOp = enum { add, sub, mul, div };
 
 pub const UnaryOp = enum { neg };
 
+pub const PhiInput = struct { pred: BlockId, value: Operand };
+
 pub const CmpOp = enum {
     eq,
     neq,
@@ -74,6 +76,11 @@ pub const Instruction = union(enum) {
         condition: Operand,
         then_block: BlockId,
         else_block: BlockId,
+    },
+    phi: struct {
+        dst: Operand,
+        local: LocalId,
+        inputs: []const PhiInput,
     },
 };
 

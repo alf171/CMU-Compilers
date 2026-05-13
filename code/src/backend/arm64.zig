@@ -4,6 +4,7 @@ const ArrayList = std.array_list.Managed;
 const common = @import("common");
 const color = @import("middle").color;
 const regFor = @import("reg.zig").regFor;
+const CalleeSafeRegisters = @import("reg.zig").callee_safe_regs;
 
 pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph, alloc: std.mem.Allocator) ![]u8 {
     var out = ArrayList(u8).init(alloc);
@@ -35,6 +36,11 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                 .load_local => |ll| {
                     const dst = try regFor(ll.dst, colors);
                     try out.print("\tldr {s}, [x29, #-{d}]\n", .{ dst, localOffset(ll.local) });
+                },
+                .move => |m| {
+                    const dst = try regFor(m.dst, colors);
+                    const src = try regFor(m.src, colors);
+                    try out.print("\tmov {s}, {s}\n", .{ dst, src });
                 },
                 .print_int => |pi| {
                     const src = try regFor(pi.src, colors);
@@ -113,7 +119,31 @@ pub fn createHeader(out: *ArrayList(u8), local_stack_size: usize) !void {
     try out.appendSlice("_main:\n");
     try out.appendSlice("\tstp x29, x30, [sp, #-16]!\n");
     try out.appendSlice("\tmov x29, sp\n");
-    try out.print("\tsub sp, sp, #{d}\n", .{local_stack_size});
+    if (local_stack_size > 0) {
+        try out.print("\tsub sp, sp, #{d}\n", .{local_stack_size});
+    }
+    try saveCallleSafeReg(out);
+}
+
+fn saveCallleSafeReg(out: *ArrayList(u8)) !void {
+    std.debug.assert(CalleeSafeRegisters.len % 2 == 0);
+    var i: usize = 0;
+    while (i < CalleeSafeRegisters.len) : (i += 2) {
+        const reg1 = CalleeSafeRegisters[i];
+        const reg2 = CalleeSafeRegisters[i + 1];
+        try out.print("\tstp {s}, {s}, [sp, #-16]!\n", .{ reg1, reg2 });
+    }
+}
+
+fn restoreCallleSafeReg(out: *ArrayList(u8)) !void {
+    std.debug.assert(CalleeSafeRegisters.len % 2 == 0);
+    var i: usize = CalleeSafeRegisters.len;
+    while (i > 0) {
+        i -= 2;
+        const reg1 = CalleeSafeRegisters[i];
+        const reg2 = CalleeSafeRegisters[i + 1];
+        try out.print("\tldp {s}, {s}, [sp], #16\n", .{ reg1, reg2 });
+    }
 }
 
 // mov w0, #0
@@ -133,10 +163,12 @@ pub fn createHeader(out: *ArrayList(u8), local_stack_size: usize) !void {
 fn createFooter(out: *ArrayList(u8), strings: []const []const u8, local_stack_size: usize) !void {
     try out.appendSlice("\tmov w0, #0\n");
 
+    try restoreCallleSafeReg(out);
     if (local_stack_size > 0) {
         try out.print("\tadd sp, sp, #{d}\n", .{local_stack_size});
     }
 
+    // restore frame pointer and return address
     try out.appendSlice("\tldp x29, x30, [sp], #16\n");
     try out.appendSlice("\tret\n");
     try out.appendSlice("\n.section __TEXT,__cstring\n");

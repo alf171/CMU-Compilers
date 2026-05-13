@@ -8,11 +8,12 @@ const coalesce = @import("coalesce.zig");
 const lower = @import("lower.zig");
 
 const Allocator = std.mem.Allocator;
+const Program = @import("common").alloc.AllocProgram;
 const Writer = std.Io.Writer;
 
 /// feedback loop of program (lines of IR) -> inteference graph -> colored graph
 /// if we spill, create a new IR lines and repeat
-fn loop(init_program: *parser.Program, allocator: Allocator, stdout: *Writer) !color.ColoredGraph {
+fn loop(init_program: *Program, allocator: Allocator, stdout: *Writer) !color.ColoredGraph {
     var graph = try igraph.createIgraph(init_program.lines, allocator);
     try coalesce.run(&graph, init_program.register_count, stdout);
     var graph_attempt = try color.colorGraph(&graph, init_program.register_count, allocator);
@@ -24,7 +25,7 @@ fn loop(init_program: *parser.Program, allocator: Allocator, stdout: *Writer) !c
         // free previous graph
         graph.deinit();
         const new_program = try spill.spillReg(program, graph_attempt.spill_register, allocator);
-        try live.calculateLiveOut(new_program.lines);
+        try live.calculateLiveOut(new_program);
         program.deinit();
         program.* = new_program;
         // try program.print(stdout);
@@ -53,7 +54,7 @@ pub fn main(init: std.process.Init) !void {
     const stdout = &stdout_writer.interface;
 
     const filename = args[1];
-    var program: parser.Program = try parser.parse(filename, init.io, allocator);
+    var program = try parser.parse(filename, init.io, allocator);
     defer program.deinit();
 
     // try program.print(stdout);
