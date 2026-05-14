@@ -13,7 +13,7 @@ const IrBuilder = @import("builder.zig").IrBuilder;
 
 const PyObject = c.PyObject;
 
-const StmtKind = enum { Assign, Expr, If, Unknown };
+const StmtKind = enum { Assign, Expr, If, While, Unknown };
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Unknown, Call };
 
@@ -50,6 +50,7 @@ pub fn walkStmt(raw_stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloc
             _ = try walkExpr(value, irBuilder, alloc);
         },
         .If => try walkIf(raw_stmt, irBuilder, alloc),
+        .While => try walkWhile(raw_stmt, irBuilder, alloc),
         .Unknown => {
             std.debug.panic("unkown statement: {*}", .{raw_stmt});
         },
@@ -276,6 +277,63 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     }
 }
 
+// While(test=Compare(...), body=[...], orelse=[...])
+// current:
+//   jump cond
+// cond:
+//   condition
+//   branch body exit
+// body:
+//   body statements
+//   jump cond
+// exit:
+//   continue
+pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!void {
+    const test_ = c.PyObject_GetAttrString(stmt, "test");
+    const body = c.PyObject_GetAttrString(stmt, "body");
+    const orelse_ = c.PyObject_GetAttrString(stmt, "orelse");
+    std.debug.assert(test_ != null);
+    std.debug.assert(body != null);
+    std.debug.assert(orelse_ != null);
+
+    const entry_block = irBuilder.current_block;
+    const condition_block = try irBuilder.newBlock(alloc);
+    const body_block = try irBuilder.newBlock(alloc);
+    const exit_block = try irBuilder.newBlock(alloc);
+
+    try irBuilder.emit(Instruction{ .jump = .{ .target = condition_block } });
+    try irBuilder.addSuccessor(entry_block, condition_block);
+
+    irBuilder.setCurrentBlock(condition_block);
+    irBuilder.local_values.clearRetainingCapacity();
+    const condition = try walkExpr(test_, irBuilder, alloc);
+    try irBuilder.emit(Instruction{
+        .branch = .{
+            .condition = condition,
+            .then_block = body_block,
+            .else_block = exit_block,
+        },
+    });
+    try irBuilder.addSuccessor(condition_block, body_block);
+    try irBuilder.addSuccessor(condition_block, exit_block);
+
+    // body block
+    irBuilder.setCurrentBlock(body_block);
+    irBuilder.local_values.clearRetainingCapacity();
+    try walkStmtList(body, irBuilder, alloc);
+    irBuilder.local_values.clearRetainingCapacity();
+    try irBuilder.emit(Instruction{
+        .jump = .{ .target = condition_block },
+    });
+    try irBuilder.addSuccessor(body_block, condition_block);
+
+    // exit block
+    irBuilder.setCurrentBlock(exit_block);
+    irBuilder.local_values.clearRetainingCapacity();
+    try walkStmtList(orelse_, irBuilder, alloc);
+    irBuilder.local_values.clearRetainingCapacity();
+}
+
 fn getBinOp(expr: *PyObject) !BinOp {
     const op_obj = c.PyObject_GetAttrString(expr, "op");
     std.debug.assert(op_obj != null);
@@ -326,6 +384,7 @@ fn getStmtKind(stmt: *PyObject) StmtKind {
     if (std.mem.eql(u8, name, "Assign")) return .Assign;
     if (std.mem.eql(u8, name, "Expr")) return .Expr;
     if (std.mem.eql(u8, name, "If")) return .If;
+    if (std.mem.eql(u8, name, "While")) return .While;
     return .Unknown;
 }
 
