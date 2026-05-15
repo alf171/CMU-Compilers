@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @import("python.zig").c;
 
 const Operand = @import("common").alloc.Operand;
+const LocalId = @import("common").ir.LocalId;
 const Instruction = @import("common").ir.Instruction;
 const BinOp = @import("common").ir.BinOp;
 const CmpOp = @import("common").ir.CmpOp;
@@ -249,18 +250,38 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     try irBuilder.addSuccessor(else_block, merge_block);
 
     irBuilder.setCurrentBlock(merge_block);
-    // Keep a variable's version only if:
-    // 1. then branch has the same version as before
-    // 2. else branch has the same version as before
+    // get locals orelse use branch value
     irBuilder.local_values.clearRetainingCapacity();
-    var it = before_values.keyIterator();
+    var all_locals = std.AutoHashMap(LocalId, void).init(alloc);
+    defer all_locals.deinit();
+
+    var before_it = before_values.keyIterator();
+    while (before_it.next()) |val| {
+        try all_locals.put(val.*, {});
+    }
+
+    var then_it = then_values.keyIterator();
+    while (then_it.next()) |val| {
+        try all_locals.put(val.*, {});
+    }
+
+    var else_it = else_values.keyIterator();
+    while (else_it.next()) |val| {
+        try all_locals.put(val.*, {});
+    }
+
+    var it = all_locals.keyIterator();
     while (it.next()) |local| {
-        const then_value = then_values.get(local.*);
-        const else_value = else_values.get(local.*);
-        // same value in both branches
+        const before_value = before_values.get(local.*);
+        const then_value = then_values.get(local.*) orelse before_value;
+        const else_value = else_values.get(local.*) orelse before_value;
+
+        // variable isn't touch so no need to use a phi
         if (then_value != null and else_value != null and then_value.?.equal(else_value.?)) {
-            try irBuilder.local_values.put(local.*, then_value.?);
-        } else if (then_value != null and else_value != null) {
+            try irBuilder.local_values.put(local.*, before_value.?);
+        }
+        // emit a phi
+        else if (then_value != null and else_value != null) {
             const dst = irBuilder.nextTemp();
             const inputs = try alloc.dupe(PhiInput, &.{
                 .{ .pred = then_block, .value = then_value.? },

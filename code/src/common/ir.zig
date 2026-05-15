@@ -80,7 +80,7 @@ pub const Instruction = union(enum) {
     phi: struct {
         dst: Operand,
         local: LocalId,
-        inputs: []const PhiInput,
+        inputs: []PhiInput,
     },
 };
 
