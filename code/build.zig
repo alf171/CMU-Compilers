@@ -105,7 +105,7 @@ pub fn build(b: *std.Build) void {
 
     // ir testing
     const middle_tests = b.addTest(.{
-        .root_module = middle.root_module,
+        .root_module = middle_mod,
     });
     const run_middle_tests = b.addRunArtifact(middle_tests);
     const middle_test_step = b.step("middle-test", "Run middle end tests");

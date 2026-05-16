@@ -25,37 +25,18 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - compiled not interpreted
 
 ## Goals
-- [x] Structured phi insertion in walkIf
-- [x] Phi elimination: lower phi nodes into predecessor moves
-- [x] CFG-aware liveness
-### liveness thinks this code
-```python
-L1
-if (cond):
-  L2
-else:
-  L3
-L4
-```
-### current liveness treats basic blocks like
-```
-L1
-L2
-L3
-L4
-```
-### should treat like this
-```
-  L1
- /  \
-L2  L3
- \  /
-  L4
-```
-- [ ] Structured phi insertion for while
-- [ ] Constant propagation
-- [ ] Copy propagation
-- [ ] Build real SSA construction pass with dominators/frontiers
+[ ] Copy propagation
+- Basic-block-local first.
+- Rewrite uses through simple move lines.
+- Do not delete moves yet.
+[ ] Dead move elimination
+- After liveness works, remove moves whose destination is unused.
+[ ] Then loop phis
+- Add assigned-local prepass.
+- Create header phis for loop-carried locals.
+- Patch backedge phi input after walking body.
+[ ] Constant propagation
+- Easier after copy propagation because fewer temp aliases exist.
 
 ## Reading Materials
 - https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms
