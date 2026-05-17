@@ -68,7 +68,7 @@ fn resolve(op: Operand, copyMap: *HashMap(Operand, Operand)) Operand {
     return cur;
 }
 
-test "simple copy prop" {
+test "basic block copy prop" {
     const alloc = std.testing.allocator;
 
     var blocks = ArrayList(BasicBlock).init(alloc);

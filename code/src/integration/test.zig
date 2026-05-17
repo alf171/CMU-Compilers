@@ -8,6 +8,7 @@ const igraph = @import("middle").igraph;
 const color = @import("middle").color;
 const phi = @import("middle").phi;
 const copy = @import("middle").copy;
+const dead = @import("middle").dead;
 const emit = @import("backend").emit;
 
 const underline_code = "\x1b[4m";
@@ -27,15 +28,21 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    const should_run = args.len >= 4 and std.mem.eql(u8, args[3], "--run");
-
     const input_file = args[1];
     const output_file = args[2];
+    var should_run = false;
+    var should_optim = false;
+    for (args[3..]) |arg| {
+        if (std.mem.eql(u8, arg, "--run")) should_run = true;
+        if (std.mem.eql(u8, arg, "--optim")) should_optim = true;
+    }
 
     const code = try std.Io.Dir.cwd().readFileAlloc(io, input_file, alloc, .limited(1 << 20));
     const code_z = try alloc.dupeSentinel(u8, code, 0);
 
-    std.debug.print("{s}running program:{s}\n{s}", .{ underline_code, reset_code, code });
+    std.debug.print("{s}running program:{s}", .{ underline_code, reset_code });
+    if (should_optim) std.debug.print(" (OPTIM={})", .{should_optim});
+    std.debug.print("\n{s}", .{code});
 
     const ast_module = c.PyImport_ImportModule("ast");
     const parse_fn = c.PyObject_GetAttrString(ast_module, "parse");
@@ -46,7 +53,10 @@ pub fn main(init: std.process.Init) !void {
     defer ir_program.deinit();
 
     // run optimization passses
-    try copy.run(&ir_program, alloc);
+    if (should_optim) {
+        try copy.run(&ir_program, alloc);
+        try dead.run(&ir_program, alloc);
+    }
 
     try phi.eliminatePhi(&ir_program, alloc);
 

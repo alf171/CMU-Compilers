@@ -19,17 +19,22 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 `/tmp/out`
 - run file
 
+`zig build integration-test -- tst/python/simple.py /tmp/out.s --run`
+- do all three steps above together
+`--optim`
+- run optimization passes of the compiler
+
 ## Design Choices
 - leverage python subset of python syntax
 - modular
 - compiled not interpreted
 
 ## Goals
-[ ] Copy propagation
+[x] Copy propagation
 - Basic-block-local first.
 - Rewrite uses through simple move lines.
 - Do not delete moves yet.
-[ ] Dead move elimination
+[x] Dead move elimination
 - After liveness works, remove moves whose destination is unused.
 [ ] Then loop phis
 - Add assigned-local prepass.

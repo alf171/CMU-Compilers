@@ -276,12 +276,15 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
         const then_value = then_values.get(local.*) orelse before_value;
         const else_value = else_values.get(local.*) orelse before_value;
 
+        const has_before = before_value != null;
+        const has_then = then_value != null;
+        const has_else = else_value != null;
         // variable isn't touch so no need to use a phi
-        if (then_value != null and else_value != null and then_value.?.equal(else_value.?)) {
+        if (has_then and has_else and then_value.?.equal(else_value.?)) {
             try irBuilder.local_values.put(local.*, before_value.?);
         }
         // emit a phi
-        else if (then_value != null and else_value != null) {
+        else if (has_then and has_else) {
             const dst = irBuilder.nextTemp();
             const inputs = try alloc.dupe(PhiInput, &.{
                 .{ .pred = then_block, .value = then_value.? },
@@ -292,6 +295,8 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
                 .phi = .{ .dst = dst, .inputs = inputs, .local = local.* },
             });
             try irBuilder.local_values.put(local.*, dst);
+        } else if (!has_before and ((has_then and !has_else) or (!has_then and has_else))) {
+            continue;
         } else {
             return error.NotImplemented;
         }
