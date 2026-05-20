@@ -11,6 +11,7 @@ const PhiInput = @import("common").ir.PhiInput;
 const UnaryOp = @import("common").ir.UnaryOp;
 
 const IrBuilder = @import("builder.zig").IrBuilder;
+const LocalValues = @import("builder.zig").LocalValues;
 
 const PyObject = c.PyObject;
 
@@ -21,7 +22,7 @@ const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Unknown, Call }
 pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
     var irBuilder = try IrBuilder.init(alloc);
     defer irBuilder.deinit(alloc);
-    errdefer irBuilder.program.deinit();
+    errdefer irBuilder.program.deinit(alloc);
     if (obj == null) return irBuilder.program;
 
     const body = c.PyObject_GetAttrString(obj, "body");
@@ -303,18 +304,18 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     }
 }
 
+//              ------------
+//              |          |
+//              v          |
+// entry -> condition -> body
+//              |
+//              v
+//             exit
 // While(test=Compare(...), body=[...], orelse=[...])
-// current:
-//   jump cond
-// cond:
-//   condition
-//   branch body exit
-// body:
-//   body statements
-//   jump cond
-// exit:
-//   continue
 pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!void {
+    var before_values = try irBuilder.cloneLocalValues(alloc);
+    defer before_values.deinit();
+
     const test_ = c.PyObject_GetAttrString(stmt, "test");
     const body = c.PyObject_GetAttrString(stmt, "body");
     const orelse_ = c.PyObject_GetAttrString(stmt, "orelse");
@@ -322,16 +323,39 @@ pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocato
     std.debug.assert(body != null);
     std.debug.assert(orelse_ != null);
 
-    const entry_block = irBuilder.current_block;
     const condition_block = try irBuilder.newBlock(alloc);
     const body_block = try irBuilder.newBlock(alloc);
     const exit_block = try irBuilder.newBlock(alloc);
 
+    const entry_block = irBuilder.current_block;
     try irBuilder.emit(Instruction{ .jump = .{ .target = condition_block } });
     try irBuilder.addSuccessor(entry_block, condition_block);
 
     irBuilder.setCurrentBlock(condition_block);
     irBuilder.local_values.clearRetainingCapacity();
+    var loop_values = LocalValues.init(alloc);
+    defer loop_values.deinit();
+    var before_it = before_values.iterator();
+    while (before_it.next()) |entry| {
+        const local = entry.key_ptr.*;
+        const before_val = entry.value_ptr.*;
+
+        // loop_values[x] = phi(before_values[x], body_values[x])
+        var phi = try alloc.alloc(PhiInput, 2);
+        phi[0] = .{ .pred = entry_block, .value = before_val };
+        phi[1] = undefined;
+
+        const dst = irBuilder.nextTemp();
+        try irBuilder.emit(Instruction{ .phi = .{
+            .dst = dst,
+            .local = local,
+            .inputs = phi,
+        } });
+
+        try irBuilder.local_values.put(local, dst);
+        try loop_values.put(local, dst);
+    }
+
     const condition = try walkExpr(test_, irBuilder, alloc);
     try irBuilder.emit(Instruction{
         .branch = .{
@@ -345,9 +369,26 @@ pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocato
 
     // body block
     irBuilder.setCurrentBlock(body_block);
-    irBuilder.local_values.clearRetainingCapacity();
+    // naively restore since we dont support walrus
+    try irBuilder.restoreLocalValues(&loop_values);
+
     try walkStmtList(body, irBuilder, alloc);
-    irBuilder.local_values.clearRetainingCapacity();
+    var body_values = try irBuilder.cloneLocalValues(alloc);
+    defer body_values.deinit();
+
+    for (irBuilder.program.blocks.items[condition_block].instructions.items) |*instruction| {
+        switch (instruction.*) {
+            .phi => |*p| {
+                const value = body_values.get(p.local) orelse p.dst;
+                p.inputs[1] = .{
+                    .pred = body_block,
+                    .value = value,
+                };
+            },
+            else => {},
+        }
+    }
+
     try irBuilder.emit(Instruction{
         .jump = .{ .target = condition_block },
     });
@@ -355,9 +396,9 @@ pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocato
 
     // exit block
     irBuilder.setCurrentBlock(exit_block);
-    irBuilder.local_values.clearRetainingCapacity();
+    // naively restore since we dont support walrus
+    try irBuilder.restoreLocalValues(&loop_values);
     try walkStmtList(orelse_, irBuilder, alloc);
-    irBuilder.local_values.clearRetainingCapacity();
 }
 
 fn getBinOp(expr: *PyObject) !BinOp {
@@ -446,4 +487,63 @@ fn printAstDump(node: *PyObject) void {
     std.debug.assert(dumped != null);
 
     std.debug.print("{s}\n", .{dumped});
+}
+
+test "while loop" {
+    c.Py_Initialize();
+    defer _ = c.Py_FinalizeEx();
+
+    const alloc = std.testing.allocator;
+    const code: [*:0]const u8 =
+        \\x = 0
+        \\while x < 3:
+        \\  x = x + 1
+        \\  print(x)
+        \\print(x)
+    ;
+
+    const ast_module = c.PyImport_ImportModule("ast");
+    const parse_fn = c.PyObject_GetAttrString(ast_module, "parse");
+    const tree = c.PyObject_CallFunction(parse_fn, "s", code);
+    std.debug.assert(tree != null);
+
+    var program = try walkAst(tree, alloc);
+    defer program.deinit(alloc);
+
+    try std.testing.expectEqual(@as(usize, 4), program.blocks.items.len);
+
+    const entry = program.blocks.items[0].instructions.items;
+    const condition = program.blocks.items[1].instructions.items;
+    const body = program.blocks.items[2].instructions.items;
+    const exit = program.blocks.items[3].instructions.items;
+
+    try std.testing.expectEqualDeep(
+        Instruction{ .constant = .{ .dst = .{ .temp = 0 }, .value = 0 } },
+        entry[0],
+    );
+    try std.testing.expectEqualDeep(
+        Instruction{ .store_local = .{ .local = 0, .src = .{ .temp = 0 } } },
+        entry[1],
+    );
+    try std.testing.expectEqualDeep(
+        Instruction{ .jump = .{ .target = 1 } },
+        entry[2],
+    );
+
+    switch (condition[0]) {
+        .phi => {
+            // temp1 = phi(entry: temp0, body: temp4)
+        },
+        else => return error.ExpectedPhi,
+    }
+
+    switch (body[1]) {
+        .binop => {},
+        else => return error.ExpectedBinOp,
+    }
+
+    switch (exit[0]) {
+        .print_int => {},
+        else => return error.ExpectedPrint,
+    }
 }

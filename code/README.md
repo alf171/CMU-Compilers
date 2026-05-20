@@ -30,18 +30,14 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - compiled not interpreted
 
 ## Goals
-[x] Copy propagation
-- Basic-block-local first.
-- Rewrite uses through simple move lines.
-- Do not delete moves yet.
-[x] Dead move elimination
-- After liveness works, remove moves whose destination is unused.
-[ ] Then loop phis
-- Add assigned-local prepass.
-- Create header phis for loop-carried locals.
-- Patch backedge phi input after walking body.
-[ ] Constant propagation
-- Easier after copy propagation because fewer temp aliases exist.
+- [ ] sub, mul, div, unary ops like neg
+- [ ] and / or support?
+- [ ] for loops (python has two different ways!)
+- [ ] make current optimization cross block + less hacky
+- [ ] benchmarking?
+- [ ] scalar evolution?
+- [ ] llvm backend?
+- [ ] watch lectures for more ideas
 
 ## Reading Materials
 - https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms

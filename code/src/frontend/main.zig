@@ -19,7 +19,7 @@ pub fn main(init: std.process.Init) !void {
     std.debug.assert(tree != null);
 
     var program = try walkAst(tree, alloc);
-    defer program.deinit();
+    defer program.deinit(alloc);
     try program.print();
 }
 
@@ -36,7 +36,7 @@ test "x = 1 + 2" {
     std.debug.assert(tree != null);
 
     var program = try walkAst(tree, alloc);
-    defer program.deinit();
+    defer program.deinit(alloc);
     try std.testing.expectEqual(program.blocks.items.len, 1);
     // block0:
     try std.testing.expectEqual(program.blocks.items[0].id, 0);
@@ -91,7 +91,7 @@ test "x = true != false" {
     std.debug.assert(tree != null);
 
     var program = try walkAst(tree, alloc);
-    defer program.deinit();
+    defer program.deinit(alloc);
     try std.testing.expectEqual(program.blocks.items.len, 1);
     // block0:
     try std.testing.expectEqual(program.blocks.items[0].id, 0);

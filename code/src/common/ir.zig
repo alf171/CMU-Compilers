@@ -94,8 +94,14 @@ pub const Program = struct {
         return Program{ .blocks = blocks };
     }
 
-    pub fn deinit(self: *@This()) void {
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         for (self.blocks.items) |*block| {
+            for (block.instructions.items) |*instruction| {
+                switch (instruction.*) {
+                    .phi => |phi| alloc.free(phi.inputs),
+                    else => {},
+                }
+            }
             block.instructions.deinit();
             block.successors.deinit();
         }

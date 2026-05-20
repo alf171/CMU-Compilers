@@ -111,7 +111,7 @@ test "create ir builder" {
     const alloc = std.testing.allocator;
     var irBuilder = try IrBuilder.init(alloc);
     defer irBuilder.deinit(alloc);
-    defer irBuilder.program.deinit();
+    defer irBuilder.program.deinit(alloc);
 
     const block = try irBuilder.newBlock(alloc);
     try std.testing.expectEqual(@as(BlockId, 1), block);
