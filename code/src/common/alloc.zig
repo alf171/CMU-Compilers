@@ -1,6 +1,7 @@
 /// def/use/live_out view for register allocation
 const std = @import("std");
 const SpecialRegs = @import("ir.zig").SpecialRegs;
+const BlockId = @import("ir.zig").BlockId;
 const TempId = @import("ir.zig").TempId;
 
 const Allocator = std.mem.Allocator;
@@ -99,6 +100,16 @@ pub const Operands = struct {
         var it = self.ops.keyIterator();
         return it.next().?.*;
     }
+
+    pub fn equal(self: *const @This(), other: *const @This()) bool {
+        if (self.ops.count() != other.ops.count()) return false;
+
+        var it = self.ops.keyIterator();
+        while (it.next()) |op| {
+            if (!other.ops.contains(op.*)) return false;
+        }
+        return true;
+    }
 };
 
 pub const Operand = union(enum) {
@@ -163,7 +174,7 @@ pub const AllocBlock = struct {
     start: usize,
     /// exclusive
     end: usize,
-    successors: ArrayList(u32),
+    successors: ArrayList(BlockId),
 
     pub fn deinit(self: *@This()) void {
         self.successors.deinit();
@@ -208,4 +219,30 @@ pub const AllocProgram = struct {
         }
         return next_mem;
     }
+
+    pub fn getBlockById(self: *const @This(), id: BlockId) !AllocBlock {
+        for (self.blocks.items) |block| {
+            if (block.id == id) return block;
+        }
+        return error.BlockNotFound;
+    }
 };
+
+test "operands equal" {
+    const alloc = std.testing.allocator;
+    var ops1 = HashMap(Operand, void).init(alloc);
+    defer ops1.deinit();
+    try ops1.put(Operand{ .temp = 99 }, {});
+    var a = Operands{ .ops = ops1 };
+
+    var ops2 = HashMap(Operand, void).init(alloc);
+    defer ops2.deinit();
+    try ops2.put(Operand{ .temp = 99 }, {});
+    const b = Operands{ .ops = ops2 };
+
+    try std.testing.expect(b.equal(&a));
+    try std.testing.expect(a.equal(&b));
+
+    try a.ops.put(Operand{ .temp = 100 }, {});
+    try std.testing.expect(!a.equal(&b));
+}

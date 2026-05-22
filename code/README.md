@@ -28,11 +28,16 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - leverage python subset of python syntax
 - modular
 - compiled not interpreted
+- arrays are fixed size!
 
 ## Goals
+- [ ] [critical edge splitting](https://nickdesaulniers.github.io/blog/2023/01/27/critical-edge-splitting/)
+- [ ] improve printing such that locals support variable names!
+- [ ] support lists?
+- [ ] parallel copy needed according to `lecture 6` in `phi.zig`
 - [ ] sub, mul, div, unary ops like neg
-- [ ] and / or support?
-- [ ] for loops (python has two different ways!)
+- [ ] and + or support?
+- [0.5] for loops (python has two different ways!)
 - [ ] make current optimization cross block + less hacky
 - [ ] benchmarking?
 - [ ] scalar evolution?

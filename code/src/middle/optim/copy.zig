@@ -98,7 +98,7 @@ test "basic block copy prop" {
     try blocks.append(block);
 
     var program = Program{ .blocks = blocks };
-    defer program.deinit();
+    defer program.deinit(alloc);
 
     try run(&program, alloc);
     const new_instructions = program.blocks.items[0].instructions.items;

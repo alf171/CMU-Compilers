@@ -32,9 +32,11 @@ pub fn main(init: std.process.Init) !void {
     const output_file = args[2];
     var should_run = false;
     var should_optim = false;
+    var should_dump_ir = false;
     for (args[3..]) |arg| {
         if (std.mem.eql(u8, arg, "--run")) should_run = true;
         if (std.mem.eql(u8, arg, "--optim")) should_optim = true;
+        if (std.mem.eql(u8, arg, "--dump-ir")) should_dump_ir = true;
     }
 
     const code = try std.Io.Dir.cwd().readFileAlloc(io, input_file, alloc, .limited(1 << 20));
@@ -50,7 +52,13 @@ pub fn main(init: std.process.Init) !void {
     std.debug.assert(tree != null);
 
     var ir_program = try walkAst(tree, alloc);
-    defer ir_program.deinit();
+    defer ir_program.deinit(alloc);
+    //
+    // dump ir after optim pass
+    if (should_dump_ir) {
+        std.debug.print("{s}pre phi elimination:{s}\n", .{ underline_code, reset_code });
+        try ir_program.print();
+    }
 
     // run optimization passses
     if (should_optim) {
@@ -60,11 +68,17 @@ pub fn main(init: std.process.Init) !void {
 
     try phi.eliminatePhi(&ir_program, alloc);
 
+    // dump ir after optim pass
+    if (should_dump_ir) {
+        std.debug.print("{s}post phi elimination:{s}\n", .{ underline_code, reset_code });
+        try ir_program.print();
+    }
+
     var alloc_program = try lower.lowerAlloc(ir_program, alloc);
 
     defer alloc_program.deinit();
 
-    try live.calculateLiveOut(alloc_program);
+    try live.calculateLiveOut(&alloc_program, alloc);
 
     var graph = try igraph.createIgraph(alloc_program.lines, alloc);
     defer graph.deinit();

@@ -1,6 +1,7 @@
 const std = @import("std");
 const ArrayList = std.array_list.Managed;
 const Operand = @import("alloc.zig").Operand;
+const Block = @import("alloc.zig").AllocBlock;
 
 pub const SpecialRegs = enum { eax };
 
@@ -110,9 +111,10 @@ pub const Program = struct {
 
     pub fn print(self: @This()) !void {
         for (self.blocks.items) |block| {
-            std.debug.print("block{d}:\n", .{block.id});
+            std.debug.print("\nblock{d}:\n", .{block.id});
 
             for (block.instructions.items) |instruction| {
+                std.debug.print("  ", .{});
                 switch (instruction) {
                     .constant => |c| {
                         c.dst.print();
@@ -163,9 +165,27 @@ pub const Program = struct {
                     .print_string => |p| {
                         std.debug.print("print_string {s}\n", .{p.src});
                     },
-                    else => {
-                        return error.NotImplemented;
+                    .jump => |j| {
+                        std.debug.print("jump block{d}\n", .{j.target});
                     },
+                    .phi => |p| {
+                        p.dst.print();
+                        std.debug.print(" <- phi local{d}(", .{p.local});
+                        for (p.inputs, 0..) |phi, i| {
+                            if (i != 0) std.debug.print(", ", .{});
+                            std.debug.print("block{d}: ", .{phi.pred});
+                            phi.value.print();
+                        }
+                        std.debug.print(")\n", .{});
+                    },
+                    .branch => |b| {
+                        b.condition.print();
+                        std.debug.print(" ? jump block{d} : jump block{d}\n", .{ b.then_block, b.else_block });
+                    },
+                    // else => |term| {
+                    //     std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
+                    //     return error.NotImplemented;
+                    // },
                 }
             }
         }

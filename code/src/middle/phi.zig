@@ -10,8 +10,11 @@ pub fn eliminatePhi(program: *common.ir.Program, alloc: std.mem.Allocator) !void
             switch (instruction) {
                 .phi => |phi| {
                     for (phi.inputs) |input| {
-                        const move = Instruction{ .move = .{ .dst = phi.dst, .src = input.value } };
-                        try insertMoveBeforeTerminator(program, input.pred, move);
+                        // HACK: avoid temp1 = phi(temp1, something) creating temp1 = temp1
+                        if (!phi.dst.equal(input.value)) {
+                            const move = Instruction{ .move = .{ .dst = phi.dst, .src = input.value } };
+                            try insertMoveBeforeTerminator(program, input.pred, move);
+                        }
                     }
                 },
                 else => {},

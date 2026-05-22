@@ -119,6 +119,14 @@ pub fn build(b: *std.Build) void {
     const frontend_test_step = b.step("frontend-test", "Run frontend tests");
     frontend_test_step.dependOn(&run_frontend_tests.step);
 
+    // common module testing
+    const common_tests = b.addTest(.{
+        .root_module = common,
+    });
+    const run_common_tests = b.addRunArtifact(common_tests);
+    const common_test_step = b.step("common-test", "Run common tests");
+    common_test_step.dependOn(&run_common_tests.step);
+
     const run_middle_step = b.step("middle-run", "Run liveness demo");
     const run_middle_cmd = b.addRunArtifact(middle);
 
@@ -135,7 +143,8 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_middle_cmd.addArgs(args);
 
     const test_step = b.step("test", "Run all tests");
-    test_step.dependOn(&frontend_tests.step);
+    test_step.dependOn(&run_common_tests.step);
+    test_step.dependOn(&run_frontend_tests.step);
     test_step.dependOn(&run_middle_tests.step);
 
     const check_step = b.step("check", "Typecheck without emitting");

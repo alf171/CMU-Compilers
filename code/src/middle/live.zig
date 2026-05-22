@@ -3,26 +3,59 @@ const expect = std.testing.expect;
 const parser = @import("parse.zig");
 
 const common = @import("common");
+const AllocBlock = common.alloc.AllocBlock;
 const Line = common.alloc.AllocLine;
 const Operands = common.alloc.Operands;
 const Operand = common.alloc.Operand;
 
 /// handle case where we are last line in addition to other to rest
-pub fn calculateLiveOut(program: common.alloc.AllocProgram) !void {
-    for (program.blocks.items) |*block| {
-        var index: usize = block.end;
-        while (index > block.start + 1) {
-            index -= 1;
-            const next_line = program.lines.items[index];
-            try getLiveIn(&program.lines.items[index - 1].live_out, next_line);
+pub fn calculateLiveOut(program: *common.alloc.AllocProgram, alloc: std.mem.Allocator) !void {
+    var changed = true;
+    var block_i = program.blocks.items.len;
+    while (changed) {
+        changed = false;
+        while (block_i > 0) {
+            block_i -= 1;
+            const block = program.blocks.items[block_i];
+
+            var live_after = Operands.init(alloc);
+            defer live_after.free();
+
+            for (block.successors.items) |id| {
+                const succ_block = try program.getBlockById(id);
+
+                if (succ_block.start == succ_block.end) continue;
+                std.debug.assert(succ_block.start < succ_block.end);
+
+                var succ_live_in = try getLiveIn(&program.lines.items[succ_block.start], alloc);
+                defer succ_live_in.free();
+
+                try live_after.add(&succ_live_in);
+            }
+
+            var index: usize = block.end;
+            while (index > block.start) {
+                index -= 1;
+                var line = &program.lines.items[index];
+                if (!line.live_out.equal(&live_after)) {
+                    line.live_out.free();
+                    line.live_out = try live_after.clone(alloc);
+                    changed = true;
+                }
+                const live_in = try getLiveIn(line, alloc);
+                live_after.free();
+                live_after = live_in;
+            }
         }
     }
 }
 
 /// Live_in(line) = Uses(line) u (Live_out(line) - Define(line))
 /// memory semantics, we are going to return new memory while keeping prev valid
-fn getLiveIn(result: *Operands, line: Line) !void {
+fn getLiveIn(line: *const Line, alloc: std.mem.Allocator) !Operands {
+    var result = Operands.init(alloc);
     try result.add(&line.uses);
+
     var it = line.live_out.ops.keyIterator();
     while (it.next()) |live_out| {
         // dont add duplicates + dont add if in define
@@ -30,6 +63,7 @@ fn getLiveIn(result: *Operands, line: Line) !void {
             try result.ops.put(live_out.*, {});
         }
     }
+    return result;
 }
 
 test "out of bounds returns empty" {
@@ -44,10 +78,8 @@ test "out of bounds returns empty" {
     };
     defer line.deinit();
 
-    var result = Operands.init(alloc);
+    var result = try getLiveIn(&line, alloc);
     defer result.free();
-
-    try getLiveIn(&result, line);
 
     try std.testing.expectEqual(@as(usize, 0), result.ops.count());
 }
@@ -80,9 +112,8 @@ test "simple example" {
         .instruction_index = 1,
     };
 
-    var result = Operands.init(alloc);
+    var result = try getLiveIn(&line, alloc);
     defer result.free();
-    try getLiveIn(&result, line);
 
     try std.testing.expectEqual(@as(usize, 2), result.ops.count());
     try std.testing.expect(result.ops.contains(Operand{ .temp = 0 }));

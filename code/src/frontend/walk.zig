@@ -15,9 +15,24 @@ const LocalValues = @import("builder.zig").LocalValues;
 
 const PyObject = c.PyObject;
 
-const StmtKind = enum { Assign, Expr, If, While, Unknown };
+const StmtKind = enum { Assign, Expr, If, While, For, Unknown };
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Unknown, Call };
+
+pub const LoopCondition = union(enum) {
+    expr: *PyObject,
+    compare: struct { local: LocalId, cmp: CmpOp, rhs_local: LocalId },
+};
+
+pub const ForLoopBody = struct {
+    stmt_list: *PyObject,
+    condition_var_name: []const u8,
+};
+
+pub const LoopBody = union(enum) {
+    stmt_list: *PyObject,
+    for_loop: ForLoopBody,
+};
 
 pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
     var irBuilder = try IrBuilder.init(alloc);
@@ -53,8 +68,11 @@ pub fn walkStmt(raw_stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloc
         },
         .If => try walkIf(raw_stmt, irBuilder, alloc),
         .While => try walkWhile(raw_stmt, irBuilder, alloc),
+        .For => try walkFor(raw_stmt, irBuilder, alloc),
         .Unknown => {
-            std.debug.panic("unkown statement: {*}", .{raw_stmt});
+            std.debug.print("unsupported statement type: {s}: ", .{getPyType(raw_stmt)});
+            printAstDump(raw_stmt);
+            return error.UnsupportedStatement;
         },
     }
 }
@@ -313,15 +331,145 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
 //             exit
 // While(test=Compare(...), body=[...], orelse=[...])
 pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!void {
-    var before_values = try irBuilder.cloneLocalValues(alloc);
-    defer before_values.deinit();
-
     const test_ = c.PyObject_GetAttrString(stmt, "test");
     const body = c.PyObject_GetAttrString(stmt, "body");
     const orelse_ = c.PyObject_GetAttrString(stmt, "orelse");
     std.debug.assert(test_ != null);
     std.debug.assert(body != null);
     std.debug.assert(orelse_ != null);
+
+    const Helper = struct {
+        fn loopCallback(input_body: LoopBody, irBuilder_: *IrBuilder, alloc_: std.mem.Allocator) anyerror!void {
+            const body_ = switch (input_body) {
+                .stmt_list => |sl| sl,
+                else => return error.BadState,
+            };
+            try walkStmtList(body_, irBuilder_, alloc_);
+        }
+    };
+
+    try walkLoop(irBuilder, LoopCondition{ .expr = test_ }, LoopBody{ .stmt_list = body }, Helper.loopCallback, orelse_, alloc);
+}
+
+// For(target=Name(id='i', ctx=Store()), iter=Call(func=Name(id='range', ctx=Load()), args=[Constant(value=0), Constant(value=10)]), body=[Expr(value=Call(func=Name(id='print', ctx=Load()), args=[Name(id='i', ctx=Load())]))])
+// :skeleton impl:
+// for i in range(start, stop):
+//     body
+// ==>
+// i = start
+// while i < stop:
+//     body
+//     i = i + 1
+pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!void {
+    const target = c.PyObject_GetAttrString(stmt, "target");
+    std.debug.assert(target != null);
+    const target_name_obj = c.PyObject_GetAttrString(target, "id");
+    std.debug.assert(target_name_obj != null);
+    const target_name_raw = c.PyUnicode_AsUTF8(target_name_obj);
+    std.debug.assert(target_name_raw != null);
+    const target_name = std.mem.span(target_name_raw);
+
+    const iter = c.PyObject_GetAttrString(stmt, "iter");
+    std.debug.assert(iter != null);
+
+    const func = c.PyObject_GetAttrString(iter, "func");
+    std.debug.assert(func != null);
+
+    const id_obj = c.PyObject_GetAttrString(func, "id");
+    std.debug.assert(id_obj != null);
+
+    const name_raw = c.PyUnicode_AsUTF8(id_obj);
+    std.debug.assert(name_raw != null);
+
+    const name = std.mem.span(name_raw);
+    if (!std.mem.eql(u8, name, "range")) {
+        return error.UnsupportedForLoopDef;
+    }
+
+    const args = c.PyObject_GetAttrString(iter, "args");
+    std.debug.assert(args != null);
+    std.debug.assert(c.PyList_Size(args) == 2);
+
+    // use lower bound to initialize condition var
+    const local = try irBuilder.getOrCreateLocal(target_name, alloc);
+    const lower_bound = c.PyList_GetItem(args, 0);
+    const start = try walkExpr(lower_bound, irBuilder, alloc);
+    try irBuilder.local_values.put(local, start);
+    try irBuilder.emit(Instruction{ .store_local = .{
+        .local = local,
+        .src = start,
+    } });
+
+    const Helper = struct {
+        fn loopCallback(input_body_: LoopBody, irBuilder_: *IrBuilder, alloc_: std.mem.Allocator) anyerror!void {
+            const body_ = switch (input_body_) {
+                .for_loop => |fl| fl,
+                else => return error.BadState,
+            };
+
+            try walkStmtList(body_.stmt_list, irBuilder_, alloc_);
+            // condition_var += 1
+            const one = irBuilder_.nextTemp();
+            try irBuilder_.emit(Instruction{ .constant = .{
+                .dst = one,
+                .value = 1,
+            } });
+            // TODO: could pass localId through instead
+            const local_ = try irBuilder_.getOrCreateLocal(body_.condition_var_name, alloc_);
+
+            const temp = irBuilder_.nextTemp();
+            try irBuilder_.emit(Instruction{ .binop = .{
+                .dst = temp,
+                .op = .add,
+                .lhs = irBuilder_.local_values.get(local_) orelse return error.NotFound,
+                .rhs = one,
+            } });
+            try irBuilder_.emit(Instruction{ .store_local = .{
+                .local = local_,
+                .src = temp,
+            } });
+            try irBuilder_.local_values.put(local_, temp);
+        }
+    };
+
+    const upper_bound = c.PyList_GetItem(args, 1);
+    const stop = try walkExpr(upper_bound, irBuilder, alloc);
+    // HACK!
+    const stop_local = try irBuilder.getOrCreateLocal("__range_stop", alloc);
+    try irBuilder.local_values.put(stop_local, stop);
+    try irBuilder.emit(Instruction{ .store_local = .{
+        .local = stop_local,
+        .src = stop,
+    } });
+    const body = c.PyObject_GetAttrString(stmt, "body");
+
+    try walkLoop(
+        irBuilder,
+        LoopCondition{ .compare = .{
+            .local = local,
+            .cmp = .lt,
+            .rhs_local = stop_local,
+        } },
+        LoopBody{ .for_loop = .{
+            .stmt_list = body,
+            .condition_var_name = target_name,
+        } },
+        Helper.loopCallback,
+        null,
+        alloc,
+    );
+}
+
+fn walkLoop(
+    irBuilder: *IrBuilder,
+    condition: LoopCondition,
+    body: LoopBody,
+    bodyCallback: *const fn (LoopBody, *IrBuilder, std.mem.Allocator) anyerror!void,
+    orelse_: ?*PyObject,
+    alloc: std.mem.Allocator,
+) !void {
+    var before_values = try irBuilder.cloneLocalValues(alloc);
+    defer before_values.deinit();
 
     const condition_block = try irBuilder.newBlock(alloc);
     const body_block = try irBuilder.newBlock(alloc);
@@ -356,10 +504,25 @@ pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocato
         try loop_values.put(local, dst);
     }
 
-    const condition = try walkExpr(test_, irBuilder, alloc);
+    const condition_expr = switch (condition) {
+        .expr => |cond| try walkExpr(cond, irBuilder, alloc),
+        .compare => |comp| blk: {
+            const dst = irBuilder.nextTemp();
+            const lhs = irBuilder.local_values.get(comp.local) orelse return error.LocalNotFound;
+            const rhs = irBuilder.local_values.get(comp.rhs_local) orelse return error.LocalNotFound;
+            try irBuilder.emit(Instruction{ .compare = .{
+                .dst = dst,
+                .lhs = lhs,
+                .op = comp.cmp,
+                .rhs = rhs,
+            } });
+            break :blk dst;
+        },
+    };
+
     try irBuilder.emit(Instruction{
         .branch = .{
-            .condition = condition,
+            .condition = condition_expr,
             .then_block = body_block,
             .else_block = exit_block,
         },
@@ -372,7 +535,9 @@ pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocato
     // naively restore since we dont support walrus
     try irBuilder.restoreLocalValues(&loop_values);
 
-    try walkStmtList(body, irBuilder, alloc);
+    // crux
+    try bodyCallback(body, irBuilder, alloc);
+
     var body_values = try irBuilder.cloneLocalValues(alloc);
     defer body_values.deinit();
 
@@ -398,7 +563,9 @@ pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocato
     irBuilder.setCurrentBlock(exit_block);
     // naively restore since we dont support walrus
     try irBuilder.restoreLocalValues(&loop_values);
-    try walkStmtList(orelse_, irBuilder, alloc);
+    if (orelse_) |orelse_val| {
+        try walkStmtList(orelse_val, irBuilder, alloc);
+    }
 }
 
 fn getBinOp(expr: *PyObject) !BinOp {
@@ -452,6 +619,7 @@ fn getStmtKind(stmt: *PyObject) StmtKind {
     if (std.mem.eql(u8, name, "Expr")) return .Expr;
     if (std.mem.eql(u8, name, "If")) return .If;
     if (std.mem.eql(u8, name, "While")) return .While;
+    if (std.mem.eql(u8, name, "For")) return .For;
     return .Unknown;
 }
 
