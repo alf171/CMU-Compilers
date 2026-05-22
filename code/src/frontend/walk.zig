@@ -95,7 +95,7 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
 
     const local = try irBuilder.getOrCreateLocal(std.mem.span(id), alloc);
     try irBuilder.local_values.put(local, rhs_value);
-    try irBuilder.emit(Instruction{ .store_local = .{ .local = local, .src = rhs_value } });
+    try irBuilder.emit(Instruction{ .store_local = .{ .local = .{ .id = local, .name = try alloc.dupe(u8, std.mem.span(id)) }, .src = rhs_value } });
 }
 
 fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !Operand {
@@ -149,7 +149,7 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !O
             }
 
             const dst = irBuilder.nextTemp();
-            try irBuilder.emit(Instruction{ .load_local = .{ .dst = dst, .local = local } });
+            try irBuilder.emit(Instruction{ .load_local = .{ .dst = dst, .local = .{ .id = local, .name = try alloc.dupe(u8, std.mem.span(id)) } } });
             return dst;
         },
         // Compare(left=Constant(1),ops=[Lt()],comparators=[Constant(2)])
@@ -311,7 +311,7 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
             });
 
             try irBuilder.emit(Instruction{
-                .phi = .{ .dst = dst, .inputs = inputs, .local = local.* },
+                .phi = .{ .dst = dst, .inputs = inputs, .local = .{ .id = local.*, .name = try alloc.dupe(u8, irBuilder.locals.items[local.*].name) } },
             });
             try irBuilder.local_values.put(local.*, dst);
         } else if (!has_before and ((has_then and !has_else) or (!has_then and has_else))) {
@@ -396,7 +396,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
     const start = try walkExpr(lower_bound, irBuilder, alloc);
     try irBuilder.local_values.put(local, start);
     try irBuilder.emit(Instruction{ .store_local = .{
-        .local = local,
+        .local = .{ .id = local, .name = try alloc.dupe(u8, target_name) },
         .src = start,
     } });
 
@@ -425,7 +425,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 .rhs = one,
             } });
             try irBuilder_.emit(Instruction{ .store_local = .{
-                .local = local_,
+                .local = .{ .id = local_, .name = try alloc_.dupe(u8, body_.condition_var_name) },
                 .src = temp,
             } });
             try irBuilder_.local_values.put(local_, temp);
@@ -438,7 +438,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
     const stop_local = try irBuilder.getOrCreateLocal("__range_stop", alloc);
     try irBuilder.local_values.put(stop_local, stop);
     try irBuilder.emit(Instruction{ .store_local = .{
-        .local = stop_local,
+        .local = .{ .id = stop_local, .name = try alloc.dupe(u8, "__range_stop") },
         .src = stop,
     } });
     const body = c.PyObject_GetAttrString(stmt, "body");
@@ -496,7 +496,7 @@ fn walkLoop(
         const dst = irBuilder.nextTemp();
         try irBuilder.emit(Instruction{ .phi = .{
             .dst = dst,
-            .local = local,
+            .local = .{ .id = local, .name = try alloc.dupe(u8, irBuilder.locals.items[local].name) },
             .inputs = phi,
         } });
 
@@ -544,7 +544,7 @@ fn walkLoop(
     for (irBuilder.program.blocks.items[condition_block].instructions.items) |*instruction| {
         switch (instruction.*) {
             .phi => |*p| {
-                const value = body_values.get(p.local) orelse p.dst;
+                const value = body_values.get(p.local.id) orelse p.dst;
                 p.inputs[1] = .{
                     .pred = body_block,
                     .value = value,

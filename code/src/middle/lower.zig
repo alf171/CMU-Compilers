@@ -41,11 +41,11 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
                     try line.uses.ops.put(binop.rhs, {});
                 },
                 .store_local => |sl| {
-                    try locals.put(sl.local, sl.src);
+                    try locals.put(sl.local.id, sl.src);
                     try line.uses.ops.put(sl.src, {});
                 },
                 .load_local => |ll| {
-                    const src = locals.get(ll.local) orelse {
+                    const src = locals.get(ll.local.id) orelse {
                         return error.LocalNotFound;
                     };
                     try line.defines.ops.put(ll.dst, {});

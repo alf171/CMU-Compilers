@@ -2,6 +2,7 @@ const std = @import("std");
 
 const BlockId = @import("common").ir.BlockId;
 const LocalId = @import("common").ir.LocalId;
+const LocalInfo = @import("common").ir.LocalInfo;
 const TempId = @import("common").ir.TempId;
 
 const BasicBlock = @import("common").ir.BasicBlock;
@@ -19,8 +20,12 @@ pub const IrBuilder = struct {
     next_block: BlockId,
     next_local: LocalId,
     next_temp: TempId,
-    locals: std.StringHashMap(LocalId),
+    // name -> LocalId
+    locals_by_name: std.StringHashMap(LocalId),
+    // LocalId -> Operand
     local_values: LocalValues,
+    // LocalId -> LocalValues
+    locals: ArrayList(LocalInfo),
 
     pub fn init(alloc: std.mem.Allocator) !IrBuilder {
         var program = Program.init(alloc);
@@ -35,19 +40,21 @@ pub const IrBuilder = struct {
             .next_block = 1,
             .next_local = 0,
             .next_temp = 0,
-            .locals = std.StringHashMap(LocalId).init(alloc),
+            .locals_by_name = std.StringHashMap(LocalId).init(alloc),
             .local_values = LocalValues.init(alloc),
+            .locals = ArrayList(LocalInfo).init(alloc),
         };
     }
 
     /// free all but the generated program
     pub fn deinit(self: *IrBuilder, alloc: std.mem.Allocator) void {
-        var it = self.locals.keyIterator();
+        var it = self.locals_by_name.keyIterator();
         while (it.next()) |key| {
             alloc.free(key.*);
         }
-        self.locals.deinit();
+        self.locals_by_name.deinit();
         self.local_values.deinit();
+        self.locals.deinit();
     }
 
     pub fn nextTemp(self: *@This()) Operand {
@@ -57,15 +64,16 @@ pub const IrBuilder = struct {
     }
 
     pub fn getOrCreateLocal(self: *@This(), name: []const u8, alloc: std.mem.Allocator) !LocalId {
-        if (self.locals.get(name)) |local| {
+        if (self.locals_by_name.get(name)) |local| {
             return local;
         }
 
-        const local = self.next_local;
+        const id = self.next_local;
         const owned_name = try alloc.dupe(u8, name);
-        try self.locals.put(owned_name, local);
+        try self.locals_by_name.put(owned_name, id);
+        try self.locals.append(LocalInfo{ .id = id, .name = owned_name });
         self.next_local += 1;
-        return local;
+        return id;
     }
 
     pub fn emit(self: *@This(), instruct: Instruction) !void {

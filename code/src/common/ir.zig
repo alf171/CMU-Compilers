@@ -13,6 +13,10 @@ pub const spec_reg_map = SpecRegsMap.initComptime(.{
 pub const BlockId = u32;
 // python defined variable
 pub const LocalId = u32;
+pub const LocalInfo = struct {
+    id: LocalId,
+    name: []const u8,
+};
 // compiler defined variable
 pub const TempId = u8;
 
@@ -43,8 +47,8 @@ pub const CmpOp = enum {
 };
 
 pub const Instruction = union(enum) {
-    store_local: struct { local: LocalId, src: Operand },
-    load_local: struct { dst: Operand, local: LocalId },
+    store_local: struct { local: LocalInfo, src: Operand },
+    load_local: struct { dst: Operand, local: LocalInfo },
     constant: struct { dst: Operand, value: i64 },
     binop: struct {
         dst: Operand,
@@ -80,7 +84,7 @@ pub const Instruction = union(enum) {
     },
     phi: struct {
         dst: Operand,
-        local: LocalId,
+        local: LocalInfo,
         inputs: []PhiInput,
     },
 };
@@ -99,7 +103,12 @@ pub const Program = struct {
         for (self.blocks.items) |*block| {
             for (block.instructions.items) |*instruction| {
                 switch (instruction.*) {
-                    .phi => |phi| alloc.free(phi.inputs),
+                    .store_local => |sl| alloc.free(sl.local.name),
+                    .load_local => |ll| alloc.free(ll.local.name),
+                    .phi => |phi| {
+                        alloc.free(phi.local.name);
+                        alloc.free(phi.inputs);
+                    },
                     else => {},
                 }
             }
@@ -129,13 +138,13 @@ pub const Program = struct {
                         std.debug.print("\n", .{});
                     },
                     .store_local => |sl| {
-                        std.debug.print("local{d} <- ", .{sl.local});
+                        std.debug.print("\"{s}\" <- ", .{sl.local.name});
                         sl.src.print();
                         std.debug.print("\n", .{});
                     },
                     .load_local => |ll| {
                         ll.dst.print();
-                        std.debug.print(" <- local{d}\n", .{ll.local});
+                        std.debug.print(" <- \"{s}\"\n", .{ll.local.name});
                     },
                     .unaryop => |uop| {
                         uop.dst.print();
@@ -170,7 +179,7 @@ pub const Program = struct {
                     },
                     .phi => |p| {
                         p.dst.print();
-                        std.debug.print(" <- phi local{d}(", .{p.local});
+                        std.debug.print(" <- phi \"{s}\"(", .{p.local.name});
                         for (p.inputs, 0..) |phi, i| {
                             if (i != 0) std.debug.print(", ", .{});
                             std.debug.print("block{d}: ", .{phi.pred});

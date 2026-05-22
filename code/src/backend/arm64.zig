@@ -30,12 +30,12 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                 // str: src, dst (register -> memory)
                 .store_local => |sl| {
                     const src = try regFor(sl.src, colors);
-                    try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, localOffset(sl.local) });
+                    try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, localOffset(sl.local.id) });
                 },
                 // ldr: dst, src (memory -> register)
                 .load_local => |ll| {
                     const dst = try regFor(ll.dst, colors);
-                    try out.print("\tldr {s}, [x29, #-{d}]\n", .{ dst, localOffset(ll.local) });
+                    try out.print("\tldr {s}, [x29, #-{d}]\n", .{ dst, localOffset(ll.local.id) });
                 },
                 .move => |m| {
                     const dst = try regFor(m.dst, colors);
@@ -187,10 +187,10 @@ fn countLocals(program: *const common.ir.Program) usize {
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .store_local => |sl| {
-                    max_local = if (max_local) |m| @max(m, sl.local) else sl.local;
+                    max_local = if (max_local) |m| @max(m, sl.local.id) else sl.local.id;
                 },
                 .load_local => |ll| {
-                    max_local = if (max_local) |m| @max(m, ll.local) else ll.local;
+                    max_local = if (max_local) |m| @max(m, ll.local.id) else ll.local.id;
                 },
                 else => {},
             }

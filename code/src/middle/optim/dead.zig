@@ -45,7 +45,7 @@ pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
 
 fn getDefines(instruction: Instruction) ?SeenValue {
     return switch (instruction) {
-        .store_local => |sl| .{ .local = sl.local },
+        .store_local => |sl| .{ .local = sl.local.id },
         .load_local => |ll| .{ .operand = ll.dst },
         .constant => |c| .{ .operand = c.dst },
         .binop => |bop| .{ .operand = bop.dst },
@@ -67,7 +67,7 @@ fn getUses(instruction: Instruction, alloc: std.mem.Allocator) ![]SeenValue {
             try res.append(val);
         },
         .load_local => |ll| {
-            const val = SeenValue{ .local = ll.local };
+            const val = SeenValue{ .local = ll.local.id };
             try res.append(val);
         },
         .binop => |bop| {
