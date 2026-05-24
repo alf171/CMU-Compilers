@@ -10,12 +10,25 @@ pub const spec_reg_map = SpecRegsMap.initComptime(.{
     .{ "eax", .eax },
 });
 
+pub const TypeInfo = union(enum) {
+    int,
+    float,
+    string,
+    bool,
+    char,
+    array: struct {
+        element: *const TypeInfo,
+        size: usize,
+    },
+};
+
 pub const BlockId = u32;
 // python defined variable
 pub const LocalId = u32;
 pub const LocalInfo = struct {
     id: LocalId,
     name: []const u8,
+    type: ?TypeInfo,
 };
 // compiler defined variable
 pub const TempId = u8;
@@ -25,6 +38,13 @@ pub const BinOp = enum { add, sub, mul, div };
 pub const UnaryOp = enum { neg };
 
 pub const PhiInput = struct { pred: BlockId, value: Operand };
+
+pub const ConstValue = union(enum) {
+    int: i64,
+    bool: bool,
+    float: f64,
+    string: []const u8,
+};
 
 pub const CmpOp = enum {
     eq,
@@ -49,7 +69,7 @@ pub const CmpOp = enum {
 pub const Instruction = union(enum) {
     store_local: struct { local: LocalInfo, src: Operand },
     load_local: struct { dst: Operand, local: LocalInfo },
-    constant: struct { dst: Operand, value: i64 },
+    constant: struct { dst: Operand, value: ConstValue },
     binop: struct {
         dst: Operand,
         op: BinOp,
@@ -87,6 +107,18 @@ pub const Instruction = union(enum) {
         local: LocalInfo,
         inputs: []PhiInput,
     },
+    // stack based fixed array literals
+    array_literal: struct {
+        dst: Operand,
+        elements: []Operand,
+        type: TypeInfo,
+    },
+    // dst <- array[index]
+    array_load: struct {
+        dst: Operand,
+        array: Operand,
+        index: Operand,
+    },
 };
 
 pub const BasicBlock = struct { id: BlockId, instructions: ArrayList(Instruction), successors: ArrayList(BlockId) };
@@ -103,6 +135,11 @@ pub const Program = struct {
         for (self.blocks.items) |*block| {
             for (block.instructions.items) |*instruction| {
                 switch (instruction.*) {
+                    .constant => |c| {
+                        if (c.value == .string) {
+                            alloc.free(c.value.string);
+                        }
+                    },
                     .store_local => |sl| alloc.free(sl.local.name),
                     .load_local => |ll| alloc.free(ll.local.name),
                     .phi => |phi| {
@@ -127,7 +164,20 @@ pub const Program = struct {
                 switch (instruction) {
                     .constant => |c| {
                         c.dst.print();
-                        std.debug.print(" <- const {d}\n", .{c.value});
+                        switch (c.value) {
+                            .int => |value| {
+                                std.debug.print(" <- const {any}\n", .{value});
+                            },
+                            .bool => |value| {
+                                std.debug.print(" <- const {any}\n", .{value});
+                            },
+                            .string => |value| {
+                                std.debug.print(" <- const {any}\n", .{value});
+                            },
+                            .float => {
+                                return error.TypeNotImpl;
+                            },
+                        }
                     },
                     .binop => |binop| {
                         binop.dst.print();

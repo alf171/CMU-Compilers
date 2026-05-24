@@ -4,15 +4,17 @@ const BlockId = @import("common").ir.BlockId;
 const LocalId = @import("common").ir.LocalId;
 const LocalInfo = @import("common").ir.LocalInfo;
 const TempId = @import("common").ir.TempId;
+const TypeInfo = @import("common").ir.TypeInfo;
 
 const BasicBlock = @import("common").ir.BasicBlock;
 const Operand = @import("common").alloc.Operand;
+const TypedOperand = @import("common").alloc.TypedOperand;
 const Program = @import("common").ir.Program;
 const Instruction = @import("common").ir.Instruction;
 const SpecialRegs = @import("common").ir.SpecialRegs;
 
 const ArrayList = std.array_list.Managed;
-pub const LocalValues = std.AutoHashMap(LocalId, Operand);
+pub const LocalValues = std.AutoHashMap(LocalId, TypedOperand);
 
 pub const IrBuilder = struct {
     program: Program,
@@ -63,15 +65,16 @@ pub const IrBuilder = struct {
         return Operand{ .temp = id };
     }
 
-    pub fn getOrCreateLocal(self: *@This(), name: []const u8, alloc: std.mem.Allocator) !LocalId {
+    pub fn getOrCreateLocal(self: *@This(), name: []const u8, typeInfo: ?TypeInfo, alloc: std.mem.Allocator) !LocalId {
+        // already existed
         if (self.locals_by_name.get(name)) |local| {
             return local;
         }
-
+        // needs to get created
         const id = self.next_local;
         const owned_name = try alloc.dupe(u8, name);
         try self.locals_by_name.put(owned_name, id);
-        try self.locals.append(LocalInfo{ .id = id, .name = owned_name });
+        try self.locals.append(LocalInfo{ .id = id, .name = owned_name, .type = typeInfo });
         self.next_local += 1;
         return id;
     }

@@ -29,10 +29,11 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - modular
 - compiled not interpreted
 - arrays are fixed size!
+- type or enforced to some degree?
+  - maybe we do sort of ssa like constraints
 
 ## Goals
 - [ ] [critical edge splitting](https://nickdesaulniers.github.io/blog/2023/01/27/critical-edge-splitting/)
-- [ ] improve printing such that locals support variable names!
 - [ ] support lists?
 - [ ] parallel copy needed according to `lecture 6` in `phi.zig`
 - [ ] sub, mul, div, unary ops like neg

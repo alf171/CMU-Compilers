@@ -1,3 +1,3 @@
-x = 0
-y = 0
+x: int = 0
+y: int = 0
 print(15)

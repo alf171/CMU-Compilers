@@ -25,7 +25,15 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
             switch (instruction) {
                 .constant => |c| {
                     const dst = try regFor(c.dst, colors);
-                    try out.print("\tmov {s}, #{d}\n", .{ dst, c.value });
+                    switch (c.value) {
+                        .int => |value| {
+                            try out.print("\tmov {s}, #{d}\n", .{ dst, value });
+                        },
+                        .bool => |value| {
+                            try out.print("\tmov {s}, #{d}\n", .{ dst, @intFromBool(value) });
+                        },
+                        else => return error.NotImpl,
+                    }
                 },
                 // str: src, dst (register -> memory)
                 .store_local => |sl| {

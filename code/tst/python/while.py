@@ -1,4 +1,4 @@
-x = 0
+x: int = 0
 
 while x < 3:
   x = x + 1

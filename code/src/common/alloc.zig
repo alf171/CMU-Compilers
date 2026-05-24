@@ -3,6 +3,7 @@ const std = @import("std");
 const SpecialRegs = @import("ir.zig").SpecialRegs;
 const BlockId = @import("ir.zig").BlockId;
 const TempId = @import("ir.zig").TempId;
+const TypeInfo = @import("ir.zig").TypeInfo;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.array_list.Managed;
@@ -152,6 +153,15 @@ pub const Operand = union(enum) {
             .spec_reg => |reg| std.debug.print("%{s}", .{@tagName(reg)}),
             .mem => |id| std.debug.print("mem{d}", .{id}),
         }
+    }
+};
+
+pub const TypedOperand = struct {
+    operand: Operand,
+    type: TypeInfo,
+
+    pub fn equal(self: @This(), other: @This()) bool {
+        return self.operand.equal(other.operand);
     }
 };
 
