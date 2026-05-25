@@ -18,7 +18,8 @@ pub const TypeInfo = union(enum) {
     char,
     array: struct {
         element: *const TypeInfo,
-        size: usize,
+        // TODO: make required
+        size: ?usize,
     },
 };
 
@@ -29,6 +30,14 @@ pub const LocalInfo = struct {
     id: LocalId,
     name: []const u8,
     type: ?TypeInfo,
+
+    pub fn duplicate(self: @This(), alloc: std.mem.Allocator) !@This() {
+        return LocalInfo{
+            .id = self.id,
+            .name = try alloc.dupe(u8, self.name),
+            .type = self.type,
+        };
+    }
 };
 // compiler defined variable
 pub const TempId = u8;
@@ -240,6 +249,23 @@ pub const Program = struct {
                     .branch => |b| {
                         b.condition.print();
                         std.debug.print(" ? jump block{d} : jump block{d}\n", .{ b.then_block, b.else_block });
+                    },
+                    .array_literal => |al| {
+                        al.dst.print();
+                        std.debug.print(" <- [", .{});
+                        for (al.elements, 0..al.elements.len) |elem, i| {
+                            if (i != 0) std.debug.print(", ", .{});
+                            elem.print();
+                        }
+                        std.debug.print("]\n", .{});
+                    },
+                    .array_load => |al| {
+                        al.dst.print();
+                        std.debug.print(" <- ", .{});
+                        al.array.print();
+                        std.debug.print("[", .{});
+                        al.index.print();
+                        std.debug.print("]\n", .{});
                     },
                     // else => |term| {
                     //     std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});

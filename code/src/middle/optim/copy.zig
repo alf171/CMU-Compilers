@@ -55,6 +55,15 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) v
         .print_int => |*pi| {
             pi.src = resolve(pi.src, copyMap);
         },
+        .array_literal => |*al| {
+            for (al.elements) |*elem| {
+                elem.* = resolve(elem.*, copyMap);
+            }
+        },
+        .array_load => |*al| {
+            al.array = resolve(al.array, copyMap);
+            al.index = resolve(al.index, copyMap);
+        },
         else => {},
     }
 }

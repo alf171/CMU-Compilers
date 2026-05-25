@@ -11,7 +11,7 @@
 ## Interesting Ideas Worth Exploring
 
 - [ ] python for loop syntax(s)
-- [ ] advanced loop optimization(s): https://en.wikipedia.org/wiki/Polytope_model 
+- [ ] advanced loop optimization(s): https://en.wikipedia.org/wiki/polytope_model 
 - [ ] type checking
 
 ## Compilers Specs

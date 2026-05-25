@@ -53,6 +53,8 @@ fn getDefines(instruction: Instruction) ?SeenValue {
         .unaryop => |uop| .{ .operand = uop.dst },
         .compare => |c| .{ .operand = c.dst },
         .phi => |pi| .{ .operand = pi.dst },
+        .array_literal => |al| .{ .operand = al.dst },
+        .array_load => |al| .{ .operand = al.dst },
         else => null,
     };
 }
@@ -103,6 +105,16 @@ fn getUses(instruction: Instruction, alloc: std.mem.Allocator) ![]SeenValue {
         .branch => |b| {
             const val = SeenValue{ .operand = b.condition };
             try res.append(val);
+        },
+        .array_literal => |al| {
+            for (al.elements) |elem| {
+                const val = SeenValue{ .operand = elem };
+                try res.append(val);
+            }
+        },
+        .array_load => |al| {
+            try res.append(SeenValue{ .operand = al.array });
+            try res.append(SeenValue{ .operand = al.index });
         },
         else => {},
     }

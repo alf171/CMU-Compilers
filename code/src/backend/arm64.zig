@@ -11,12 +11,18 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
     errdefer out.deinit();
 
     const local_count = countLocals(program);
-    const local_stack_size = std.mem.alignForward(usize, local_count * 8, 16);
+    const array_slot_count = countArraySlots(program);
+    const local_stack_size = std.mem.alignForward(
+        usize,
+        (array_slot_count + local_count) * 8,
+        16,
+    );
 
     try createHeader(&out, local_stack_size);
 
     var strings = ArrayList([]const u8).init(alloc);
     var string_count: usize = 0;
+    var next_array_slot: usize = 0;
     defer strings.deinit();
 
     for (program.blocks.items) |block| {
@@ -93,6 +99,36 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                 },
                 .jump => |j| {
                     try out.print("\tb L{d}\n", .{j.target});
+                },
+                // x29 - 8  local: items pointer
+                // x29 - 16 array[2]
+                // x29 - 24 array[1]
+                // x29 - 32 array[0]  <- array_base
+                .array_literal => |al| {
+                    const base_slot = next_array_slot;
+                    next_array_slot += al.elements.len;
+
+                    const dst = try regFor(al.dst, colors);
+
+                    // array[i] = x29 - end + adjust(i)
+                    for (al.elements, 0..al.elements.len) |elem, i| {
+                        const src = try regFor(elem, colors);
+                        const slot = base_slot + (al.elements.len - 1 - i);
+                        const offset = arrayOffset(local_count, slot);
+
+                        try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
+                    }
+                    // array_base = x29 - end
+                    try out.print("\tsub {s}, x29, #{d}\n", .{ dst, arrayOffset(local_count, base_slot + al.elements.len - 1) });
+                },
+                .array_load => |al| {
+                    const dst = try regFor(al.dst, colors);
+                    const index = try regFor(al.index, colors);
+                    const array = try regFor(al.array, colors);
+
+                    // index = index << 3
+                    try out.print("\tlsl {s}, {s}, #3\n", .{ index, index });
+                    try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, index });
                 },
                 else => {
                     return error.NotSupported;
@@ -207,8 +243,25 @@ fn countLocals(program: *const common.ir.Program) usize {
     return if (max_local) |m| @as(usize, m) + 1 else 0;
 }
 
+fn countArraySlots(program: *const common.ir.Program) usize {
+    var slots: usize = 0;
+    for (program.blocks.items) |block| {
+        for (block.instructions.items) |instruction| {
+            switch (instruction) {
+                .array_literal => |al| slots += al.elements.len,
+                else => {},
+            }
+        }
+    }
+    return slots;
+}
+
 fn localOffset(local: common.ir.LocalId) usize {
     return (@as(usize, local) + 1) * 8;
+}
+
+fn arrayOffset(local_count: usize, array_slot_index: usize) usize {
+    return (local_count + array_slot_index + 1) * 8;
 }
 
 fn condForCmp(op: common.ir.CmpOp) []const u8 {

@@ -70,6 +70,17 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
                 .branch => |b| {
                     try line.uses.ops.put(b.condition, {});
                 },
+                .array_literal => |al| {
+                    try line.defines.ops.put(al.dst, {});
+                    for (al.elements) |elem| {
+                        try line.uses.ops.put(elem, {});
+                    }
+                },
+                .array_load => |al| {
+                    try line.defines.ops.put(al.dst, {});
+                    try line.uses.ops.put(al.array, {});
+                    try line.uses.ops.put(al.index, {});
+                },
                 else => {
                     return error.NotImplemented;
                 },
