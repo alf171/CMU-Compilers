@@ -1,6 +1,10 @@
 const common = @import("common");
 const color = @import("middle").color;
 
+pub const first_param_reg = "x0";
+pub const callee_return_reg = "x0";
+pub const scratch_reg = "x1";
+
 /// callee safe registers
 pub const callee_safe_regs = [_][]const u8{ "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28" };
 

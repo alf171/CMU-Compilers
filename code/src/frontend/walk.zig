@@ -200,11 +200,8 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !T
                 try result.append((try walkExpr(elem, irBuilder, alloc)).operand);
             }
             const dst = irBuilder.nextTemp();
-            const type_ = TypeInfo{ .array = .{
-                .element = &.int,
-                .size = @intCast(len),
-            } };
-            try irBuilder.emit(Instruction{ .array_literal = .{
+            const type_ = TypeInfo{ .list = .{ .element = &.int } };
+            try irBuilder.emit(Instruction{ .list_literal = .{
                 .dst = dst,
                 .elements = try result.toOwnedSlice(),
                 .type = type_,
@@ -227,18 +224,18 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !T
             }
 
             const local = try irBuilder.getOrCreateLocal(std.mem.span(label), null, alloc);
-            const array = irBuilder.local_values.get(local) orelse return error.NotFound;
+            const list = irBuilder.local_values.get(local) orelse return error.NotFound;
 
-            const elem_type = switch (array.type) {
-                .array => |arr| arr.element.*,
-                else => return error.IndexIntoNonArray,
+            const elem_type = switch (list.type) {
+                .list => |arr| arr.element.*,
+                else => return error.IndexIntoNonList,
             };
 
             const dst = irBuilder.nextTemp();
             try irBuilder.emit(Instruction{
-                .array_load = .{
+                .list_load = .{
                     .dst = dst,
-                    .array = array.operand,
+                    .list = list.operand,
                     .index = index.operand,
                 },
             });
@@ -798,9 +795,9 @@ fn parseTypeAnnotation(annotation: *PyObject) !TypeInfo {
         std.debug.assert(slice_type != null);
 
         if (std.mem.eql(u8, std.mem.span(slice_type), "int")) {
-            return .{ .array = .{ .element = &.int, .size = null } };
+            return .{ .list = .{ .element = &.int } };
         } else if (std.mem.eql(u8, std.mem.span(slice_type), "bool")) {
-            return .{ .array = .{ .element = &.bool, .size = null } };
+            return .{ .list = .{ .element = &.bool } };
         }
         return error.TypeNotSupported;
     }

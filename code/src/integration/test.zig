@@ -107,7 +107,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (should_run) {
-        const clangd_result = try runCommand(alloc, io, &.{ "clang", output_file, "-o", "/tmp/integration_out" });
+        const clangd_result = try runCommand(alloc, io, &.{ "clang", "src/malloc.c", output_file, "-o", "/tmp/integration_out" });
         defer alloc.free(clangd_result.stdout);
         defer alloc.free(clangd_result.stderr);
         const run_result = try runCommand(alloc, io, &.{"/tmp/integration_out"});

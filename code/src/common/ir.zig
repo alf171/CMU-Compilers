@@ -16,6 +16,9 @@ pub const TypeInfo = union(enum) {
     string,
     bool,
     char,
+    list: struct {
+        element: *const TypeInfo,
+    },
     array: struct {
         element: *const TypeInfo,
         // TODO: make required
@@ -116,7 +119,7 @@ pub const Instruction = union(enum) {
         local: LocalInfo,
         inputs: []PhiInput,
     },
-    // stack based fixed array literals
+    // stack based fixed size array
     array_literal: struct {
         dst: Operand,
         elements: []Operand,
@@ -128,6 +131,19 @@ pub const Instruction = union(enum) {
         array: Operand,
         index: Operand,
     },
+    // heap based variable size
+    list_literal: struct {
+        dst: Operand,
+        elements: []Operand,
+        type: TypeInfo,
+    },
+    // dst <- list[index]
+    list_load: struct {
+        dst: Operand,
+        list: Operand,
+        index: Operand,
+    },
+    unkown,
 };
 
 pub const BasicBlock = struct { id: BlockId, instructions: ArrayList(Instruction), successors: ArrayList(BlockId) };
@@ -250,6 +266,15 @@ pub const Program = struct {
                         b.condition.print();
                         std.debug.print(" ? jump block{d} : jump block{d}\n", .{ b.then_block, b.else_block });
                     },
+                    .list_literal => |al| {
+                        al.dst.print();
+                        std.debug.print(" <- [", .{});
+                        for (al.elements, 0..al.elements.len) |elem, i| {
+                            if (i != 0) std.debug.print(", ", .{});
+                            elem.print();
+                        }
+                        std.debug.print("]\n", .{});
+                    },
                     .array_literal => |al| {
                         al.dst.print();
                         std.debug.print(" <- [", .{});
@@ -257,6 +282,14 @@ pub const Program = struct {
                             if (i != 0) std.debug.print(", ", .{});
                             elem.print();
                         }
+                        std.debug.print("]\n", .{});
+                    },
+                    .list_load => |al| {
+                        al.dst.print();
+                        std.debug.print(" <- ", .{});
+                        al.list.print();
+                        std.debug.print("[", .{});
+                        al.index.print();
                         std.debug.print("]\n", .{});
                     },
                     .array_load => |al| {
@@ -267,10 +300,10 @@ pub const Program = struct {
                         al.index.print();
                         std.debug.print("]\n", .{});
                     },
-                    // else => |term| {
-                    //     std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
-                    //     return error.NotImplemented;
-                    // },
+                    else => |term| {
+                        std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
+                        return error.NotImplemented;
+                    },
                 }
             }
         }

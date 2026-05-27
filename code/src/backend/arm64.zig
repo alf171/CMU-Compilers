@@ -4,7 +4,10 @@ const ArrayList = std.array_list.Managed;
 const common = @import("common");
 const color = @import("middle").color;
 const regFor = @import("reg.zig").regFor;
+const FirstParamRegister = @import("reg.zig").first_param_reg;
 const CalleeSafeRegisters = @import("reg.zig").callee_safe_regs;
+const CalleReturnRegister = @import("reg.zig").callee_return_reg;
+const ScratchReg = @import("reg.zig").scratch_reg;
 
 pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph, alloc: std.mem.Allocator) ![]u8 {
     var out = ArrayList(u8).init(alloc);
@@ -121,6 +124,24 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                     // array_base = x29 - end
                     try out.print("\tsub {s}, x29, #{d}\n", .{ dst, arrayOffset(local_count, base_slot + al.elements.len - 1) });
                 },
+                // heap: [ size ] [elem 0] [...]
+                .list_literal => |ll| {
+                    const dst = try regFor(ll.dst, colors);
+                    const byte_count = (ll.elements.len + 1) * 8;
+                    const len = ll.elements.len;
+                    try out.print("\tmov {s}, #{d}\n", .{ FirstParamRegister, byte_count });
+                    try out.appendSlice("\tbl _arena_malloc\n");
+
+                    try out.print("\tmov {s}, #{d}\n", .{ ScratchReg, len });
+                    try out.print("\tstr {s}, [{s}]\n", .{ ScratchReg, CalleReturnRegister });
+
+                    for (ll.elements, 0..len) |element, i| {
+                        const src = try regFor(element, colors);
+                        const offset = (i + 1) * 8;
+                        try out.print("\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
+                    }
+                    try out.print("\tmov {s}, x0\n", .{dst});
+                },
                 .array_load => |al| {
                     const dst = try regFor(al.dst, colors);
                     const index = try regFor(al.index, colors);
@@ -130,7 +151,17 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                     try out.print("\tlsl {s}, {s}, #3\n", .{ index, index });
                     try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, index });
                 },
-                else => {
+                .list_load => |ll| {
+                    const dst = try regFor(ll.dst, colors);
+                    const index = try regFor(ll.index, colors);
+                    const array = try regFor(ll.list, colors);
+                    // index = (index + 1) << 3
+                    try out.print("\tadd {s}, {s}, #1\n", .{ index, index });
+                    try out.print("\tlsl {s}, {s}, #3\n", .{ index, index });
+                    try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, index });
+                },
+                else => |ir| {
+                    std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(ir)});
                     return error.NotSupported;
                 },
             }
@@ -205,6 +236,7 @@ fn restoreCallleSafeReg(out: *ArrayList(u8)) !void {
 //   Emit a null-terminated C string for printf: print a 64-bit integer,
 //   followed by a newline.
 fn createFooter(out: *ArrayList(u8), strings: []const []const u8, local_stack_size: usize) !void {
+    try out.appendSlice("\tbl _arena_free\n");
     try out.appendSlice("\tmov w0, #0\n");
 
     try restoreCallleSafeReg(out);
