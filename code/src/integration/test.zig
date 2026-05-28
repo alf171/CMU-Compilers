@@ -53,7 +53,7 @@ pub fn main(init: std.process.Init) !void {
 
     var ir_program = try walkAst(tree, alloc);
     defer ir_program.deinit(alloc);
-    //
+
     // dump ir after optim pass
     if (should_dump_ir) {
         std.debug.print("{s}pre phi elimination:{s}\n", .{ underline_code, reset_code });

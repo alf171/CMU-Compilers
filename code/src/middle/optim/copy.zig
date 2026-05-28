@@ -52,7 +52,7 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) v
         .store_local => |*sl| {
             sl.src = resolve(sl.src, copyMap);
         },
-        .print_int => |*pi| {
+        .print => |*pi| {
             pi.src = resolve(pi.src, copyMap);
         },
         .array_literal => |*al| {
@@ -95,7 +95,7 @@ test "basic block copy prop" {
         .src = .{ .temp = 1 },
     } });
     // print(t2)
-    try instructions.append(Instruction{ .print_int = .{
+    try instructions.append(Instruction{ .print = .{
         .src = .{ .temp = 2 },
     } });
 
@@ -124,7 +124,7 @@ test "basic block copy prop" {
         .src = .{ .temp = 0 },
     } });
     // print(t0)
-    try std.testing.expectEqualDeep(new_instructions[2], Instruction{ .print_int = .{
+    try std.testing.expectEqualDeep(new_instructions[2], Instruction{ .print = .{
         .src = .{ .temp = 0 },
     } });
 }

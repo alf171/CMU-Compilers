@@ -3,7 +3,7 @@ const std = @import("std");
 const SpecialRegs = @import("ir.zig").SpecialRegs;
 const BlockId = @import("ir.zig").BlockId;
 const TempId = @import("ir.zig").TempId;
-const TypeInfo = @import("ir.zig").TypeInfo;
+const TypeInfo = @import("types.zig").TypeInfo;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.array_list.Managed;

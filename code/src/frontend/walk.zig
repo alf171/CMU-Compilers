@@ -3,7 +3,8 @@ const ArrayList = std.array_list.Managed;
 const c = @import("python.zig").c;
 
 const ConstValue = @import("common").ir.ConstValue;
-const TypeInfo = @import("common").ir.TypeInfo;
+const types = @import("common").types;
+const TypeInfo = types.TypeInfo;
 const Operand = @import("common").alloc.Operand;
 const TypedOperand = @import("common").alloc.TypedOperand;
 const LocalInfo = @import("common").ir.LocalInfo;
@@ -180,11 +181,33 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !T
             } else if (std.mem.eql(u8, value_type, "str")) {
                 const raw = c.PyUnicode_AsUTF8(value_obj);
                 std.debug.assert(raw != null);
-                const owned = try alloc.dupe(u8, std.mem.span(raw));
-                const value = ConstValue{ .string = owned };
+                const bytes = std.mem.span(raw);
                 const dst = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .constant = .{ .dst = dst, .value = value } });
-                return TypedOperand{ .operand = dst, .type = .string };
+                var elements = ArrayList(Operand).init(alloc);
+                for (bytes) |char| {
+                    const temp = irBuilder.nextTemp();
+                    try irBuilder.emit(Instruction{ .constant = .{
+                        .dst = temp,
+                        .value = .{ .char = char },
+                    } });
+                    try elements.append(temp);
+                }
+                // null terminator
+                const zero = irBuilder.nextTemp();
+                try irBuilder.emit(Instruction{ .constant = .{
+                    .dst = zero,
+                    .value = .{ .char = 0 },
+                } });
+                try elements.append(zero);
+
+                const _type = TypeInfo{ .list = .{ .element = &.char } };
+
+                try irBuilder.emit(Instruction{ .list_literal = .{
+                    .dst = dst,
+                    .elements = try elements.toOwnedSlice(),
+                    .type = _type,
+                } });
+                return TypedOperand{ .operand = dst, .type = _type };
             }
             return error.TypeNotImpl;
         },
@@ -194,13 +217,23 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !T
             std.debug.assert(elements != null);
             const len = c.PyList_Size(elements);
             var result = ArrayList(Operand).init(alloc);
+            var elem_type: ?TypeInfo = null;
             for (0..@intCast(len)) |i| {
                 const elem = c.PyList_GetItem(elements, @as(isize, @intCast(i)));
                 std.debug.assert(elem != null);
-                try result.append((try walkExpr(elem, irBuilder, alloc)).operand);
+                const expr = try walkExpr(elem, irBuilder, alloc);
+                // TODO: validate all items are same type!
+                if (i == 0) elem_type = expr.type;
+                try result.append(expr.operand);
             }
             const dst = irBuilder.nextTemp();
-            const type_ = TypeInfo{ .list = .{ .element = &.int } };
+
+            const first_elem_type = elem_type orelse return error.NoTypeFound;
+            const type_ = TypeInfo{ .list = .{ .element = switch (first_elem_type) {
+                .int => &types.int_type,
+                .bool => &types.bool_type,
+                else => return error.TypeNotSupported,
+            } } };
             try irBuilder.emit(Instruction{ .list_literal = .{
                 .dst = dst,
                 .elements = try result.toOwnedSlice(),
@@ -237,6 +270,7 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !T
                     .dst = dst,
                     .list = list.operand,
                     .index = index.operand,
+                    .type = list.type,
                 },
             });
             return TypedOperand{
@@ -299,26 +333,12 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !T
             std.debug.assert(c.PyList_Size(args) == 1);
             const arg0 = c.PyList_GetItem(args, 0);
             std.debug.assert(arg0 != null);
-
-            if (getExprKind(arg0) == .Constant) {
-                const value_obj = c.PyObject_GetAttrString(arg0, "value");
-                const value_type = getPyType(value_obj);
-
-                if (std.mem.eql(u8, value_type, "str")) {
-                    const raw = c.PyUnicode_AsUTF8(value_obj);
-                    std.debug.assert(raw != null);
-
-                    const owned = try alloc.dupe(u8, std.mem.span(raw));
-                    try irBuilder.emit(Instruction{ .print_string = .{ .src = owned } });
-                    // HACK: in order to support string printing
-                    return TypedOperand{ .operand = Operand{
-                        .temp = 0,
-                    }, .type = .string };
-                }
-            }
-
             const src = try walkExpr(arg0, irBuilder, alloc);
-            try irBuilder.emit(Instruction{ .print_int = .{ .src = src.operand } });
+
+            try irBuilder.emit(Instruction{ .print = .{
+                .src = src.operand,
+                .type = src.type,
+            } });
             return src;
         },
         .Unknown => {
@@ -775,7 +795,7 @@ fn parseTypeAnnotation(annotation: *PyObject) !TypeInfo {
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "float")) {
             return .float;
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "str")) {
-            return .string;
+            return .{ .list = .{ .element = &.char } };
         }
         return error.TypeNotImplemented;
     }

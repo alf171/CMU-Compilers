@@ -4,7 +4,7 @@ const BlockId = @import("common").ir.BlockId;
 const LocalId = @import("common").ir.LocalId;
 const LocalInfo = @import("common").ir.LocalInfo;
 const TempId = @import("common").ir.TempId;
-const TypeInfo = @import("common").ir.TypeInfo;
+const TypeInfo = @import("common").types.TypeInfo;
 
 const BasicBlock = @import("common").ir.BasicBlock;
 const Operand = @import("common").alloc.Operand;

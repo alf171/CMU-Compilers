@@ -98,7 +98,7 @@ fn getUses(instruction: Instruction, alloc: std.mem.Allocator) ![]SeenValue {
                 try res.append(val);
             }
         },
-        .print_int => |pi| {
+        .print => |pi| {
             const val = SeenValue{ .operand = pi.src };
             try res.append(val);
         },
@@ -123,7 +123,7 @@ fn getUses(instruction: Instruction, alloc: std.mem.Allocator) ![]SeenValue {
 
 fn hasSideEffects(instruction: Instruction) bool {
     return switch (instruction) {
-        .print_int, .print_string, .jump, .branch, .phi => true,
+        .print, .jump, .branch, .phi => true,
         else => false,
     };
 }
@@ -146,7 +146,7 @@ test "basic block elim" {
         .src = .{ .temp = 0 },
     } });
     // print(t0)
-    try instructions.append(Instruction{ .print_int = .{
+    try instructions.append(Instruction{ .print = .{
         .src = .{ .temp = 0 },
     } });
 
@@ -164,7 +164,7 @@ test "basic block elim" {
     const new_instructions = program.blocks.items[0].instructions.items;
     try std.testing.expectEqual(1, new_instructions.len);
     // print(t0)
-    try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .print_int = .{
+    try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .print = .{
         .src = .{ .temp = 0 },
     } });
 }

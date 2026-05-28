@@ -2,6 +2,9 @@ const std = @import("std");
 const ArrayList = std.array_list.Managed;
 
 const common = @import("common");
+const TypeInfo = common.types.TypeInfo;
+const sizeOfType = common.types.sizeOfType;
+const listElementType = common.types.listElementType;
 const color = @import("middle").color;
 const regFor = @import("reg.zig").regFor;
 const FirstParamRegister = @import("reg.zig").first_param_reg;
@@ -25,6 +28,7 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
 
     var strings = ArrayList([]const u8).init(alloc);
     var string_count: usize = 0;
+    string_count += 1;
     var next_array_slot: usize = 0;
     defer strings.deinit();
 
@@ -40,6 +44,9 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                         },
                         .bool => |value| {
                             try out.print("\tmov {s}, #{d}\n", .{ dst, @intFromBool(value) });
+                        },
+                        .char => |value| {
+                            try out.print("\tmov {s}, #{d}\n", .{ dst, value });
                         },
                         else => return error.NotImpl,
                     }
@@ -59,23 +66,37 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                     const src = try regFor(m.src, colors);
                     try out.print("\tmov {s}, {s}\n", .{ dst, src });
                 },
-                .print_int => |pi| {
-                    const src = try regFor(pi.src, colors);
-                    try out.appendSlice("\tsub sp, sp, #16\n");
-                    try out.print("\tstr {s}, [sp]\n", .{src});
-                    try out.appendSlice("\tadrp x0, fmt@PAGE\n");
-                    try out.appendSlice("\tadd x0, x0, fmt@PAGEOFF\n");
-                    try out.appendSlice("\tbl _printf\n");
-                    try out.appendSlice("\tadd sp, sp, #16\n");
-                },
-                .print_string => |p| {
-                    const label_id = string_count;
-                    string_count += 1;
-                    try strings.append(p.src);
-
-                    try out.print("\tadrp x0, str{d}@PAGE\n", .{label_id});
-                    try out.print("\tadd x0, x0, str{d}@PAGEOFF\n", .{label_id});
-                    try out.appendSlice("\tbl _puts\n");
+                .print => |p| {
+                    switch (p.type) {
+                        .int, .bool => {
+                            const src = try regFor(p.src, colors);
+                            try out.appendSlice("\tsub sp, sp, #16\n");
+                            try out.print("\tstr {s}, [sp]\n", .{src});
+                            try out.appendSlice("\tadrp x0, fmt@PAGE\n");
+                            try out.appendSlice("\tadd x0, x0, fmt@PAGEOFF\n");
+                            try out.appendSlice("\tbl _printf\n");
+                            try out.appendSlice("\tadd sp, sp, #16\n");
+                        },
+                        .array => |arr| {
+                            if (arr.element.* != .char) return error.TypeNotImpl;
+                            const src = try regFor(p.src, colors);
+                            for (0..(arr.size orelse return error.SizeMissing)) |i| {
+                                const offset = i * 8;
+                                try out.print("\tldr {s}, [{s}, #{d}]\n", .{ FirstParamRegister, src, offset });
+                                try out.appendSlice("\tbl _putchar\n");
+                            }
+                            // print \n
+                            try out.print("\tmov x0, #10\n", .{});
+                            try out.appendSlice("\tbl _putchar\n");
+                        },
+                        .list => |lst| {
+                            if (lst.element.* != .char) return error.TypeNotImpl;
+                            const src = try regFor(p.src, colors);
+                            try out.print("\tadd x0, {s}, #8\n", .{src});
+                            try out.appendSlice("\tbl _puts\n");
+                        },
+                        else => return error.TypeNotImpl,
+                    }
                 },
                 .compare => |c| {
                     const lhs = try regFor(c.lhs, colors);
@@ -118,7 +139,7 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                         const src = try regFor(elem, colors);
                         const slot = base_slot + (al.elements.len - 1 - i);
                         const offset = arrayOffset(local_count, slot);
-
+                        // HACK: assume everything is 8bytes wide
                         try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
                     }
                     // array_base = x29 - end
@@ -127,7 +148,9 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                 // heap: [ size ] [elem 0] [...]
                 .list_literal => |ll| {
                     const dst = try regFor(ll.dst, colors);
-                    const byte_count = (ll.elements.len + 1) * 8;
+                    const elem_type = try listElementType(ll.type);
+                    const elem_size = try sizeOfType(elem_type);
+                    const byte_count = ll.elements.len * elem_size + 8;
                     const len = ll.elements.len;
                     try out.print("\tmov {s}, #{d}\n", .{ FirstParamRegister, byte_count });
                     try out.appendSlice("\tbl _arena_malloc\n");
@@ -137,8 +160,16 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
 
                     for (ll.elements, 0..len) |element, i| {
                         const src = try regFor(element, colors);
-                        const offset = (i + 1) * 8;
-                        try out.print("\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
+                        const offset = i * elem_size + 8;
+                        switch (elem_type) {
+                            .int => {
+                                try out.print("\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
+                            },
+                            .bool, .char => {
+                                try out.print("\tstrb w{s}, [{s}, #{d}]\n", .{ src[1..], CalleReturnRegister, offset });
+                            },
+                            else => return error.TypeNotImpl,
+                        }
                     }
                     try out.print("\tmov {s}, x0\n", .{dst});
                 },
@@ -147,18 +178,38 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                     const index = try regFor(al.index, colors);
                     const array = try regFor(al.array, colors);
 
-                    // index = index << 3
-                    try out.print("\tlsl {s}, {s}, #3\n", .{ index, index });
-                    try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, index });
+                    const elem_type = try listElementType(al.type);
+                    switch (elem_type) {
+                        // index = index << 3
+                        .int => {
+                            try out.print("\tlsl {s}, {s}, #3\n", .{ index, index });
+                            try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, index });
+                        },
+                        .bool => {
+                            try out.print("\tldr w{s}, [{s}, {s}]\n", .{ dst[1..], array, index });
+                        },
+                        else => return error.TypeNotImpl,
+                    }
                 },
                 .list_load => |ll| {
                     const dst = try regFor(ll.dst, colors);
                     const index = try regFor(ll.index, colors);
                     const array = try regFor(ll.list, colors);
-                    // index = (index + 1) << 3
-                    try out.print("\tadd {s}, {s}, #1\n", .{ index, index });
-                    try out.print("\tlsl {s}, {s}, #3\n", .{ index, index });
-                    try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, index });
+
+                    const elem_type = try listElementType(ll.type);
+                    switch (elem_type) {
+                        // index = (index + 1) << 3
+                        .int => {
+                            try out.print("\tlsl {s}, {s}, #3\n", .{ index, index });
+                            try out.print("\tadd {s}, {s}, #8\n", .{ index, index });
+                            try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, index });
+                        },
+                        .bool => {
+                            try out.print("\tadd {s}, {s}, #8\n", .{ index, index });
+                            try out.print("\tldrb w{s}, [{s}, {s}]\n", .{ dst[1..], array, index });
+                        },
+                        else => return error.TypeNotImpl,
+                    }
                 },
                 else => |ir| {
                     std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(ir)});

@@ -1,5 +1,6 @@
 const std = @import("std");
 const ArrayList = std.array_list.Managed;
+const TypeInfo = @import("types.zig").TypeInfo;
 const Operand = @import("alloc.zig").Operand;
 const Block = @import("alloc.zig").AllocBlock;
 
@@ -9,22 +10,6 @@ const SpecRegsMap = std.StaticStringMap(SpecialRegs);
 pub const spec_reg_map = SpecRegsMap.initComptime(.{
     .{ "eax", .eax },
 });
-
-pub const TypeInfo = union(enum) {
-    int,
-    float,
-    string,
-    bool,
-    char,
-    list: struct {
-        element: *const TypeInfo,
-    },
-    array: struct {
-        element: *const TypeInfo,
-        // TODO: make required
-        size: ?usize,
-    },
-};
 
 pub const BlockId = u32;
 // python defined variable
@@ -55,7 +40,8 @@ pub const ConstValue = union(enum) {
     int: i64,
     bool: bool,
     float: f64,
-    string: []const u8,
+    char: u8,
+    bytes: []const u8,
 };
 
 pub const CmpOp = enum {
@@ -100,11 +86,9 @@ pub const Instruction = union(enum) {
         lhs: Operand,
         rhs: Operand,
     },
-    print_int: struct {
+    print: struct {
         src: Operand,
-    },
-    print_string: struct {
-        src: []const u8,
+        type: TypeInfo,
     },
     jump: struct {
         target: BlockId,
@@ -130,6 +114,8 @@ pub const Instruction = union(enum) {
         dst: Operand,
         array: Operand,
         index: Operand,
+        // TODO: changed array to TypedOperand?
+        type: TypeInfo,
     },
     // heap based variable size
     list_literal: struct {
@@ -142,6 +128,8 @@ pub const Instruction = union(enum) {
         dst: Operand,
         list: Operand,
         index: Operand,
+        // TODO: changed list to TypedOperand?
+        type: TypeInfo,
     },
     unkown,
 };
@@ -161,8 +149,8 @@ pub const Program = struct {
             for (block.instructions.items) |*instruction| {
                 switch (instruction.*) {
                     .constant => |c| {
-                        if (c.value == .string) {
-                            alloc.free(c.value.string);
+                        if (c.value == .bytes) {
+                            alloc.free(c.value.bytes);
                         }
                     },
                     .store_local => |sl| alloc.free(sl.local.name),
@@ -191,13 +179,16 @@ pub const Program = struct {
                         c.dst.print();
                         switch (c.value) {
                             .int => |value| {
-                                std.debug.print(" <- const {any}\n", .{value});
+                                std.debug.print(" <- {any}\n", .{value});
                             },
                             .bool => |value| {
-                                std.debug.print(" <- const {any}\n", .{value});
+                                std.debug.print(" <- {any}\n", .{value});
                             },
-                            .string => |value| {
-                                std.debug.print(" <- const {any}\n", .{value});
+                            .char => |value| {
+                                std.debug.print(" <- {any}\n", .{value});
+                            },
+                            .bytes => |value| {
+                                std.debug.print(" <- {s}\n", .{value});
                             },
                             .float => {
                                 return error.TypeNotImpl;
@@ -241,13 +232,10 @@ pub const Program = struct {
                         c.rhs.print();
                         std.debug.print("\n", .{});
                     },
-                    .print_int => |p| {
-                        std.debug.print("print_int ", .{});
+                    .print => |p| {
+                        std.debug.print("print ", .{});
                         p.src.print();
                         std.debug.print("\n", .{});
-                    },
-                    .print_string => |p| {
-                        std.debug.print("print_string {s}\n", .{p.src});
                     },
                     .jump => |j| {
                         std.debug.print("jump block{d}\n", .{j.target});

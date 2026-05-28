@@ -57,10 +57,9 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
                     try line.uses.ops.put(m.src, {});
                     line.move = true;
                 },
-                .print_int => |pi| {
+                .print => |pi| {
                     try line.uses.ops.put(pi.src, {});
                 },
-                .print_string => {},
                 .compare => |c| {
                     try line.defines.ops.put(c.dst, {});
                     try line.uses.ops.put(c.lhs, {});
