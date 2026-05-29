@@ -148,6 +148,7 @@ test "basic block elim" {
     // print(t0)
     try instructions.append(Instruction{ .print = .{
         .src = .{ .temp = 0 },
+        .type = .char,
     } });
 
     const block = BasicBlock{
@@ -166,5 +167,6 @@ test "basic block elim" {
     // print(t0)
     try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .print = .{
         .src = .{ .temp = 0 },
+        .type = .char,
     } });
 }

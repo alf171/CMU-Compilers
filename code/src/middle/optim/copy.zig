@@ -97,6 +97,7 @@ test "basic block copy prop" {
     // print(t2)
     try instructions.append(Instruction{ .print = .{
         .src = .{ .temp = 2 },
+        .type = .int,
     } });
 
     const block = BasicBlock{
@@ -126,5 +127,6 @@ test "basic block copy prop" {
     // print(t0)
     try std.testing.expectEqualDeep(new_instructions[2], Instruction{ .print = .{
         .src = .{ .temp = 0 },
+        .type = .int,
     } });
 }

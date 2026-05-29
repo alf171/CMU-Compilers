@@ -898,7 +898,7 @@ test "while loop" {
     }
 
     switch (exit[0]) {
-        .print_int => {},
+        .print => {},
         else => return error.ExpectedPrint,
     }
 }

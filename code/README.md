@@ -34,12 +34,6 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 
 ## Goals
 - [ ] [critical edge splitting](https://nickdesaulniers.github.io/blog/2023/01/27/critical-edge-splitting/)
-- [ ] rewrite print to be generic depending on datatype
-  - controlled by the type system
-  - could even be part of std lib instead of asm instruction
-  - ac: call python `print` (obfuscates `print_str`, `print_int`...)
-- [0.5] support lists?
-  - support variable size arrays on the heap
 - [ ] parallel copy needed according to `lecture 6` in `phi.zig`
 - [ ] sub, mul, div, unary ops like neg
 - [ ] and + or support?
