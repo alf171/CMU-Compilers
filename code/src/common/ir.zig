@@ -1,6 +1,7 @@
 const std = @import("std");
 const ArrayList = std.array_list.Managed;
 const TypeInfo = @import("types.zig").TypeInfo;
+const TypedOperand = @import("alloc.zig").TypedOperand;
 const Operand = @import("alloc.zig").Operand;
 const Block = @import("alloc.zig").AllocBlock;
 
@@ -36,6 +37,12 @@ pub const UnaryOp = enum { neg };
 
 pub const PhiInput = struct { pred: BlockId, value: Operand };
 
+pub const LoopPhi = struct {
+    local: LocalId,
+    phi_inputs: []PhiInput,
+    dst: TypedOperand,
+};
+
 pub const ConstValue = union(enum) {
     int: i64,
     bool: bool,
@@ -65,9 +72,18 @@ pub const CmpOp = enum {
 };
 
 pub const Instruction = union(enum) {
-    store_local: struct { local: LocalInfo, src: Operand },
-    load_local: struct { dst: Operand, local: LocalInfo },
-    constant: struct { dst: Operand, value: ConstValue },
+    store_local: struct {
+        local: LocalInfo,
+        src: Operand,
+    },
+    load_local: struct {
+        dst: Operand,
+        local: LocalInfo,
+    },
+    constant: struct {
+        dst: Operand,
+        value: ConstValue,
+    },
     binop: struct {
         dst: Operand,
         op: BinOp,
@@ -99,8 +115,7 @@ pub const Instruction = union(enum) {
         else_block: BlockId,
     },
     phi: struct {
-        dst: Operand,
-        local: LocalInfo,
+        dst: TypedOperand,
         inputs: []PhiInput,
     },
     // stack based fixed size array
@@ -156,7 +171,6 @@ pub const Program = struct {
                     .store_local => |sl| alloc.free(sl.local.name),
                     .load_local => |ll| alloc.free(ll.local.name),
                     .phi => |phi| {
-                        alloc.free(phi.local.name);
                         alloc.free(phi.inputs);
                     },
                     else => {},
@@ -241,8 +255,8 @@ pub const Program = struct {
                         std.debug.print("jump block{d}\n", .{j.target});
                     },
                     .phi => |p| {
-                        p.dst.print();
-                        std.debug.print(" <- phi \"{s}\"(", .{p.local.name});
+                        p.dst.operand.print();
+                        std.debug.print(" <- phi (", .{});
                         for (p.inputs, 0..) |phi, i| {
                             if (i != 0) std.debug.print(", ", .{});
                             std.debug.print("block{d}: ", .{phi.pred});

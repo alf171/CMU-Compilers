@@ -4,7 +4,7 @@ const ArrayList = std.array_list.Managed;
 const common = @import("common");
 const TypeInfo = common.types.TypeInfo;
 const sizeOfType = common.types.sizeOfType;
-const listElementType = common.types.listElementType;
+const getElementType = common.types.getElementType;
 const color = @import("middle").color;
 const regFor = @import("reg.zig").regFor;
 const FirstParamRegister = @import("reg.zig").first_param_reg;
@@ -148,7 +148,7 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                 // heap: [ size ] [elem 0] [...]
                 .list_literal => |ll| {
                     const dst = try regFor(ll.dst, colors);
-                    const elem_type = try listElementType(ll.type);
+                    const elem_type = try getElementType(ll.type);
                     const elem_size = try sizeOfType(elem_type);
                     const byte_count = ll.elements.len * elem_size + 8;
                     const len = ll.elements.len;
@@ -162,7 +162,8 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                         const src = try regFor(element, colors);
                         const offset = i * elem_size + 8;
                         switch (elem_type) {
-                            .int => {
+                            // pointers & ints are size 8
+                            .int, .list, .array => {
                                 try out.print("\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
                             },
                             .bool, .char => {
@@ -178,7 +179,7 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                     const index = try regFor(al.index, colors);
                     const array = try regFor(al.array, colors);
 
-                    const elem_type = try listElementType(al.type);
+                    const elem_type = try getElementType(al.type);
                     switch (elem_type) {
                         // index = index << 3
                         .int => {
@@ -196,17 +197,17 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                     const index = try regFor(ll.index, colors);
                     const array = try regFor(ll.list, colors);
 
-                    const elem_type = try listElementType(ll.type);
+                    const elem_type = try getElementType(ll.type);
                     switch (elem_type) {
                         // index = (index + 1) << 3
-                        .int => {
-                            try out.print("\tlsl {s}, {s}, #3\n", .{ index, index });
-                            try out.print("\tadd {s}, {s}, #8\n", .{ index, index });
-                            try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, index });
+                        .int, .list, .array => {
+                            try out.print("\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
+                            try out.print("\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                            try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
                         },
-                        .bool => {
-                            try out.print("\tadd {s}, {s}, #8\n", .{ index, index });
-                            try out.print("\tldrb w{s}, [{s}, {s}]\n", .{ dst[1..], array, index });
+                        .bool, .char => {
+                            try out.print("\tadd {s}, {s}, #8\n", .{ ScratchReg, index });
+                            try out.print("\tldrb w{s}, [{s}, {s}]\n", .{ dst[1..], array, ScratchReg });
                         },
                         else => return error.TypeNotImpl,
                     }

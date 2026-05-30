@@ -52,7 +52,7 @@ fn getDefines(instruction: Instruction) ?SeenValue {
         .move => |m| .{ .operand = m.dst },
         .unaryop => |uop| .{ .operand = uop.dst },
         .compare => |c| .{ .operand = c.dst },
-        .phi => |pi| .{ .operand = pi.dst },
+        .phi => |pi| .{ .operand = pi.dst.operand },
         .array_literal => |al| .{ .operand = al.dst },
         .array_load => |al| .{ .operand = al.dst },
         else => null,

@@ -1,4 +1,3 @@
-
-for i in range(0, 10):
-    print(i)
-
+j = ["1", "22", "333"]
+for jj in j:
+    print(jj)

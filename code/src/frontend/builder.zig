@@ -24,7 +24,7 @@ pub const IrBuilder = struct {
     next_temp: TempId,
     // name -> LocalId
     locals_by_name: std.StringHashMap(LocalId),
-    // LocalId -> Operand
+    // LocalId -> TypedOperand
     local_values: LocalValues,
     // LocalId -> LocalValues
     locals: ArrayList(LocalInfo),
@@ -63,6 +63,13 @@ pub const IrBuilder = struct {
         const id = self.next_temp;
         self.next_temp += 1;
         return Operand{ .temp = id };
+    }
+
+    pub fn getLocal(self: *@This(), name: []const u8) !LocalId {
+        if (self.locals_by_name.get(name)) |local| {
+            return local;
+        }
+        return error.CantFindLocal;
     }
 
     pub fn getOrCreateLocal(self: *@This(), name: []const u8, typeInfo: ?TypeInfo, alloc: std.mem.Allocator) !LocalId {
