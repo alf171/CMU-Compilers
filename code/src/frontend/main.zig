@@ -37,10 +37,10 @@ test "x = 1 + 2" {
 
     var program = try walkAst(tree, alloc);
     defer program.deinit(alloc);
-    try std.testing.expectEqual(program.blocks.items.len, 1);
+    try std.testing.expectEqual(program.main.blocks.items.len, 1);
     // block0:
-    try std.testing.expectEqual(program.blocks.items[0].id, 0);
-    const instructions = program.blocks.items[0].instructions.items;
+    try std.testing.expectEqual(program.main.blocks.items[0].id, 0);
+    const instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(instructions.len, 4);
     // temp0 <- const 1
     switch (instructions[0]) {
@@ -94,10 +94,10 @@ test "x = true != false" {
 
     var program = try walkAst(tree, alloc);
     defer program.deinit(alloc);
-    try std.testing.expectEqual(program.blocks.items.len, 1);
+    try std.testing.expectEqual(program.main.blocks.items.len, 1);
     // block0:
-    try std.testing.expectEqual(program.blocks.items[0].id, 0);
-    const instructions = program.blocks.items[0].instructions.items;
+    try std.testing.expectEqual(program.main.blocks.items[0].id, 0);
+    const instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(instructions.len, 4);
     // temp0 <- const True
     switch (instructions[0]) {

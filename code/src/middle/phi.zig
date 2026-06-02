@@ -5,7 +5,7 @@ const common = @import("common");
 const Instruction = @import("common").ir.Instruction;
 
 pub fn eliminatePhi(program: *common.ir.Program, alloc: std.mem.Allocator) !void {
-    for (program.blocks.items) |block| {
+    for (program.main.blocks.items) |block| {
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .phi => |phi| {
@@ -21,7 +21,7 @@ pub fn eliminatePhi(program: *common.ir.Program, alloc: std.mem.Allocator) !void
             }
         }
     }
-    for (program.blocks.items) |*block| {
+    for (program.main.blocks.items) |*block| {
         try removePhisFromBlock(block, alloc);
     }
 }
@@ -31,7 +31,7 @@ fn insertMoveBeforeTerminator(
     pred: common.ir.BlockId,
     move: common.ir.Instruction,
 ) !void {
-    var instructions = &program.blocks.items[pred].instructions;
+    var instructions = &program.main.blocks.items[pred].instructions;
     const len = instructions.items.len;
 
     if (len > 0) {

@@ -2,6 +2,7 @@ const std = @import("std");
 const ArrayList = std.array_list.Managed;
 const TypeInfo = @import("types.zig").TypeInfo;
 const TypedOperand = @import("alloc.zig").TypedOperand;
+const Param = @import("alloc.zig").Param;
 const Operand = @import("alloc.zig").Operand;
 const Block = @import("alloc.zig").AllocBlock;
 
@@ -146,21 +147,194 @@ pub const Instruction = union(enum) {
         // TODO: changed list to TypedOperand?
         type: TypeInfo,
     },
+    function_call: struct {
+        dst: ?Operand,
+        function_name: []const u8,
+        // TODO: move to TypedOperand for better error handling
+        args: []Operand,
+    },
     unkown,
+
+    pub fn debugPrint(self: @This()) !void {
+        switch (self) {
+            .constant => |c| {
+                c.dst.print();
+                switch (c.value) {
+                    .int => |value| {
+                        std.debug.print(" <- {any}\n", .{value});
+                    },
+                    .bool => |value| {
+                        std.debug.print(" <- {any}\n", .{value});
+                    },
+                    .char => |value| {
+                        std.debug.print(" <- {any}\n", .{value});
+                    },
+                    .bytes => |value| {
+                        std.debug.print(" <- {s}\n", .{value});
+                    },
+                    .float => {
+                        return error.TypeNotImpl;
+                    },
+                }
+            },
+            .binop => |binop| {
+                binop.dst.print();
+                std.debug.print(" <- {s} ", .{@tagName(binop.op)});
+                binop.lhs.print();
+                std.debug.print(", ", .{});
+                binop.rhs.print();
+                std.debug.print("\n", .{});
+            },
+            .store_local => |sl| {
+                std.debug.print("\"{s}\" <- ", .{sl.local.name});
+                sl.src.print();
+                std.debug.print("\n", .{});
+            },
+            .load_local => |ll| {
+                ll.dst.print();
+                std.debug.print(" <- \"{s}\"\n", .{ll.local.name});
+            },
+            .unaryop => |uop| {
+                uop.dst.print();
+                std.debug.print(" <- {s} ", .{@tagName(uop.op)});
+                uop.src.print();
+                std.debug.print("\n", .{});
+            },
+            .move => |m| {
+                m.dst.print();
+                std.debug.print(" <- ", .{});
+                m.src.print();
+                std.debug.print("\n", .{});
+            },
+            .compare => |c| {
+                c.dst.print();
+                std.debug.print(" <- ", .{});
+                c.lhs.print();
+                std.debug.print(" {s} ", .{c.op.symbol()});
+                c.rhs.print();
+                std.debug.print("\n", .{});
+            },
+            .print => |p| {
+                std.debug.print("print ", .{});
+                p.src.print();
+                std.debug.print("\n", .{});
+            },
+            .jump => |j| {
+                std.debug.print("jump block{d}\n", .{j.target});
+            },
+            .phi => |p| {
+                p.dst.operand.print();
+                std.debug.print(" <- phi (", .{});
+                for (p.inputs, 0..) |phi, i| {
+                    if (i != 0) std.debug.print(", ", .{});
+                    std.debug.print("block{d}: ", .{phi.pred});
+                    phi.value.print();
+                }
+                std.debug.print(")\n", .{});
+            },
+            .branch => |b| {
+                b.condition.print();
+                std.debug.print(" ? jump block{d} : jump block{d}\n", .{ b.then_block, b.else_block });
+            },
+            .list_literal => |al| {
+                al.dst.print();
+                std.debug.print(" <- [", .{});
+                for (al.elements, 0..al.elements.len) |elem, i| {
+                    if (i != 0) std.debug.print(", ", .{});
+                    elem.print();
+                }
+                std.debug.print("]\n", .{});
+            },
+            .array_literal => |al| {
+                al.dst.print();
+                std.debug.print(" <- [", .{});
+                for (al.elements, 0..al.elements.len) |elem, i| {
+                    if (i != 0) std.debug.print(", ", .{});
+                    elem.print();
+                }
+                std.debug.print("]\n", .{});
+            },
+            .list_load => |al| {
+                al.dst.print();
+                std.debug.print(" <- ", .{});
+                al.list.print();
+                std.debug.print("[", .{});
+                al.index.print();
+                std.debug.print("]\n", .{});
+            },
+            .array_load => |al| {
+                al.dst.print();
+                std.debug.print(" <- ", .{});
+                al.array.print();
+                std.debug.print("[", .{});
+                al.index.print();
+                std.debug.print("]\n", .{});
+            },
+            .function_call => |fc| {
+                if (fc.dst) |dst| {
+                    dst.print();
+                    std.debug.print(" <- ", .{});
+                }
+                std.debug.print("{s}(", .{fc.function_name});
+                for (fc.args, 0..fc.args.len) |arg, i| {
+                    if (i != 0) std.debug.print(", ", .{});
+                    arg.print();
+                }
+                std.debug.print(")\n", .{});
+            },
+            else => |term| {
+                std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
+                return error.NotImplemented;
+            },
+        }
+    }
 };
 
-pub const BasicBlock = struct { id: BlockId, instructions: ArrayList(Instruction), successors: ArrayList(BlockId) };
+pub const BasicBlock = struct {
+    id: BlockId,
+    instructions: ArrayList(Instruction),
+    successors: ArrayList(BlockId),
+
+    pub fn init(id: BlockId, alloc: std.mem.Allocator) BasicBlock {
+        return BasicBlock{
+            .id = id,
+            .instructions = ArrayList(Instruction).init(alloc),
+            .successors = ArrayList(BlockId).init(alloc),
+        };
+    }
+};
+
+pub const Function = struct {
+    name: []const u8,
+    params: []Param,
+    return_type: TypeInfo,
+    blocks: ArrayList(BasicBlock),
+    entry_block: BlockId,
+};
 
 pub const Program = struct {
-    blocks: ArrayList(BasicBlock),
+    main: Function,
+    functions: ArrayList(Function),
 
-    pub fn init(alloc: std.mem.Allocator) Program {
-        const blocks = ArrayList(BasicBlock).init(alloc);
-        return Program{ .blocks = blocks };
+    pub fn init(alloc: std.mem.Allocator) !Program {
+        var blocks = ArrayList(BasicBlock).init(alloc);
+        const entry = BasicBlock.init(0, alloc);
+        try blocks.append(entry);
+
+        return Program{
+            .main = Function{
+                .name = "_main",
+                .blocks = blocks,
+                .entry_block = 0,
+                .params = &.{},
+                .return_type = .int,
+            },
+            .functions = ArrayList(Function).init(alloc),
+        };
     }
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
-        for (self.blocks.items) |*block| {
+        for (self.main.blocks.items) |*block| {
             for (block.instructions.items) |*instruction| {
                 switch (instruction.*) {
                     .constant => |c| {
@@ -179,134 +353,28 @@ pub const Program = struct {
             block.instructions.deinit();
             block.successors.deinit();
         }
-        self.blocks.deinit();
+        self.main.blocks.deinit();
     }
 
     pub fn print(self: @This()) !void {
-        for (self.blocks.items) |block| {
-            std.debug.print("\nblock{d}:\n", .{block.id});
+        for (self.functions.items) |function| {
+            std.debug.print("\n{s} -> {s}:\n", .{ function.name, @tagName(function.return_type) });
+            for (function.blocks.items) |block| {
+                std.debug.print("block{d}:\n", .{block.id});
 
-            for (block.instructions.items) |instruction| {
-                std.debug.print("  ", .{});
-                switch (instruction) {
-                    .constant => |c| {
-                        c.dst.print();
-                        switch (c.value) {
-                            .int => |value| {
-                                std.debug.print(" <- {any}\n", .{value});
-                            },
-                            .bool => |value| {
-                                std.debug.print(" <- {any}\n", .{value});
-                            },
-                            .char => |value| {
-                                std.debug.print(" <- {any}\n", .{value});
-                            },
-                            .bytes => |value| {
-                                std.debug.print(" <- {s}\n", .{value});
-                            },
-                            .float => {
-                                return error.TypeNotImpl;
-                            },
-                        }
-                    },
-                    .binop => |binop| {
-                        binop.dst.print();
-                        std.debug.print(" <- {s} ", .{@tagName(binop.op)});
-                        binop.lhs.print();
-                        std.debug.print(", ", .{});
-                        binop.rhs.print();
-                        std.debug.print("\n", .{});
-                    },
-                    .store_local => |sl| {
-                        std.debug.print("\"{s}\" <- ", .{sl.local.name});
-                        sl.src.print();
-                        std.debug.print("\n", .{});
-                    },
-                    .load_local => |ll| {
-                        ll.dst.print();
-                        std.debug.print(" <- \"{s}\"\n", .{ll.local.name});
-                    },
-                    .unaryop => |uop| {
-                        uop.dst.print();
-                        std.debug.print(" <- {s} ", .{@tagName(uop.op)});
-                        uop.src.print();
-                        std.debug.print("\n", .{});
-                    },
-                    .move => |m| {
-                        m.dst.print();
-                        std.debug.print(" <- ", .{});
-                        m.src.print();
-                        std.debug.print("\n", .{});
-                    },
-                    .compare => |c| {
-                        c.dst.print();
-                        std.debug.print(" <- ", .{});
-                        c.lhs.print();
-                        std.debug.print(" {s} ", .{c.op.symbol()});
-                        c.rhs.print();
-                        std.debug.print("\n", .{});
-                    },
-                    .print => |p| {
-                        std.debug.print("print ", .{});
-                        p.src.print();
-                        std.debug.print("\n", .{});
-                    },
-                    .jump => |j| {
-                        std.debug.print("jump block{d}\n", .{j.target});
-                    },
-                    .phi => |p| {
-                        p.dst.operand.print();
-                        std.debug.print(" <- phi (", .{});
-                        for (p.inputs, 0..) |phi, i| {
-                            if (i != 0) std.debug.print(", ", .{});
-                            std.debug.print("block{d}: ", .{phi.pred});
-                            phi.value.print();
-                        }
-                        std.debug.print(")\n", .{});
-                    },
-                    .branch => |b| {
-                        b.condition.print();
-                        std.debug.print(" ? jump block{d} : jump block{d}\n", .{ b.then_block, b.else_block });
-                    },
-                    .list_literal => |al| {
-                        al.dst.print();
-                        std.debug.print(" <- [", .{});
-                        for (al.elements, 0..al.elements.len) |elem, i| {
-                            if (i != 0) std.debug.print(", ", .{});
-                            elem.print();
-                        }
-                        std.debug.print("]\n", .{});
-                    },
-                    .array_literal => |al| {
-                        al.dst.print();
-                        std.debug.print(" <- [", .{});
-                        for (al.elements, 0..al.elements.len) |elem, i| {
-                            if (i != 0) std.debug.print(", ", .{});
-                            elem.print();
-                        }
-                        std.debug.print("]\n", .{});
-                    },
-                    .list_load => |al| {
-                        al.dst.print();
-                        std.debug.print(" <- ", .{});
-                        al.list.print();
-                        std.debug.print("[", .{});
-                        al.index.print();
-                        std.debug.print("]\n", .{});
-                    },
-                    .array_load => |al| {
-                        al.dst.print();
-                        std.debug.print(" <- ", .{});
-                        al.array.print();
-                        std.debug.print("[", .{});
-                        al.index.print();
-                        std.debug.print("]\n", .{});
-                    },
-                    else => |term| {
-                        std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
-                        return error.NotImplemented;
-                    },
+                for (block.instructions.items) |*instruction| {
+                    std.debug.print("  ", .{});
+                    try instruction.debugPrint();
                 }
+            }
+        }
+        std.debug.print("\n{s} -> {s}:\n", .{ self.main.name, @tagName(self.main.return_type) });
+        for (self.main.blocks.items) |block| {
+            std.debug.print("block{d}:\n", .{block.id});
+
+            for (block.instructions.items) |*instruction| {
+                std.debug.print("  ", .{});
+                try instruction.debugPrint();
             }
         }
     }

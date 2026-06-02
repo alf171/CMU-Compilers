@@ -33,16 +33,21 @@ The goal of this project is to learn more about compilers from a lower level. Pr
   - maybe we do sort of ssa like constraints
 
 ## Goals
+
+### Compiler
 - [ ] [critical edge splitting](https://nickdesaulniers.github.io/blog/2023/01/27/critical-edge-splitting/)
 - [ ] blocks could have names for better printing
 - [ ] parallel copy needed according to `lecture 6` in `phi.zig`
 - [ ] sub, mul, div, unary ops like neg
 - [ ] and + or support?
 - [ ] make current optimization cross block + less hacky
+  - run against more than just `_main`
 - [ ] benchmarking?
 - [ ] scalar evolution?
 - [ ] llvm backend?
 - [ ] watch lectures for more ideas
+### Linker
+- [ ] remove clang dep
 
 ## Reading Materials
 - https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms

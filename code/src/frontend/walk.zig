@@ -2,60 +2,40 @@ const std = @import("std");
 const ArrayList = std.array_list.Managed;
 const c = @import("python.zig").c;
 
+const Function = @import("common").ir.Function;
 const ConstValue = @import("common").ir.ConstValue;
+const BasicBlock = @import("common").ir.BasicBlock;
 const types = @import("common").types;
 const getElementType = @import("common").types.getElementType;
 const getElementSize = @import("common").types.getElementSize;
 const TypeInfo = types.TypeInfo;
 const Operand = @import("common").alloc.Operand;
 const TypedOperand = @import("common").alloc.TypedOperand;
+const Param = @import("common").alloc.Param;
 const LocalInfo = @import("common").ir.LocalInfo;
 const LocalId = @import("common").ir.LocalId;
 const Instruction = @import("common").ir.Instruction;
 const BinOp = @import("common").ir.BinOp;
 const CmpOp = @import("common").ir.CmpOp;
 const Program = @import("common").ir.Program;
-const LoopPhi = @import("common").ir.LoopPhi;
 const PhiInput = @import("common").ir.PhiInput;
 const UnaryOp = @import("common").ir.UnaryOp;
 
 const IrBuilder = @import("builder.zig").IrBuilder;
 const LocalValues = @import("builder.zig").LocalValues;
 
+const LoopBody = @import("loop.zig").LoopBody;
+const walkLoop = @import("loop.zig").walkLoop;
+const LoopCarry = @import("loop.zig").LoopCarry;
+const LoopCondition = @import("loop.zig").LoopCondition;
+
 const PyObject = c.PyObject;
 
-const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, Unknown };
+const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, Unknown };
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Subscript, Unknown };
 
 const BuiltinCall = enum { Print, Range };
-
-// TODO: move all this into loop.zig
-pub const LoopCondition = union(enum) { expr: *PyObject, compare: struct { local: LocalId, cmp: CmpOp, rhs_local: LocalId }, operand_compare: struct {
-    carry_index: usize,
-    cmp: CmpOp,
-    rhs: TypedOperand,
-} };
-
-// used for phi book keeping within our callback
-pub const LoopCarry = struct {
-    initial: TypedOperand,
-    current: TypedOperand,
-    next: ?TypedOperand,
-    inputs: []PhiInput,
-};
-
-pub const ForLoopBody = struct {
-    stmt_list: *PyObject,
-    condition_var_name: []const u8,
-    iterator: TypedOperand,
-    iterator_local: ?LocalId,
-};
-
-pub const LoopBody = union(enum) {
-    stmt_list: *PyObject,
-    for_loop: ForLoopBody,
-};
 
 pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
     var irBuilder = try IrBuilder.init(alloc);
@@ -93,6 +73,7 @@ pub fn walkStmt(raw_stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloc
         .If => try walkIf(raw_stmt, irBuilder, alloc),
         .While => try walkWhile(raw_stmt, irBuilder, alloc),
         .For => try walkFor(raw_stmt, irBuilder, alloc),
+        .FuncDef => try walkFuncDef(raw_stmt, irBuilder, alloc),
         else => {
             std.debug.print("unsupported statement type: {s}: ", .{getPyType(raw_stmt)});
             printAstDump(raw_stmt);
@@ -148,7 +129,7 @@ fn walkAnnotatedAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.me
     } });
 }
 
-fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !TypedOperand {
+pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !TypedOperand {
     switch (getExprKind(stmt)) {
         .BinOp => {
             const left = c.PyObject_GetAttrString(stmt, "left");
@@ -362,7 +343,27 @@ fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !T
             const args = c.PyObject_GetAttrString(stmt, "args");
             std.debug.assert(args != null);
 
-            switch (try getBuiltinCall(std.mem.span(name))) {
+            const builtin = getBuiltinCall(std.mem.span(name));
+            // user defined function
+            if (builtin == null) {
+                var arguments = ArrayList(Operand).init(alloc);
+                for (0..@intCast(c.PyList_Size(args))) |i| {
+                    const arg_obj = c.PyList_GetItem(args, @intCast(i));
+                    std.debug.assert(arg_obj != null);
+                    const arg = try walkExpr(arg_obj, irBuilder, alloc);
+                    try arguments.append(arg.operand);
+                }
+                const dst = irBuilder.nextTemp();
+                try irBuilder.emit(Instruction{ .function_call = .{
+                    .function_name = std.mem.span(name),
+                    .dst = dst,
+                    .args = try arguments.toOwnedSlice(),
+                } });
+                // TODO: dont hardcode .int return
+                return TypedOperand{ .operand = dst, .type = .int };
+            }
+
+            switch (builtin.?) {
                 .Print => {
                     std.debug.assert(c.PyList_Size(args) == 1);
                     const arg0 = c.PyList_GetItem(args, 0);
@@ -565,18 +566,6 @@ pub fn walkWhile(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocato
     try walkLoop(irBuilder, LoopCondition{ .expr = test_ }, LoopBody{ .stmt_list = body }, &.{}, callback.loop, orelse_, alloc);
 }
 
-// :skeleton impl:
-// for i in range(start, stop):
-//     body
-// ==>
-// arr = [...] # range
-// i_index = 0
-// while i < len(arr):
-//     i = arr[i_index]
-//     body
-//     i_index = i_index + 1
-// ==>
-//
 // arr = [...] # range
 // len = len(arr)
 // index0 = 0
@@ -705,6 +694,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
         .value = .{ .int = @intCast(try len) },
     } });
 
+    // set for j in jj where type(jj) == array
     const iterator_local: ?LocalId = if (getExprKind(iter) == .Name) blk: {
         const id_obj = c.PyObject_GetAttrString(iter, "id");
         std.debug.assert(id_obj != null);
@@ -735,153 +725,49 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
     );
 }
 
-fn walkLoop(
-    irBuilder: *IrBuilder,
-    condition: LoopCondition,
-    body: LoopBody,
-    carries: []LoopCarry,
-    bodyCallback: *const fn (LoopBody, []LoopCarry, *IrBuilder, std.mem.Allocator) anyerror!void,
-    orelse_: ?*PyObject,
-    alloc: std.mem.Allocator,
-) !void {
-    var before_values = try irBuilder.cloneLocalValues(alloc);
-    defer before_values.deinit();
+// FunctionDef(name='foobar', args=arguments(args=[arg(arg='x'), arg(arg='y')]), body=[Expr(value=Call(func=Name(id='print', ctx=Load()), args=[Name(id='x', ctx=Load())])), Expr(value=Call(func=Name(id='print', ctx=Load()), args=[Name(id='y', ctx=Load())])), Return(value=BinOp(left=Name(id='x', ctx=Load()), op=Add(), right=Name(id='y', ctx=Load())))])
+pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!void {
+    const func_name_obj = c.PyObject_GetAttrString(stmt, "name");
+    std.debug.assert(func_name_obj != null);
+    const func_name = c.PyUnicode_AsUTF8(func_name_obj);
+    std.debug.assert(func_name != null);
+    const args_obj = c.PyObject_GetAttrString(stmt, "args");
+    std.debug.assert(args_obj != null);
+    const args_list = c.PyObject_GetAttrString(args_obj, "args");
+    std.debug.assert(args_list != null);
 
-    const condition_block = try irBuilder.newBlock(alloc);
-    const body_block = try irBuilder.newBlock(alloc);
-    const exit_block = try irBuilder.newBlock(alloc);
+    var params = ArrayList(Param).init(alloc);
+    // args is not a list!
+    for (0..@intCast(c.PyList_Size(args_list))) |i| {
+        const arg_obj = c.PyList_GetItem(args_list, @intCast(i));
+        std.debug.assert(arg_obj != null);
 
-    const entry_block = irBuilder.current_block;
-    try irBuilder.emit(Instruction{ .jump = .{ .target = condition_block } });
-    try irBuilder.addSuccessor(entry_block, condition_block);
+        const arg_obj_name = c.PyObject_GetAttrString(arg_obj, "arg");
+        std.debug.assert(arg_obj_name != null);
+        const annotation = c.PyObject_GetAttrString(arg_obj, "annotation");
+        std.debug.assert(annotation != null);
+        const arg_type = try parseTypeAnnotation(annotation);
+        const raw_name = c.PyUnicode_AsUTF8(arg_obj_name);
+        std.debug.assert(raw_name != null);
+        const name = std.mem.span(raw_name);
 
-    irBuilder.setCurrentBlock(condition_block);
-    irBuilder.local_values.clearRetainingCapacity();
-    var loop_values = LocalValues.init(alloc);
-    defer loop_values.deinit();
-    var loop_phis = ArrayList(LoopPhi).init(alloc);
-    defer loop_phis.deinit();
-
-    var before_it = before_values.iterator();
-    // shadowed values causing phis
-    while (before_it.next()) |entry| {
-        const local = entry.key_ptr.*;
-        const before_val = entry.value_ptr.*;
-
-        var inputs = try alloc.alloc(PhiInput, 2);
-        inputs[0] = .{ .pred = entry_block, .value = before_val.operand };
-        inputs[1] = undefined;
-
-        const dst = TypedOperand{
-            .operand = irBuilder.nextTemp(),
-            .type = before_val.type,
-        };
-        try irBuilder.emit(Instruction{ .phi = .{
-            .dst = dst,
-            .inputs = inputs,
-        } });
-        try irBuilder.local_values.put(local, dst);
-        try loop_values.put(local, dst);
-        try loop_phis.append(LoopPhi{
-            .local = local,
-            .phi_inputs = inputs,
-            .dst = dst,
+        try params.append(Param{
+            .name = try alloc.dupe(u8, name),
+            .type = arg_type,
         });
     }
 
-    // callee defined phis
-    for (carries) |*carry| {
-        var inputs = try alloc.alloc(PhiInput, 2);
-        inputs[0] = .{ .pred = entry_block, .value = carry.initial.operand };
-        inputs[1] = undefined;
-        const dst = TypedOperand{
-            .operand = irBuilder.nextTemp(),
-            .type = carry.initial.type,
-        };
-        try irBuilder.emit(Instruction{ .phi = .{
-            .dst = dst,
-            .inputs = inputs,
-        } });
+    const returns = c.PyObject_GetAttrString(stmt, "returns");
+    const return_type = try parseTypeAnnotation(returns);
 
-        carry.current = dst;
-        carry.inputs = inputs;
-    }
-
-    const condition_expr = switch (condition) {
-        .expr => |cond| (try walkExpr(cond, irBuilder, alloc)).operand,
-        .compare => |comp| blk: {
-            const dst = irBuilder.nextTemp();
-            const lhs = irBuilder.local_values.get(comp.local) orelse return error.LocalNotFound;
-            const rhs = irBuilder.local_values.get(comp.rhs_local) orelse return error.LocalNotFound;
-            try irBuilder.emit(Instruction{ .compare = .{
-                .dst = dst,
-                .lhs = lhs.operand,
-                .op = comp.cmp,
-                .rhs = rhs.operand,
-            } });
-            break :blk dst;
-        },
-        .operand_compare => |comp| blk: {
-            const dst = irBuilder.nextTemp();
-            const lhs = carries[comp.carry_index].current;
-            try irBuilder.emit(Instruction{ .compare = .{
-                .dst = dst,
-                .lhs = lhs.operand,
-                .op = comp.cmp,
-                .rhs = comp.rhs.operand,
-            } });
-            break :blk dst;
-        },
-    };
-
-    try irBuilder.emit(Instruction{
-        .branch = .{
-            .condition = condition_expr,
-            .then_block = body_block,
-            .else_block = exit_block,
-        },
+    try irBuilder.program.functions.append(Function{
+        .name = try alloc.dupe(u8, std.mem.span(func_name)),
+        .params = try params.toOwnedSlice(),
+        .return_type = return_type,
+        // TODO: we shouldn't expose basic blocks here
+        .blocks = ArrayList(BasicBlock).init(alloc),
+        .entry_block = 0,
     });
-    try irBuilder.addSuccessor(condition_block, body_block);
-    try irBuilder.addSuccessor(condition_block, exit_block);
-
-    // body block
-    irBuilder.setCurrentBlock(body_block);
-    // naively restore since we dont support walrus
-    try irBuilder.restoreLocalValues(&loop_values);
-
-    // crux
-    try bodyCallback(body, carries, irBuilder, alloc);
-
-    var body_values = try irBuilder.cloneLocalValues(alloc);
-    defer body_values.deinit();
-    for (loop_phis.items) |loop_phi| {
-        const value = body_values.get(loop_phi.local) orelse loop_phi.dst;
-        loop_phi.phi_inputs[1] = .{
-            .pred = body_block,
-            .value = value.operand,
-        };
-    }
-
-    for (carries) |carry| {
-        const value = carry.next orelse return error.CarryNotSet;
-        carry.inputs[1] = .{
-            .pred = body_block,
-            .value = value.operand,
-        };
-    }
-
-    try irBuilder.emit(Instruction{
-        .jump = .{ .target = condition_block },
-    });
-    try irBuilder.addSuccessor(body_block, condition_block);
-
-    // exit block
-    irBuilder.setCurrentBlock(exit_block);
-    // naively restore since we dont support walrus
-    try irBuilder.restoreLocalValues(&loop_values);
-    if (orelse_) |orelse_val| {
-        try walkStmtList(orelse_val, irBuilder, alloc);
-    }
 }
 
 fn getBinOp(expr: *PyObject) !BinOp {
@@ -937,6 +823,7 @@ fn getStmtKind(stmt: *PyObject) StmtKind {
     if (std.mem.eql(u8, name, "While")) return .While;
     if (std.mem.eql(u8, name, "For")) return .For;
     if (std.mem.eql(u8, name, "AnnAssign")) return .AnnotatedAssign;
+    if (std.mem.eql(u8, name, "FunctionDef")) return .FuncDef;
     return .Unknown;
 }
 
@@ -1021,13 +908,13 @@ fn printAstDump(node: *PyObject) void {
     std.debug.print("{s}\n", .{dumped});
 }
 
-fn getBuiltinCall(name: []const u8) !BuiltinCall {
+fn getBuiltinCall(name: []const u8) ?BuiltinCall {
     if (std.mem.eql(u8, name, "range")) {
         return BuiltinCall.Range;
     } else if (std.mem.eql(u8, name, "print")) {
         return BuiltinCall.Print;
     }
-    return error.UnsupportedCall;
+    return null;
 }
 
 fn getConstInt(expr: *PyObject) !i64 {
@@ -1062,12 +949,12 @@ test "while loop" {
     var program = try walkAst(tree, alloc);
     defer program.deinit(alloc);
 
-    try std.testing.expectEqual(@as(usize, 4), program.blocks.items.len);
+    try std.testing.expectEqual(@as(usize, 4), program.main.blocks.items.len);
 
-    const entry = program.blocks.items[0].instructions.items;
-    const condition = program.blocks.items[1].instructions.items;
-    const body = program.blocks.items[2].instructions.items;
-    const exit = program.blocks.items[3].instructions.items;
+    const entry = program.main.blocks.items[0].instructions.items;
+    const condition = program.main.blocks.items[1].instructions.items;
+    const body = program.main.blocks.items[2].instructions.items;
+    const exit = program.main.blocks.items[3].instructions.items;
 
     try std.testing.expectEqualDeep(
         Instruction{ .constant = .{ .dst = .{ .temp = 0 }, .value = .{ .int = 0 } } },

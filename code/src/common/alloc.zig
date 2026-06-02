@@ -156,6 +156,11 @@ pub const Operand = union(enum) {
     }
 };
 
+pub const Param = struct {
+    name: []const u8,
+    type: TypeInfo,
+};
+
 pub const TypedOperand = struct {
     operand: Operand,
     type: TypeInfo,

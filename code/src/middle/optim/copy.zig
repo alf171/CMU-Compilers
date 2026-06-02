@@ -10,7 +10,7 @@ const Instruction = @import("common").ir.Instruction;
 const HashMap = std.AutoHashMap;
 
 pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
-    for (program.blocks.items) |block| {
+    for (program.main.blocks.items) |block| {
         // copy prop will only work within a basic block
         var copyMap = HashMap(Operand, Operand).init(alloc);
         defer copyMap.deinit();
@@ -80,9 +80,9 @@ fn resolve(op: Operand, copyMap: *HashMap(Operand, Operand)) Operand {
 test "basic block copy prop" {
     const alloc = std.testing.allocator;
 
-    var blocks = ArrayList(BasicBlock).init(alloc);
-
-    var instructions = ArrayList(Instruction).init(alloc);
+    var program = try Program.init(alloc);
+    defer program.deinit(alloc);
+    var instructions = &program.main.blocks.items[0].instructions;
 
     // t1 = t0
     try instructions.append(Instruction{ .move = .{
@@ -100,18 +100,8 @@ test "basic block copy prop" {
         .type = .int,
     } });
 
-    const block = BasicBlock{
-        .id = 0,
-        .instructions = instructions,
-        .successors = ArrayList(BlockId).init(alloc),
-    };
-    try blocks.append(block);
-
-    var program = Program{ .blocks = blocks };
-    defer program.deinit(alloc);
-
     try run(&program, alloc);
-    const new_instructions = program.blocks.items[0].instructions.items;
+    const new_instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(3, new_instructions.len);
 
     // t1 = t0

@@ -13,7 +13,7 @@ const SeenValue = union(enum) { operand: Operand, local: LocalId };
 
 /// run dead code elimination
 pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
-    for (program.blocks.items) |*block| {
+    for (program.main.blocks.items) |*block| {
         const instructions = block.instructions.items;
         var seen = HashMap(SeenValue, void).init(alloc);
         defer seen.deinit();
@@ -131,9 +131,9 @@ fn hasSideEffects(instruction: Instruction) bool {
 test "basic block elim" {
     const alloc = std.testing.allocator;
 
-    var blocks = ArrayList(BasicBlock).init(alloc);
-
-    var instructions = ArrayList(Instruction).init(alloc);
+    var program = try Program.init(alloc);
+    defer program.deinit(alloc);
+    var instructions = &program.main.blocks.items[0].instructions;
 
     // t1 = t0
     try instructions.append(Instruction{ .move = .{
@@ -151,18 +151,8 @@ test "basic block elim" {
         .type = .char,
     } });
 
-    const block = BasicBlock{
-        .id = 0,
-        .instructions = instructions,
-        .successors = ArrayList(BlockId).init(alloc),
-    };
-    try blocks.append(block);
-
-    var program = Program{ .blocks = blocks };
-    defer program.deinit(alloc);
-
     try run(&program, alloc);
-    const new_instructions = program.blocks.items[0].instructions.items;
+    const new_instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(1, new_instructions.len);
     // print(t0)
     try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .print = .{

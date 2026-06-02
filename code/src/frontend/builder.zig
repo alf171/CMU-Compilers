@@ -19,6 +19,7 @@ pub const LocalValues = std.AutoHashMap(LocalId, TypedOperand);
 pub const IrBuilder = struct {
     program: Program,
     current_block: BlockId,
+    current_function: ?usize,
     next_block: BlockId,
     next_local: LocalId,
     next_temp: TempId,
@@ -30,14 +31,11 @@ pub const IrBuilder = struct {
     locals: ArrayList(LocalInfo),
 
     pub fn init(alloc: std.mem.Allocator) !IrBuilder {
-        var program = Program.init(alloc);
-
-        const entry = BasicBlock{ .id = 0, .instructions = ArrayList(Instruction).init(alloc), .successors = ArrayList(BlockId).init(alloc) };
-
-        try program.blocks.append(entry);
+        const program = try Program.init(alloc);
 
         return IrBuilder{
             .program = program,
+            .current_function = null,
             .current_block = 0,
             .next_block = 1,
             .next_local = 0,
@@ -57,6 +55,13 @@ pub const IrBuilder = struct {
         self.locals_by_name.deinit();
         self.local_values.deinit();
         self.locals.deinit();
+    }
+
+    pub fn currentBlocks(self: *@This()) *ArrayList(BasicBlock) {
+        if (self.current_function) |i| {
+            return &self.program.functions.items[i].blocks;
+        }
+        return &self.program.main.blocks;
     }
 
     pub fn nextTemp(self: *@This()) Operand {
@@ -87,7 +92,7 @@ pub const IrBuilder = struct {
     }
 
     pub fn emit(self: *@This(), instruct: Instruction) !void {
-        try self.program.blocks.items[self.current_block].instructions.append(instruct);
+        try self.currentBlocks().items[self.current_block].instructions.append(instruct);
     }
 
     pub fn newBlock(self: *@This(), alloc: std.mem.Allocator) !BlockId {
@@ -99,7 +104,7 @@ pub const IrBuilder = struct {
             .successors = ArrayList(BlockId).init(alloc),
         };
 
-        try self.program.blocks.append(new_block);
+        try self.currentBlocks().append(new_block);
         return id;
     }
 
@@ -108,7 +113,7 @@ pub const IrBuilder = struct {
     }
 
     pub fn addSuccessor(self: *@This(), from: BlockId, to: BlockId) !void {
-        try self.program.blocks.items[from].successors.append(to);
+        try self.currentBlocks().items[from].successors.append(to);
     }
 
     pub fn cloneLocalValues(self: *@This(), alloc: std.mem.Allocator) !LocalValues {

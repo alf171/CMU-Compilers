@@ -20,7 +20,7 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
     defer locals.deinit();
 
     var instruction_index: usize = 0;
-    for (program.blocks.items) |block| {
+    for (program.main.blocks.items) |block| {
         const start = res.lines.items.len;
         for (block.instructions.items) |instruction| {
             var line = AllocLine{
@@ -90,6 +90,12 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
                     try line.defines.ops.put(al.dst, {});
                     try line.uses.ops.put(al.array, {});
                     try line.uses.ops.put(al.index, {});
+                },
+                .function_call => |fc| {
+                    if (fc.dst) |dst| try line.defines.ops.put(dst, {});
+                    for (fc.args) |arg| {
+                        try line.uses.ops.put(arg, {});
+                    }
                 },
                 else => {
                     return error.NotImplemented;

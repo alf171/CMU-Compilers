@@ -44,7 +44,7 @@ pub fn main(init: std.process.Init) !void {
 
     std.debug.print("{s}running program:{s}", .{ underline_code, reset_code });
     if (should_optim) std.debug.print(" (OPTIM={})", .{should_optim});
-    std.debug.print("\n{s}", .{code});
+    std.debug.print("\n\n{s}", .{code});
 
     const ast_module = c.PyImport_ImportModule("ast");
     const parse_fn = c.PyObject_GetAttrString(ast_module, "parse");
@@ -56,7 +56,7 @@ pub fn main(init: std.process.Init) !void {
 
     // dump ir after optim pass
     if (should_dump_ir) {
-        std.debug.print("{s}pre phi elimination:{s}\n", .{ underline_code, reset_code });
+        std.debug.print("\n{s}pre phi elimination:{s}\n", .{ underline_code, reset_code });
         try ir_program.print();
     }
 
@@ -70,7 +70,7 @@ pub fn main(init: std.process.Init) !void {
 
     // dump ir after optim pass
     if (should_dump_ir) {
-        std.debug.print("{s}post phi elimination:{s}\n", .{ underline_code, reset_code });
+        std.debug.print("\n{s}post phi elimination:{s}\n", .{ underline_code, reset_code });
         try ir_program.print();
     }
 
@@ -113,7 +113,7 @@ pub fn main(init: std.process.Init) !void {
         const run_result = try runCommand(alloc, io, &.{"/tmp/integration_out"});
         defer alloc.free(run_result.stdout);
         defer alloc.free(run_result.stderr);
-        std.debug.print("{s}actual output:{s}\n{s}", .{ underline_code, reset_code, run_result.stdout });
+        std.debug.print("\n{s}actual output:{s}\n{s}", .{ underline_code, reset_code, run_result.stdout });
     }
 }
 

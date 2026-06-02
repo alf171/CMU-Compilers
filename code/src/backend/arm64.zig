@@ -32,7 +32,7 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
     var next_array_slot: usize = 0;
     defer strings.deinit();
 
-    for (program.blocks.items) |block| {
+    for (program.main.blocks.items) |block| {
         try out.print("L{d}:\n", .{block.id});
         for (block.instructions.items) |instruction| {
             switch (instruction) {
@@ -311,7 +311,7 @@ fn createFooter(out: *ArrayList(u8), strings: []const []const u8, local_stack_si
 
 fn countLocals(program: *const common.ir.Program) usize {
     var max_local: ?common.ir.LocalId = null;
-    for (program.blocks.items) |block| {
+    for (program.main.blocks.items) |block| {
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .store_local => |sl| {
@@ -329,7 +329,7 @@ fn countLocals(program: *const common.ir.Program) usize {
 
 fn countArraySlots(program: *const common.ir.Program) usize {
     var slots: usize = 0;
-    for (program.blocks.items) |block| {
+    for (program.main.blocks.items) |block| {
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .array_literal => |al| slots += al.elements.len,
