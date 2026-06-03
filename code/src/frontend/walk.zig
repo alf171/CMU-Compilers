@@ -31,7 +31,7 @@ const LoopCondition = @import("loop.zig").LoopCondition;
 
 const PyObject = c.PyObject;
 
-const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, Unknown };
+const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, Return, Unknown };
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Subscript, Unknown };
 
@@ -74,6 +74,7 @@ pub fn walkStmt(raw_stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloc
         .While => try walkWhile(raw_stmt, irBuilder, alloc),
         .For => try walkFor(raw_stmt, irBuilder, alloc),
         .FuncDef => try walkFuncDef(raw_stmt, irBuilder, alloc),
+        .Return => try walkReturn(raw_stmt, irBuilder, alloc),
         else => {
             std.debug.print("unsupported statement type: {s}: ", .{getPyType(raw_stmt)});
             printAstDump(raw_stmt);
@@ -737,7 +738,6 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     std.debug.assert(args_list != null);
 
     var params = ArrayList(Param).init(alloc);
-    // args is not a list!
     for (0..@intCast(c.PyList_Size(args_list))) |i| {
         const arg_obj = c.PyList_GetItem(args_list, @intCast(i));
         std.debug.assert(arg_obj != null);
@@ -760,14 +760,66 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     const returns = c.PyObject_GetAttrString(stmt, "returns");
     const return_type = try parseTypeAnnotation(returns);
 
+    var blocks = ArrayList(BasicBlock).init(alloc);
+    try blocks.append(BasicBlock.init(0, alloc));
+
     try irBuilder.program.functions.append(Function{
         .name = try alloc.dupe(u8, std.mem.span(func_name)),
         .params = try params.toOwnedSlice(),
         .return_type = return_type,
-        // TODO: we shouldn't expose basic blocks here
-        .blocks = ArrayList(BasicBlock).init(alloc),
+        .blocks = blocks,
         .entry_block = 0,
     });
+
+    // save function state
+    const saved_current_function = irBuilder.current_function;
+    const saved_current_block = irBuilder.current_block;
+    const saved_next_block = irBuilder.next_block;
+    var saved_local_values = try irBuilder.cloneLocalValues(alloc);
+    defer saved_local_values.deinit();
+
+    // set function state
+    irBuilder.current_function = irBuilder.program.functions.items.len - 1;
+    irBuilder.current_block = 0;
+    irBuilder.next_block = 1;
+    irBuilder.local_values.clearRetainingCapacity();
+
+    // load function params
+    const function = try irBuilder.currentFunction();
+    for (function.params, 0..) |param, i| {
+        const value = TypedOperand{
+            .operand = irBuilder.nextTemp(),
+            .type = param.type,
+        };
+
+        try irBuilder.emit(Instruction{ .function_param = .{
+            .dst = value,
+            .name = try alloc.dupe(u8, param.name),
+            .index = i,
+        } });
+
+        const local = try irBuilder.getOrCreateLocal(param.name, param.type, alloc);
+        try irBuilder.local_values.put(local, value);
+    }
+
+    const body = c.PyObject_GetAttrString(stmt, "body");
+    std.debug.assert(body != null);
+    try walkStmtList(body, irBuilder, alloc);
+    // restore function state
+    irBuilder.current_function = saved_current_function;
+    irBuilder.current_block = saved_current_block;
+    irBuilder.next_block = saved_next_block;
+    try irBuilder.restoreLocalValues(&saved_local_values);
+}
+
+// Return(value=BinOp(left=Name(id='x', ctx=Load()), op=Add(), right=Name(id='y', ctx=Load())))
+fn walkReturn(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !void {
+    const value = c.PyObject_GetAttrString(stmt, "value");
+    std.debug.assert(value != null);
+    const expr = try walkExpr(value, irBuilder, alloc);
+    try irBuilder.emit(Instruction{ .function_return = .{
+        .value = expr.operand,
+    } });
 }
 
 fn getBinOp(expr: *PyObject) !BinOp {
@@ -824,6 +876,7 @@ fn getStmtKind(stmt: *PyObject) StmtKind {
     if (std.mem.eql(u8, name, "For")) return .For;
     if (std.mem.eql(u8, name, "AnnAssign")) return .AnnotatedAssign;
     if (std.mem.eql(u8, name, "FunctionDef")) return .FuncDef;
+    if (std.mem.eql(u8, name, "Return")) return .Return;
     return .Unknown;
 }
 

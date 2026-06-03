@@ -6,6 +6,7 @@ const AllocProgram = common.alloc.AllocProgram;
 const AllocBlock = common.alloc.AllocBlock;
 const AllocLine = common.alloc.AllocLine;
 const Operands = common.alloc.Operands;
+const Function = common.ir.Function;
 const FrontEndProgram = common.ir.Program;
 
 /// generate the necessary information such that we do register selection eventually
@@ -16,15 +17,29 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
         .register_count = common.alloc.REG_COUNT,
     };
 
+    var instruction_index: usize = 0;
+    for (program.functions.items) |function| {
+        try lowerBlocks(function.blocks.items, &res, &instruction_index, alloc);
+    }
+    try lowerBlocks(program.main.blocks.items, &res, &instruction_index, alloc);
+
+    return res;
+}
+
+fn lowerBlocks(
+    blocks: []const common.ir.BasicBlock,
+    res: *AllocProgram,
+    instruction_index: *usize,
+    alloc: std.mem.Allocator,
+) !void {
     var locals = std.AutoHashMap(common.ir.LocalId, common.alloc.Operand).init(alloc);
     defer locals.deinit();
 
-    var instruction_index: usize = 0;
-    for (program.main.blocks.items) |block| {
+    for (blocks) |block| {
         const start = res.lines.items.len;
         for (block.instructions.items) |instruction| {
             var line = AllocLine{
-                .instruction_index = instruction_index,
+                .instruction_index = instruction_index.*,
                 .uses = Operands.init(alloc),
                 .defines = Operands.init(alloc),
                 .live_out = Operands.init(alloc),
@@ -97,13 +112,21 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
                         try line.uses.ops.put(arg, {});
                     }
                 },
+                .function_param => |fp| {
+                    try line.defines.ops.put(fp.dst.operand, {});
+                },
+                .function_return => |fr| {
+                    if (fr.value) |value| {
+                        try line.uses.ops.put(value, {});
+                    }
+                },
                 else => {
                     return error.NotImplemented;
                 },
             }
 
             try res.lines.append(line);
-            instruction_index += 1;
+            instruction_index.* += 1;
         }
         const end = res.lines.items.len;
         var successors = ArrayList(u32).init(alloc);
@@ -116,8 +139,6 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
             .successors = successors,
         });
     }
-
-    return res;
 }
 
 test "lower" {

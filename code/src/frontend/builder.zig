@@ -4,6 +4,7 @@ const BlockId = @import("common").ir.BlockId;
 const LocalId = @import("common").ir.LocalId;
 const LocalInfo = @import("common").ir.LocalInfo;
 const TempId = @import("common").ir.TempId;
+const Function = @import("common").ir.Function;
 const TypeInfo = @import("common").types.TypeInfo;
 
 const BasicBlock = @import("common").ir.BasicBlock;
@@ -62,6 +63,13 @@ pub const IrBuilder = struct {
             return &self.program.functions.items[i].blocks;
         }
         return &self.program.main.blocks;
+    }
+
+    pub fn currentFunction(self: *@This()) !*Function {
+        if (self.current_function) |i| {
+            return &self.program.functions.items[i];
+        }
+        return error.CantFindCurrentFunction;
     }
 
     pub fn nextTemp(self: *@This()) Operand {

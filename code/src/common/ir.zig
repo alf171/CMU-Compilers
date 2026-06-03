@@ -153,6 +153,14 @@ pub const Instruction = union(enum) {
         // TODO: move to TypedOperand for better error handling
         args: []Operand,
     },
+    function_return: struct {
+        value: ?Operand,
+    },
+    function_param: struct {
+        dst: TypedOperand,
+        name: []const u8,
+        index: usize,
+    },
     unkown,
 
     pub fn debugPrint(self: @This()) !void {
@@ -282,6 +290,17 @@ pub const Instruction = union(enum) {
                 }
                 std.debug.print(")\n", .{});
             },
+            .function_return => |fr| {
+                std.debug.print("return ", .{});
+                if (fr.value) |value| {
+                    value.print();
+                }
+                std.debug.print("\n", .{});
+            },
+            .function_param => |fp| {
+                fp.dst.operand.print();
+                std.debug.print(" <- param {d}\n", .{fp.index});
+            },
             else => |term| {
                 std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
                 return error.NotImplemented;
@@ -323,7 +342,7 @@ pub const Program = struct {
 
         return Program{
             .main = Function{
-                .name = "_main",
+                .name = "main",
                 .blocks = blocks,
                 .entry_block = 0,
                 .params = &.{},
