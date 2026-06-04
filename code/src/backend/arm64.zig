@@ -4,9 +4,12 @@ const ArrayList = std.array_list.Managed;
 const common = @import("common");
 const TypeInfo = common.types.TypeInfo;
 const sizeOfType = common.types.sizeOfType;
+const Block = common.ir.BasicBlock;
+const Function = common.ir.Function;
 const getElementType = common.types.getElementType;
 const color = @import("middle").color;
 const regFor = @import("reg.zig").regFor;
+const paramRegFor = @import("reg.zig").paramRegFor;
 const FirstParamRegister = @import("reg.zig").first_param_reg;
 const CalleeSafeRegisters = @import("reg.zig").callee_safe_regs;
 const CalleReturnRegister = @import("reg.zig").callee_return_reg;
@@ -16,24 +19,34 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
     var out = ArrayList(u8).init(alloc);
     errdefer out.deinit();
 
-    const local_count = countLocals(program);
-    const array_slot_count = countArraySlots(program);
+    try createProgramHeader(&out);
+    try emitFunction(&out, colors, &program.main, true);
+    for (program.functions.items) |function| {
+        try emitFunction(&out, colors, &function, false);
+    }
+
+    try createFooter(&out);
+
+    return out.toOwnedSlice();
+}
+
+fn emitFunction(
+    out: *ArrayList(u8),
+    colors: *const color.ColoredGraph,
+    function: *const Function,
+    is_main: bool,
+) !void {
+    const local_count = countLocals(&function.blocks);
+    const array_slot_count = countArraySlots(&function.blocks);
     const local_stack_size = std.mem.alignForward(
         usize,
         (array_slot_count + local_count) * 8,
         16,
     );
-
-    try createHeader(&out, local_stack_size);
-
-    var strings = ArrayList([]const u8).init(alloc);
-    var string_count: usize = 0;
-    string_count += 1;
+    try createFunctionHeader(out, function.name, local_stack_size);
     var next_array_slot: usize = 0;
-    defer strings.deinit();
-
-    for (program.main.blocks.items) |block| {
-        try out.print("L{d}:\n", .{block.id});
+    for (function.blocks.items) |block| {
+        try out.print("_{s}_L{d}:\n", .{ function.name, block.id });
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .constant => |c| {
@@ -118,11 +131,11 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                 .branch => |b| {
                     const cond = try regFor(b.condition, colors);
                     try out.print("\tcmp {s}, #0\n", .{cond});
-                    try out.print("\tb.ne L{d}\n", .{b.then_block});
-                    try out.print("\tb L{d}\n", .{b.else_block});
+                    try out.print("\tb.ne _{s}_L{d}\n", .{ function.name, b.then_block });
+                    try out.print("\tb _{s}_L{d}\n", .{ function.name, b.else_block });
                 },
                 .jump => |j| {
-                    try out.print("\tb L{d}\n", .{j.target});
+                    try out.print("\tb _{s}_L{d}\n", .{ function.name, j.target });
                 },
                 // x29 - 8  local: items pointer
                 // x29 - 16 array[2]
@@ -212,6 +225,32 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
                         else => return error.TypeNotImpl,
                     }
                 },
+                .function_call => |fc| {
+                    for (fc.args, 0..) |arg, i| {
+                        const dst = try paramRegFor(i);
+                        const src = try regFor(arg, colors);
+                        try out.print("\tmov {s}, {s}\n", .{ dst, src });
+                    }
+
+                    try out.print("\tbl _{s}\n", .{fc.function_name});
+
+                    if (fc.dst) |dst_op| {
+                        const dst = try regFor(dst_op, colors);
+                        try out.print("\tmov {s}, x0\n", .{dst});
+                    }
+                },
+                .function_param => |fp| {
+                    const dst = try regFor(fp.dst.operand, colors);
+                    const src = try paramRegFor(fp.index);
+                    try out.print("\tmov {s}, {s}\n", .{ dst, src });
+                },
+                .function_return => |fr| {
+                    if (fr.value) |src_op| {
+                        const src = try regFor(src_op, colors);
+                        try out.print("\tmov x0, {s}\n", .{src});
+                    }
+                    try out.print("\tb _{s}_epilogue\n", .{function.name});
+                },
                 else => |ir| {
                     std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(ir)});
                     return error.NotSupported;
@@ -219,31 +258,16 @@ pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph
             }
         }
     }
-    try createFooter(&out, strings.items, local_stack_size);
-
-    return out.toOwnedSlice();
+    try createFunctionFooter(out, function.name, local_stack_size, is_main);
 }
 
-// .section __TEXT,__text
-//   Switch to the Mach-O executable code section. All following instructions
-//   are emitted as program code until another section is selected.
-// .global _main
-//   Export the _main symbol so the linker can use it as the program entry
-//   point. On macOS, C symbols use a leading underscore, so main becomes _main.
-// _main:
-//   Define the _main label. Execution starts here when the program runs.
-// stp x29, x30, [sp, #-16]!
-//   Allocate 16 bytes on the stack, then store x29 and x30 there.
-//   x29 is the frame pointer. x30 is the link register / return address.
-//   The ! means pre-indexed addressing: update sp first, then store.
-// mov x29, sp
-//   Set this function's frame pointer to the current stack pointer.
-// sub sp, sp, #local_stack_size
-//   offset my number of local variables
-pub fn createHeader(out: *ArrayList(u8), local_stack_size: usize) !void {
+fn createProgramHeader(out: *ArrayList(u8)) !void {
     try out.appendSlice(".section __TEXT,__text\n");
     try out.appendSlice(".global _main\n");
-    try out.appendSlice("_main:\n");
+}
+
+fn createFunctionHeader(out: *ArrayList(u8), name: []const u8, local_stack_size: usize) !void {
+    try out.print("_{s}:\n", .{name});
     try out.appendSlice("\tstp x29, x30, [sp, #-16]!\n");
     try out.appendSlice("\tmov x29, sp\n");
     if (local_stack_size > 0) {
@@ -273,23 +297,12 @@ fn restoreCallleSafeReg(out: *ArrayList(u8)) !void {
     }
 }
 
-// mov w0, #0
-//   Return 0 from main. On ARM64, integer return values are placed in w0.
-// ldp x29, x30, [sp], #16
-//   Restore the caller's frame pointer (x29) and return address (x30)
-//   from the stack, then move sp back up by 16 bytes.
-// ret
-//   Return to the caller by jumping to the address in x30.
-// .section __TEXT,__cstring
-//   Switch from the executable code section to the Mach-O C string section.
-// fmt:
-//   Define the label used by print_int code to find the printf format string.
-// .asciz "%ld\n"
-//   Emit a null-terminated C string for printf: print a 64-bit integer,
-//   followed by a newline.
-fn createFooter(out: *ArrayList(u8), strings: []const []const u8, local_stack_size: usize) !void {
-    try out.appendSlice("\tbl _arena_free\n");
-    try out.appendSlice("\tmov w0, #0\n");
+fn createFunctionFooter(out: *ArrayList(u8), name: []const u8, local_stack_size: usize, is_main: bool) !void {
+    try out.print("_{s}_epilogue:\n", .{name});
+    if (is_main) {
+        try out.appendSlice("\tbl _arena_free\n");
+        try out.appendSlice("\tmov w0, #0\n");
+    }
 
     try restoreCallleSafeReg(out);
     if (local_stack_size > 0) {
@@ -299,19 +312,17 @@ fn createFooter(out: *ArrayList(u8), strings: []const []const u8, local_stack_si
     // restore frame pointer and return address
     try out.appendSlice("\tldp x29, x30, [sp], #16\n");
     try out.appendSlice("\tret\n");
+}
+
+fn createFooter(out: *ArrayList(u8)) !void {
     try out.appendSlice("\n.section __TEXT,__cstring\n");
     try out.appendSlice("fmt:\n");
     try out.appendSlice("\t.asciz \"%ld\\n\"\n");
-
-    for (strings, 0..) |s, i| {
-        try out.print("str{d}:\n", .{i});
-        try out.print("\t.asciz \"{s}\"\n", .{s});
-    }
 }
 
-fn countLocals(program: *const common.ir.Program) usize {
+fn countLocals(blocks: *const ArrayList(Block)) usize {
     var max_local: ?common.ir.LocalId = null;
-    for (program.main.blocks.items) |block| {
+    for (blocks.items) |block| {
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .store_local => |sl| {
@@ -327,9 +338,9 @@ fn countLocals(program: *const common.ir.Program) usize {
     return if (max_local) |m| @as(usize, m) + 1 else 0;
 }
 
-fn countArraySlots(program: *const common.ir.Program) usize {
+fn countArraySlots(blocks: *const ArrayList(Block)) usize {
     var slots: usize = 0;
-    for (program.main.blocks.items) |block| {
+    for (blocks.items) |block| {
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .array_literal => |al| slots += al.elements.len,

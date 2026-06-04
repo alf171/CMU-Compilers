@@ -20,3 +20,17 @@ pub fn regFor(op: common.alloc.Operand, colors: *const color.ColoredGraph) ![]co
         else => return error.UnsupportedOperand,
     }
 }
+
+pub fn paramRegFor(index: usize) ![]const u8 {
+    return switch (index) {
+        0 => "x0",
+        1 => "x1",
+        2 => "x2",
+        3 => "x3",
+        4 => "x4",
+        5 => "x5",
+        6 => "x6",
+        7 => "x7",
+        else => error.TooManyArgs,
+    };
+}

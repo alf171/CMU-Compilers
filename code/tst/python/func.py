@@ -1,4 +1,3 @@
-
 def foobar(x: int, y: int) -> int:
     print(x)
     print(y)
