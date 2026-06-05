@@ -2,13 +2,14 @@ const std = @import("std");
 
 const c = @import("frontend").python.c;
 const walkAst = @import("frontend").walk.walkAst;
-const lower = @import("middle").lower;
-const live = @import("middle").live;
-const igraph = @import("middle").igraph;
-const color = @import("middle").color;
-const phi = @import("middle").phi;
-const copy = @import("middle").copy;
-const dead = @import("middle").dead;
+const middle = @import("middle");
+const lower = middle.lower;
+const live = middle.live;
+const igraph = middle.igraph;
+const color = middle.color;
+const phi = middle.phi;
+const copy = middle.copy;
+const dead = middle.dead;
 const emit = @import("backend").emit;
 
 const underline_code = "\x1b[4m";

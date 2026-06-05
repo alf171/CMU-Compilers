@@ -60,9 +60,18 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) v
                 elem.* = resolve(elem.*, copyMap);
             }
         },
+        .list_literal => |*ll| {
+            for (ll.elements) |*elem| {
+                elem.* = resolve(elem.*, copyMap);
+            }
+        },
         .array_load => |*al| {
-            al.array = resolve(al.array, copyMap);
+            al.array.operand = resolve(al.array.operand, copyMap);
             al.index = resolve(al.index, copyMap);
+        },
+        .list_load => |*ll| {
+            ll.list.operand = resolve(ll.list.operand, copyMap);
+            ll.index = resolve(ll.index, copyMap);
         },
         else => {},
     }

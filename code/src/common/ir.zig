@@ -128,10 +128,8 @@ pub const Instruction = union(enum) {
     // dst <- array[index]
     array_load: struct {
         dst: Operand,
-        array: Operand,
+        array: TypedOperand,
         index: Operand,
-        // TODO: changed array to TypedOperand?
-        type: TypeInfo,
     },
     // heap based variable size
     list_literal: struct {
@@ -142,16 +140,19 @@ pub const Instruction = union(enum) {
     // dst <- list[index]
     list_load: struct {
         dst: Operand,
+        list: TypedOperand,
+        index: Operand,
+    },
+    list_store: struct {
         list: Operand,
         index: Operand,
-        // TODO: changed list to TypedOperand?
+        src: Operand,
         type: TypeInfo,
     },
     function_call: struct {
         dst: ?Operand,
         function_name: []const u8,
-        // TODO: move to TypedOperand for better error handling
-        args: []Operand,
+        args: []TypedOperand,
     },
     function_return: struct {
         value: ?Operand,
@@ -265,7 +266,7 @@ pub const Instruction = union(enum) {
             .list_load => |al| {
                 al.dst.print();
                 std.debug.print(" <- ", .{});
-                al.list.print();
+                al.list.operand.print();
                 std.debug.print("[", .{});
                 al.index.print();
                 std.debug.print("]\n", .{});
@@ -273,7 +274,7 @@ pub const Instruction = union(enum) {
             .array_load => |al| {
                 al.dst.print();
                 std.debug.print(" <- ", .{});
-                al.array.print();
+                al.array.operand.print();
                 std.debug.print("[", .{});
                 al.index.print();
                 std.debug.print("]\n", .{});
@@ -286,7 +287,7 @@ pub const Instruction = union(enum) {
                 std.debug.print("{s}(", .{fc.function_name});
                 for (fc.args, 0..fc.args.len) |arg, i| {
                     if (i != 0) std.debug.print(", ", .{});
-                    arg.print();
+                    arg.operand.print();
                 }
                 std.debug.print(")\n", .{});
             },

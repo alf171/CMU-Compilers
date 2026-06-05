@@ -55,6 +55,8 @@ fn getDefines(instruction: Instruction) ?SeenValue {
         .phi => |pi| .{ .operand = pi.dst.operand },
         .array_literal => |al| .{ .operand = al.dst },
         .array_load => |al| .{ .operand = al.dst },
+        .list_literal => |ll| .{ .operand = ll.dst },
+        .list_load => |ll| .{ .operand = ll.dst },
         else => null,
     };
 }
@@ -113,8 +115,18 @@ fn getUses(instruction: Instruction, alloc: std.mem.Allocator) ![]SeenValue {
             }
         },
         .array_load => |al| {
-            try res.append(SeenValue{ .operand = al.array });
+            try res.append(SeenValue{ .operand = al.array.operand });
             try res.append(SeenValue{ .operand = al.index });
+        },
+        .list_literal => |ll| {
+            for (ll.elements) |elem| {
+                const val = SeenValue{ .operand = elem };
+                try res.append(val);
+            }
+        },
+        .list_load => |il| {
+            try res.append(SeenValue{ .operand = il.list.operand });
+            try res.append(SeenValue{ .operand = il.index });
         },
         else => {},
     }

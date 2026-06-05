@@ -190,9 +190,9 @@ fn emitFunction(
                 .array_load => |al| {
                     const dst = try regFor(al.dst, colors);
                     const index = try regFor(al.index, colors);
-                    const array = try regFor(al.array, colors);
+                    const array = try regFor(al.array.operand, colors);
 
-                    const elem_type = try getElementType(al.type);
+                    const elem_type = try getElementType(al.array.type);
                     switch (elem_type) {
                         // index = index << 3
                         .int => {
@@ -208,9 +208,9 @@ fn emitFunction(
                 .list_load => |ll| {
                     const dst = try regFor(ll.dst, colors);
                     const index = try regFor(ll.index, colors);
-                    const array = try regFor(ll.list, colors);
+                    const array = try regFor(ll.list.operand, colors);
 
-                    const elem_type = try getElementType(ll.type);
+                    const elem_type = try getElementType(ll.list.type);
                     switch (elem_type) {
                         // index = (index + 1) << 3
                         .int, .list, .array => {
@@ -228,7 +228,7 @@ fn emitFunction(
                 .function_call => |fc| {
                     for (fc.args, 0..) |arg, i| {
                         const dst = try paramRegFor(i);
-                        const src = try regFor(arg, colors);
+                        const src = try regFor(arg.operand, colors);
                         try out.print("\tmov {s}, {s}\n", .{ dst, src });
                     }
 

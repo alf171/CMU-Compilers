@@ -98,18 +98,18 @@ fn lowerBlocks(
                 },
                 .list_load => |al| {
                     try line.defines.ops.put(al.dst, {});
-                    try line.uses.ops.put(al.list, {});
+                    try line.uses.ops.put(al.list.operand, {});
                     try line.uses.ops.put(al.index, {});
                 },
                 .array_load => |al| {
                     try line.defines.ops.put(al.dst, {});
-                    try line.uses.ops.put(al.array, {});
+                    try line.uses.ops.put(al.array.operand, {});
                     try line.uses.ops.put(al.index, {});
                 },
                 .function_call => |fc| {
                     if (fc.dst) |dst| try line.defines.ops.put(dst, {});
                     for (fc.args) |arg| {
-                        try line.uses.ops.put(arg, {});
+                        try line.uses.ops.put(arg.operand, {});
                     }
                 },
                 .function_param => |fp| {

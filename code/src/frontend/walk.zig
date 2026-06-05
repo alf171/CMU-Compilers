@@ -37,6 +37,11 @@ const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Sub
 
 const BuiltinCall = enum { Print, Range };
 
+const RangeBounds = struct {
+    start: i64,
+    end: i64,
+};
+
 pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
     var irBuilder = try IrBuilder.init(alloc);
     defer irBuilder.deinit(alloc);
@@ -243,9 +248,6 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
         .Subscript => {
             const value_obj = c.PyObject_GetAttrString(stmt, "value");
             std.debug.assert(value_obj != null);
-            const label_obj = c.PyObject_GetAttrString(value_obj, "id");
-            std.debug.assert(label_obj != null);
-            const label = c.PyUnicode_AsUTF8(label_obj);
 
             const slice = c.PyObject_GetAttrString(stmt, "slice");
             const index = try walkExpr(slice, irBuilder, alloc);
@@ -254,8 +256,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 return error.ArrayIndexMustBeInt;
             }
 
-            const local = try irBuilder.getOrCreateLocal(std.mem.span(label), null, alloc);
-            const value = irBuilder.local_values.get(local) orelse return error.NotFound;
+            const value = try walkExpr(value_obj, irBuilder, alloc);
             switch (value.type) {
                 .list => |list| {
                     const elem_type = list.element.*;
@@ -264,9 +265,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     try irBuilder.emit(Instruction{
                         .list_load = .{
                             .dst = dst,
-                            .list = value.operand,
+                            .list = value,
                             .index = index.operand,
-                            .type = value.type,
                         },
                     });
                     return TypedOperand{
@@ -281,9 +281,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     try irBuilder.emit(Instruction{
                         .array_load = .{
                             .dst = dst,
-                            .array = value.operand,
+                            .array = value,
                             .index = index.operand,
-                            .type = value.type,
                         },
                     });
                     return TypedOperand{
@@ -347,12 +346,12 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             const builtin = getBuiltinCall(std.mem.span(name));
             // user defined function
             if (builtin == null) {
-                var arguments = ArrayList(Operand).init(alloc);
+                var arguments = ArrayList(TypedOperand).init(alloc);
                 for (0..@intCast(c.PyList_Size(args))) |i| {
                     const arg_obj = c.PyList_GetItem(args, @intCast(i));
                     std.debug.assert(arg_obj != null);
                     const arg = try walkExpr(arg_obj, irBuilder, alloc);
-                    try arguments.append(arg.operand);
+                    try arguments.append(arg);
                 }
                 const dst = irBuilder.nextTemp();
                 try irBuilder.emit(Instruction{ .function_call = .{
@@ -360,8 +359,10 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     .dst = dst,
                     .args = try arguments.toOwnedSlice(),
                 } });
-                // TODO: dont hardcode .int return
-                return TypedOperand{ .operand = dst, .type = .int };
+                return TypedOperand{
+                    .operand = dst,
+                    .type = try irBuilder.getFunctionReturnType(std.mem.span(name)),
+                };
             }
 
             switch (builtin.?) {
@@ -379,25 +380,33 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 },
                 // Call(func=Name(id='range', ctx=Load()), args=[Constant(value=0), Constant(value=10)])
                 .Range => {
-                    // if (c.PyList_Size(args) == 1) {
-                    //     const start = 0;
-                    //     const end = c.PyList_GetItem(args, 0);
-                    // } else {
-                    std.debug.assert(c.PyList_Size(args) == 2);
-                    const startItem = c.PyList_GetItem(args, 0);
-                    std.debug.assert(startItem != null);
-                    const start = try getConstInt(startItem);
-                    const endItem = c.PyList_GetItem(args, 1);
-                    std.debug.assert(endItem != null);
-                    const end = try getConstInt(endItem);
+                    const bounds = switch (c.PyList_Size(args)) {
+                        1 => blk: {
+                            const endItem = c.PyList_GetItem(args, 0);
+                            std.debug.assert(endItem != null);
+                            const end = try getConstInt(endItem);
+                            break :blk RangeBounds{ .start = 0, .end = end };
+                        },
+                        2 => blk: {
+                            const startItem = c.PyList_GetItem(args, 0);
+                            std.debug.assert(startItem != null);
+                            const start = try getConstInt(startItem);
+                            const endItem = c.PyList_GetItem(args, 1);
+                            std.debug.assert(endItem != null);
+                            const end = try getConstInt(endItem);
+                            break :blk RangeBounds{ .start = start, .end = end };
+                        },
+                        else => return error.InvalidBounds,
+                    };
+
                     const dst = irBuilder.nextTemp();
 
-                    if (start < 0 or end < start) {
+                    if (bounds.start < 0 or bounds.end < bounds.start) {
                         return error.RangeOutOfBounds;
                     }
 
                     var elements = ArrayList(Operand).init(alloc);
-                    for (@intCast(start)..@intCast(end)) |i| {
+                    for (@intCast(bounds.start)..@intCast(bounds.end)) |i| {
                         const temp = irBuilder.nextTemp();
                         try irBuilder.emit(Instruction{ .constant = .{
                             .dst = temp,
@@ -408,7 +417,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
 
                     const type_ = TypeInfo{ .array = .{
                         .element = &.int,
-                        .size = @intCast(end - start),
+                        .size = @intCast(bounds.end - bounds.start),
                     } };
                     // TODO: consider using list
                     try irBuilder.emit(Instruction{ .array_literal = .{
@@ -621,16 +630,14 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 .array => {
                     try irBuilder_.emit(Instruction{ .array_load = .{
                         .dst = value,
-                        .array = iterable.operand,
-                        .type = iterable.type,
+                        .array = iterable,
                         .index = index.operand,
                     } });
                 },
                 .list => {
                     try irBuilder_.emit(Instruction{ .list_load = .{
                         .dst = value,
-                        .list = iterable.operand,
-                        .type = iterable.type,
+                        .list = iterable,
                         .index = index.operand,
                     } });
                 },

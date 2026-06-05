@@ -72,6 +72,15 @@ pub const IrBuilder = struct {
         return error.CantFindCurrentFunction;
     }
 
+    pub fn getFunctionReturnType(self: *@This(), name: []const u8) !TypeInfo {
+        for (self.program.functions.items) |function| {
+            if (std.mem.eql(u8, function.name, name)) {
+                return function.return_type;
+            }
+        }
+        return error.FunctionNotFound;
+    }
+
     pub fn nextTemp(self: *@This()) Operand {
         const id = self.next_temp;
         self.next_temp += 1;

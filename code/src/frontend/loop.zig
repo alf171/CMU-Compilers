@@ -157,12 +157,13 @@ pub fn walkLoop(
     // crux
     try bodyCallback(body, carries, irBuilder, alloc);
 
+    const backedge_block = irBuilder.current_block;
     var body_values = try irBuilder.cloneLocalValues(alloc);
     defer body_values.deinit();
     for (loop_phis.items) |loop_phi| {
         const value = body_values.get(loop_phi.local) orelse loop_phi.dst;
         loop_phi.phi_inputs[1] = .{
-            .pred = body_block,
+            .pred = backedge_block,
             .value = value.operand,
         };
     }
@@ -170,7 +171,7 @@ pub fn walkLoop(
     for (carries) |carry| {
         const value = carry.next orelse return error.CarryNotSet;
         carry.inputs[1] = .{
-            .pred = body_block,
+            .pred = backedge_block,
             .value = value.operand,
         };
     }
@@ -178,7 +179,7 @@ pub fn walkLoop(
     try irBuilder.emit(Instruction{
         .jump = .{ .target = condition_block },
     });
-    try irBuilder.addSuccessor(body_block, condition_block);
+    try irBuilder.addSuccessor(backedge_block, condition_block);
 
     // exit block
     irBuilder.setCurrentBlock(exit_block);
