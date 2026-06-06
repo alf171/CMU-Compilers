@@ -4,14 +4,90 @@ const live = @import("live.zig");
 const ArrayList = std.array_list.Managed;
 
 const common = @import("common");
-const Program = common.alloc.AllocProgram;
+const Instruction = common.ir.Instruction;
+const IrProgram = common.ir.Program;
+const Function = common.ir.Function;
+const AllocProgram = common.alloc.AllocProgram;
+const BasicBlock = common.ir.BasicBlock;
+const BlockId = common.ir.BlockId;
 const Block = common.alloc.AllocBlock;
 const Line = common.alloc.AllocLine;
 const Operands = common.alloc.Operands;
 const Operand = common.alloc.Operand;
 
-pub fn spillReg(current_program: *const Program, reg: Operand, alloc: std.mem.Allocator) !Program {
-    var new_program = Program{
+pub fn spillRegInIr(program: *IrProgram, alloc_program: *const AllocProgram, spilled: Operand, alloc: std.mem.Allocator) !void {
+    const slot = alloc_program.nextMem();
+    var next_temp = alloc_program.nextTemp();
+
+    try spillRegInFunction(&program.main, spilled, slot, &next_temp, alloc);
+
+    for (program.functions.items) |*function| {
+        try spillRegInFunction(function, spilled, slot, &next_temp, alloc);
+    }
+}
+
+fn spillRegInFunction(
+    function: *Function,
+    spilled: Operand,
+    slot: u8,
+    next_temp: *u8,
+    alloc: std.mem.Allocator,
+) !void {
+    for (function.blocks.items) |*block| {
+        var new_instructions = ArrayList(Instruction).init(alloc);
+        for (block.instructions.items) |old_instruction| {
+            var instruction = old_instruction;
+            const maybe_defines = old_instruction.getDefines();
+            const uses = try old_instruction.getUses(alloc);
+            defer uses.deinit();
+            for (uses.items) |use_item| {
+                // :spill A:
+                // A <- op A, B
+                // :becomes:
+                // t1 <- mem_slot
+                // t2 <- op t1, B
+                // mem_slot <- t2
+                switch (use_item) {
+                    .operand => |use_op| {
+                        if (use_op.equal(spilled)) {
+                            const t1 = Operand{ .temp = next_temp.* };
+                            next_temp.* += 1;
+                            try new_instructions.append(Instruction{ .move = .{
+                                .dst = t1,
+                                .src = Operand{ .mem = slot },
+                            } });
+                            try instruction.replaceUses(spilled, t1);
+                            continue;
+                        }
+                    },
+                    .local => {},
+                }
+            }
+            if (maybe_defines) |defines| switch (defines) {
+                .operand => |define_op| {
+                    if (define_op.equal(spilled)) {
+                        const t2 = Operand{ .temp = next_temp.* };
+                        next_temp.* += 1;
+                        try instruction.replaceDefines(spilled, t2);
+                        try new_instructions.append(instruction);
+                        try new_instructions.append(Instruction{ .move = .{
+                            .dst = Operand{ .mem = slot },
+                            .src = t2,
+                        } });
+                        continue;
+                    }
+                },
+                .local => {},
+            };
+            try new_instructions.append(instruction);
+        }
+        block.instructions.deinit();
+        block.instructions = new_instructions;
+    }
+}
+
+pub fn spillReg(current_program: *const AllocProgram, reg: Operand, alloc: std.mem.Allocator) !AllocProgram {
+    var new_program = AllocProgram{
         .lines = ArrayList(Line).init(alloc),
         .blocks = ArrayList(Block).init(alloc),
         .register_count = current_program.register_count,
@@ -53,7 +129,7 @@ pub fn spillReg(current_program: *const Program, reg: Operand, alloc: std.mem.Al
 ///   - _ <- w'' + x (modified current line)
 /// 3. edit live_out graph between steps (we could consider restoring live_out
 fn spillLine(
-    new_program: *Program,
+    new_program: *AllocProgram,
     line: Line,
     reg: Operand,
     memory_pointer: u8,
@@ -145,7 +221,7 @@ test "spillReg basic spill of defined reg" {
     var blocks = std.array_list.Managed(Block).init(allocator);
     try blocks.append(Block{ .id = 0, .start = 0, .end = lines.items.len, .successors = ArrayList(u32).init(allocator) });
 
-    var program = Program{
+    var program = AllocProgram{
         .lines = lines,
         .register_count = 2,
         .blocks = blocks,
@@ -157,4 +233,59 @@ test "spillReg basic spill of defined reg" {
 
     try std.testing.expect(new_prog.nextMem() == program.nextMem() + 1);
     try std.testing.expect(new_prog.lines.items.len > 0);
+}
+
+test "spill reg function" {
+    const alloc = std.testing.allocator;
+
+    var blocks = ArrayList(BasicBlock).init(alloc);
+    var instructions = ArrayList(Instruction).init(alloc);
+    // A <- op A, B
+    const A = Operand{ .temp = 0 };
+    const B = Operand{ .temp = 1 };
+    try instructions.append(Instruction{ .binop = .{ .dst = A, .lhs = A, .op = .add, .rhs = B } });
+    try blocks.append(BasicBlock{
+        .id = 0,
+        .instructions = instructions,
+        .successors = ArrayList(BlockId).init(alloc),
+    });
+    var function = Function{
+        .name = "test",
+        .blocks = blocks,
+        .entry_block = 0,
+        .params = &.{},
+        .return_type = .int,
+    };
+    defer {
+        for (blocks.items) |*block| {
+            block.instructions.deinit();
+            block.successors.deinit();
+        }
+        blocks.deinit();
+    }
+
+    // :spill A:
+    // :becomes:
+    // t1 <- mem_slot
+    // t2 <- op t1, B
+    // mem_slot <- t2
+    var next_temp: u8 = 2;
+    try spillRegInFunction(&function, A, 0, &next_temp, alloc);
+
+    const new_instructions = function.blocks.items[0].instructions.items;
+    try std.testing.expectEqual(3, new_instructions.len);
+    try std.testing.expectEqualDeep(Instruction{ .move = .{
+        .dst = Operand{ .temp = 2 },
+        .src = Operand{ .mem = 0 },
+    } }, new_instructions[0]);
+    try std.testing.expectEqualDeep(Instruction{ .binop = .{
+        .dst = Operand{ .temp = 3 },
+        .lhs = Operand{ .temp = 2 },
+        .op = .add,
+        .rhs = Operand{ .temp = 1 },
+    } }, new_instructions[1]);
+    try std.testing.expectEqualDeep(Instruction{ .move = .{
+        .dst = Operand{ .mem = 0 },
+        .src = Operand{ .temp = 3 },
+    } }, new_instructions[2]);
 }

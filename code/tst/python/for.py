@@ -1,3 +1,4 @@
-j = ["1", "22", "333"]
-for jj in j:
-    print(jj)
+for m in range(3):
+    for k in range(3):
+        print(m)
+        print(k)

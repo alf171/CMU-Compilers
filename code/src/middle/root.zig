@@ -1,3 +1,4 @@
+pub const loop = @import("loop.zig");
 pub const lower = @import("lower.zig");
 pub const live = @import("live.zig");
 pub const igraph = @import("igraph.zig");

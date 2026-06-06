@@ -13,6 +13,8 @@ pub const spec_reg_map = SpecRegsMap.initComptime(.{
     .{ "eax", .eax },
 });
 
+pub const SeenValue = union(enum) { operand: Operand, local: LocalId };
+
 pub const BlockId = u32;
 // python defined variable
 pub const LocalId = u32;
@@ -91,7 +93,10 @@ pub const Instruction = union(enum) {
         lhs: Operand,
         rhs: Operand,
     },
-    move: struct { dst: Operand, src: Operand },
+    move: struct {
+        dst: Operand,
+        src: Operand,
+    },
     unaryop: struct {
         dst: Operand,
         op: UnaryOp,
@@ -123,6 +128,7 @@ pub const Instruction = union(enum) {
     array_literal: struct {
         dst: Operand,
         elements: []Operand,
+        // TODO: change to TypedOperand
         type: TypeInfo,
     },
     // dst <- array[index]
@@ -135,6 +141,7 @@ pub const Instruction = union(enum) {
     list_literal: struct {
         dst: Operand,
         elements: []Operand,
+        // TODO: change to TypedOperand
         type: TypeInfo,
     },
     // dst <- list[index]
@@ -307,6 +314,160 @@ pub const Instruction = union(enum) {
                 return error.NotImplemented;
             },
         }
+    }
+
+    pub fn replaceUses(self: *@This(), old: Operand, new: Operand) !void {
+        switch (self.*) {
+            .binop => |*bop| {
+                if (bop.lhs.equal(old)) bop.lhs = new;
+                if (bop.rhs.equal(old)) bop.rhs = new;
+            },
+            .move => |*mov| {
+                if (mov.src.equal(old)) mov.src = new;
+            },
+            .list_load => |*ll| {
+                if (ll.list.operand.equal(old)) ll.list.operand = new;
+                if (ll.index.equal(old)) ll.index = new;
+            },
+            .compare => |*c| {
+                if (c.lhs.equal(old)) c.lhs = new;
+                if (c.rhs.equal(old)) c.rhs = new;
+            },
+            .array_load => |*al| {
+                if (al.array.operand.equal(old)) al.array.operand = new;
+                if (al.index.equal(old)) al.index = new;
+            },
+            .constant => {},
+            .array_literal => |*al| {
+                for (al.elements) |*elem| {
+                    if (elem.equal(old)) elem.* = new;
+                }
+            },
+            else => |e| {
+                std.debug.print("uses cant handle {s}\n", .{@tagName(e)});
+                return error.OperandReplaceNotImpl;
+            },
+        }
+    }
+
+    pub fn replaceDefines(self: *@This(), old: Operand, new: Operand) !void {
+        switch (self.*) {
+            .binop => |*bop| {
+                if (bop.dst.equal(old)) bop.dst = new;
+            },
+            .move => |*mov| {
+                if (mov.dst.equal(old)) mov.dst = new;
+            },
+            .list_load => |*ll| {
+                if (ll.dst.equal(old)) ll.dst = new;
+            },
+            .compare => |*c| {
+                if (c.dst.equal(old)) c.dst = new;
+            },
+            .array_load => |*al| {
+                if (al.dst.equal(old)) al.dst = new;
+            },
+            .constant => |*c| {
+                if (c.dst.equal(old)) c.dst = new;
+            },
+            .array_literal => |*al| {
+                if (al.dst.equal(old)) al.dst = new;
+            },
+            else => |e| {
+                std.debug.print("defines cant handle {s}\n", .{@tagName(e)});
+                return error.OperandReplaceNotImpl;
+            },
+        }
+    }
+
+    pub fn getDefines(instruction: Instruction) ?SeenValue {
+        return switch (instruction) {
+            .store_local => |sl| .{ .local = sl.local.id },
+            .load_local => |ll| .{ .operand = ll.dst },
+            .constant => |c| .{ .operand = c.dst },
+            .binop => |bop| .{ .operand = bop.dst },
+            .move => |m| .{ .operand = m.dst },
+            .unaryop => |uop| .{ .operand = uop.dst },
+            .compare => |c| .{ .operand = c.dst },
+            .phi => |pi| .{ .operand = pi.dst.operand },
+            .array_literal => |al| .{ .operand = al.dst },
+            .array_load => |al| .{ .operand = al.dst },
+            .list_literal => |ll| .{ .operand = ll.dst },
+            .list_load => |ll| .{ .operand = ll.dst },
+            else => null,
+        };
+    }
+
+    pub fn getUses(instruction: Instruction, alloc: std.mem.Allocator) !ArrayList(SeenValue) {
+        var res = ArrayList(SeenValue).init(alloc);
+        errdefer res.deinit();
+
+        switch (instruction) {
+            .store_local => |sl| {
+                const val = SeenValue{ .operand = sl.src };
+                try res.append(val);
+            },
+            .load_local => |ll| {
+                const val = SeenValue{ .local = ll.local.id };
+                try res.append(val);
+            },
+            .binop => |bop| {
+                const lhs = SeenValue{ .operand = bop.lhs };
+                try res.append(lhs);
+                const rhs = SeenValue{ .operand = bop.rhs };
+                try res.append(rhs);
+            },
+            .move => |m| {
+                const val = SeenValue{ .operand = m.src };
+                try res.append(val);
+            },
+            .unaryop => |uop| {
+                const val = SeenValue{ .operand = uop.src };
+                try res.append(val);
+            },
+            .compare => |c| {
+                const lhs = SeenValue{ .operand = c.lhs };
+                try res.append(lhs);
+                const rhs = SeenValue{ .operand = c.rhs };
+                try res.append(rhs);
+            },
+            .phi => |pi| {
+                for (pi.inputs) |phi_input| {
+                    const val = SeenValue{ .operand = phi_input.value };
+                    try res.append(val);
+                }
+            },
+            .print => |pi| {
+                const val = SeenValue{ .operand = pi.src };
+                try res.append(val);
+            },
+            .branch => |b| {
+                const val = SeenValue{ .operand = b.condition };
+                try res.append(val);
+            },
+            .array_literal => |al| {
+                for (al.elements) |elem| {
+                    const val = SeenValue{ .operand = elem };
+                    try res.append(val);
+                }
+            },
+            .array_load => |al| {
+                try res.append(SeenValue{ .operand = al.array.operand });
+                try res.append(SeenValue{ .operand = al.index });
+            },
+            .list_literal => |ll| {
+                for (ll.elements) |elem| {
+                    const val = SeenValue{ .operand = elem };
+                    try res.append(val);
+                }
+            },
+            .list_load => |il| {
+                try res.append(SeenValue{ .operand = il.list.operand });
+                try res.append(SeenValue{ .operand = il.index });
+            },
+            else => {},
+        }
+        return res;
     }
 };
 

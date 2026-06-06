@@ -9,11 +9,11 @@ const Operands = common.alloc.Operands;
 const Operand = common.alloc.Operand;
 
 /// handle case where we are last line in addition to other to rest
-pub fn calculateLiveOut(program: *common.alloc.AllocProgram, alloc: std.mem.Allocator) !void {
+pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.mem.Allocator) !void {
     var changed = true;
-    var block_i = program.blocks.items.len;
     while (changed) {
         changed = false;
+        var block_i = program.blocks.items.len;
         while (block_i > 0) {
             block_i -= 1;
             const block = program.blocks.items[block_i];

@@ -8,8 +8,7 @@ const Program = @import("common").ir.Program;
 const Operand = @import("common").alloc.Operand;
 const LocalId = @import("common").ir.LocalId;
 const Instruction = @import("common").ir.Instruction;
-
-const SeenValue = union(enum) { operand: Operand, local: LocalId };
+const SeenValue = @import("common").ir.SeenValue;
 
 /// run dead code elimination
 pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
@@ -22,13 +21,13 @@ pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
             i -= 1;
             const instruction = instructions[i];
 
-            const defines = getDefines(instruction);
-            const uses = try getUses(instruction, alloc);
+            const defines = instruction.getDefines();
+            const uses = try instruction.getUses(alloc);
 
             // if operand hasn't been used yet, instruction can be removed
             if (!hasSideEffects(instruction) and defines != null and !seen.contains(defines.?)) {
                 _ = block.instructions.orderedRemove(i);
-                alloc.free(uses);
+                uses.deinit();
                 continue;
             }
 
@@ -36,101 +35,11 @@ pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
             if (defines) |d| _ = seen.remove(d);
 
             // we've already seen this operand being used
-            for (uses) |use| try seen.put(use, {});
-            alloc.free(uses);
+            for (uses.items) |use| try seen.put(use, {});
+            uses.deinit();
         }
         seen.clearRetainingCapacity();
     }
-}
-
-fn getDefines(instruction: Instruction) ?SeenValue {
-    return switch (instruction) {
-        .store_local => |sl| .{ .local = sl.local.id },
-        .load_local => |ll| .{ .operand = ll.dst },
-        .constant => |c| .{ .operand = c.dst },
-        .binop => |bop| .{ .operand = bop.dst },
-        .move => |m| .{ .operand = m.dst },
-        .unaryop => |uop| .{ .operand = uop.dst },
-        .compare => |c| .{ .operand = c.dst },
-        .phi => |pi| .{ .operand = pi.dst.operand },
-        .array_literal => |al| .{ .operand = al.dst },
-        .array_load => |al| .{ .operand = al.dst },
-        .list_literal => |ll| .{ .operand = ll.dst },
-        .list_load => |ll| .{ .operand = ll.dst },
-        else => null,
-    };
-}
-
-fn getUses(instruction: Instruction, alloc: std.mem.Allocator) ![]SeenValue {
-    var res = ArrayList(SeenValue).init(alloc);
-    errdefer res.deinit();
-
-    switch (instruction) {
-        .store_local => |sl| {
-            const val = SeenValue{ .operand = sl.src };
-            try res.append(val);
-        },
-        .load_local => |ll| {
-            const val = SeenValue{ .local = ll.local.id };
-            try res.append(val);
-        },
-        .binop => |bop| {
-            const lhs = SeenValue{ .operand = bop.lhs };
-            try res.append(lhs);
-            const rhs = SeenValue{ .operand = bop.rhs };
-            try res.append(rhs);
-        },
-        .move => |m| {
-            const val = SeenValue{ .operand = m.src };
-            try res.append(val);
-        },
-        .unaryop => |uop| {
-            const val = SeenValue{ .operand = uop.src };
-            try res.append(val);
-        },
-        .compare => |c| {
-            const lhs = SeenValue{ .operand = c.lhs };
-            try res.append(lhs);
-            const rhs = SeenValue{ .operand = c.rhs };
-            try res.append(rhs);
-        },
-        .phi => |pi| {
-            for (pi.inputs) |phi_input| {
-                const val = SeenValue{ .operand = phi_input.value };
-                try res.append(val);
-            }
-        },
-        .print => |pi| {
-            const val = SeenValue{ .operand = pi.src };
-            try res.append(val);
-        },
-        .branch => |b| {
-            const val = SeenValue{ .operand = b.condition };
-            try res.append(val);
-        },
-        .array_literal => |al| {
-            for (al.elements) |elem| {
-                const val = SeenValue{ .operand = elem };
-                try res.append(val);
-            }
-        },
-        .array_load => |al| {
-            try res.append(SeenValue{ .operand = al.array.operand });
-            try res.append(SeenValue{ .operand = al.index });
-        },
-        .list_literal => |ll| {
-            for (ll.elements) |elem| {
-                const val = SeenValue{ .operand = elem };
-                try res.append(val);
-            }
-        },
-        .list_load => |il| {
-            try res.append(SeenValue{ .operand = il.list.operand });
-            try res.append(SeenValue{ .operand = il.index });
-        },
-        else => {},
-    }
-    return res.toOwnedSlice();
 }
 
 fn hasSideEffects(instruction: Instruction) bool {

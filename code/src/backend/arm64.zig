@@ -43,7 +43,14 @@ fn emitFunction(
         (array_slot_count + local_count) * 8,
         16,
     );
-    try createFunctionHeader(out, function.name, local_stack_size);
+    // HACK: MANUAL ALIGNMENT AND SIZING
+    const spill_stack_size = 16 * 8;
+    const frame_stack_size = std.mem.alignForward(
+        usize,
+        local_stack_size + spill_stack_size,
+        16,
+    );
+    try createFunctionHeader(out, function.name, frame_stack_size);
     var next_array_slot: usize = 0;
     for (function.blocks.items) |block| {
         try out.print("_{s}_L{d}:\n", .{ function.name, block.id });
@@ -75,9 +82,39 @@ fn emitFunction(
                     try out.print("\tldr {s}, [x29, #-{d}]\n", .{ dst, localOffset(ll.local.id) });
                 },
                 .move => |m| {
-                    const dst = try regFor(m.dst, colors);
-                    const src = try regFor(m.src, colors);
-                    try out.print("\tmov {s}, {s}\n", .{ dst, src });
+                    switch (m.dst) {
+                        .temp => {
+                            const dst = try regFor(m.dst, colors);
+                            switch (m.src) {
+                                // reg <- reg
+                                .temp => {
+                                    const src = try regFor(m.src, colors);
+                                    try out.print("\tmov {s}, {s}\n", .{ dst, src });
+                                },
+                                // reg <- mem
+                                .mem => |slot| {
+                                    const offset = spillOffset(local_stack_size, slot);
+                                    try out.print("\tldr {s}, [x29, #-{d}]\n", .{ dst, offset });
+                                },
+                                else => return error.NotImpl,
+                            }
+                        },
+                        .mem => |slot| {
+                            switch (m.src) {
+                                // mem <- reg
+                                .temp => {
+                                    const offset = spillOffset(local_stack_size, slot);
+                                    const src = try regFor(m.src, colors);
+                                    try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
+                                },
+                                .mem => {
+                                    return error.MemoryToMemoryMoveDetected;
+                                },
+                                else => return error.NotImpl,
+                            }
+                        },
+                        else => return error.NotImpl,
+                    }
                 },
                 .print => |p| {
                     switch (p.type) {
@@ -125,7 +162,11 @@ fn emitFunction(
 
                     switch (binop.op) {
                         .add => try out.print("\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
-                        else => return error.NotSupported,
+                        .mul => try out.print("\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
+                        else => |op| {
+                            std.debug.print("op is not supported {s}\n", .{@tagName(op)});
+                            return error.NotSupported;
+                        },
                     }
                 },
                 .branch => |b| {
@@ -196,8 +237,8 @@ fn emitFunction(
                     switch (elem_type) {
                         // index = index << 3
                         .int => {
-                            try out.print("\tlsl {s}, {s}, #3\n", .{ index, index });
-                            try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, index });
+                            try out.print("\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
+                            try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
                         },
                         .bool => {
                             try out.print("\tldr w{s}, [{s}, {s}]\n", .{ dst[1..], array, index });
@@ -257,8 +298,11 @@ fn emitFunction(
                 },
             }
         }
+        if (block.successors.items.len == 0) {
+            try out.print("\tb _{s}_epilogue\n", .{function.name});
+        }
     }
-    try createFunctionFooter(out, function.name, local_stack_size, is_main);
+    try createFunctionFooter(out, function.name, frame_stack_size, is_main);
 }
 
 fn createProgramHeader(out: *ArrayList(u8)) !void {
@@ -368,6 +412,10 @@ fn condForCmp(op: common.ir.CmpOp) []const u8 {
         .gt => "gt",
         .gte => "ge",
     };
+}
+
+fn spillOffset(local_stack_size: usize, slot: usize) usize {
+    return local_stack_size + (slot + 1) * 8;
 }
 
 pub fn main() void {}

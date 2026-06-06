@@ -7,16 +7,16 @@ const Writer = std.Io.Writer;
 const Operand = @import("common").alloc.Operand;
 
 /// merge either src or dest into later if live_out and degree let's us do so
-pub fn run(graph: *igraph.IGraph, reg_count: u8, stdout: *Writer) !void {
+pub fn run(graph: *igraph.IGraph, reg_count: u8, stdout: ?*Writer) !void {
     while (try checkForPossibleMerges(graph.*, reg_count, stdout)) |pair| {
-        try stdout.print("merging {any} and {any}\n", .{ pair.nodeA, pair.nodeB });
+        // try stdout.print("merging {any} and {any}\n", .{ pair.nodeA, pair.nodeB });
         try graph.mergeNodes(pair.nodeA, pair.nodeB);
         try swapNode(graph.*, pair.nodeA, pair.nodeB);
     }
-    try stdout.flush();
+    // try stdout.flush();
 }
 
-fn checkForPossibleMerges(graph: igraph.IGraph, k: u8, _: *Writer) !?struct { nodeA: Operand, nodeB: Operand } {
+fn checkForPossibleMerges(graph: igraph.IGraph, k: u8, _: ?*Writer) !?struct { nodeA: Operand, nodeB: Operand } {
     var node_it = graph.nodes.valueIterator();
     while (node_it.next()) |node| {
         var move_it = node.moves.keyIterator();

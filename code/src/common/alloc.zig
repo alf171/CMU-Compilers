@@ -10,7 +10,7 @@ const ArrayList = std.array_list.Managed;
 const HashMap = std.AutoHashMap;
 const Writer = std.io.Writer;
 
-pub const REG_COUNT = 8;
+pub const REG_COUNT = 10;
 
 pub const Operands = struct {
     ops: HashMap(Operand, void),

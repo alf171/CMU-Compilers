@@ -3,6 +3,7 @@ const std = @import("std");
 const c = @import("frontend").python.c;
 const walkAst = @import("frontend").walk.walkAst;
 const middle = @import("middle");
+const loop = middle.loop;
 const lower = middle.lower;
 const live = middle.live;
 const igraph = middle.igraph;
@@ -84,36 +85,52 @@ pub fn main(init: std.process.Init) !void {
     var graph = try igraph.createIgraph(alloc_program.lines, alloc);
     defer graph.deinit();
 
-    var attempt = try color.colorGraph(&graph, alloc_program.register_count, alloc);
-
     const file = try std.Io.Dir.createFileAbsolute(io, output_file, .{});
     var file_buf: [1028]u8 = undefined;
     var file_writer: std.Io.File.Writer = .init(file, io, &file_buf);
 
     defer file.close(io);
 
-    switch (attempt) {
-        .graph => |*colored| {
-            defer colored.deinit();
+    var colored = try loop.run(&ir_program, &alloc_program, alloc, null);
+    defer colored.deinit();
 
-            const asm_text = try emit(&ir_program, colored, alloc);
-            defer alloc.free(asm_text);
-
-            try file_writer.interface.writeAll(asm_text);
-            try file_writer.interface.flush();
-        },
-        .spill_register => {
-            return error.UnexpectedSpill;
-        },
+    // dump colored graph
+    if (should_dump_ir) {
+        std.debug.print("\n{s}post register alloc:{s}\n", .{ underline_code, reset_code });
+        try ir_program.print();
     }
 
+    const asm_text = try emit(&ir_program, &colored, alloc);
+    defer alloc.free(asm_text);
+
+    try file_writer.interface.writeAll(asm_text);
+    try file_writer.interface.flush();
+
     if (should_run) {
-        const clangd_result = try runCommand(alloc, io, &.{ "clang", "src/malloc.c", output_file, "-o", "/tmp/integration_out" });
-        defer alloc.free(clangd_result.stdout);
-        defer alloc.free(clangd_result.stderr);
+        const dir = std.fs.path.dirname(output_file) orelse ".";
+        const stem = std.fs.path.stem(output_file);
+        const obj_name = try std.fmt.allocPrint(alloc, "{s}.o", .{stem});
+        defer alloc.free(obj_name);
+        const obj_file = try std.fs.path.join(alloc, &.{ dir, obj_name });
+        defer alloc.free(obj_file);
+
+        // clang -c src/out.s -o /tmp/out.o
+        const clang_object_result = try runCommand(alloc, io, &.{ "clang", "-c", output_file, "-o", obj_file });
+        defer alloc.free(clang_object_result.stdout);
+        defer alloc.free(clang_object_result.stderr);
+        // clang -c src/malloc.c -o /tmp/malloc.o
+        const clang_malloc_result = try runCommand(alloc, io, &.{ "clang", "-c", "src/malloc.c", "-o", "/tmp/malloc.o" });
+        defer alloc.free(clang_malloc_result.stdout);
+        defer alloc.free(clang_malloc_result.stderr);
+        // create /tmp/integration_out
+        const clang_final_result = try runCommand(alloc, io, &.{ "clang", obj_file, "/tmp/malloc.o", "-o", "/tmp/integration_out" });
+        defer alloc.free(clang_final_result.stdout);
+        defer alloc.free(clang_final_result.stderr);
+        // run!
         const run_result = try runCommand(alloc, io, &.{"/tmp/integration_out"});
         defer alloc.free(run_result.stdout);
         defer alloc.free(run_result.stderr);
+
         std.debug.print("\n{s}actual output:{s}\n{s}", .{ underline_code, reset_code, run_result.stdout });
     }
 }

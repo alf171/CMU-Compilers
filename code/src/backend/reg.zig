@@ -1,3 +1,4 @@
+const std = @import("std");
 const common = @import("common");
 const color = @import("middle").color;
 
@@ -11,7 +12,12 @@ pub const callee_safe_regs = [_][]const u8{ "x19", "x20", "x21", "x22", "x23", "
 pub fn regFor(op: common.alloc.Operand, colors: *const color.ColoredGraph) ![]const u8 {
     switch (op) {
         .temp => {
-            const node = colors.nodes.get(op) orelse return error.MissingColor;
+            const node = colors.nodes.get(op) orelse {
+                std.debug.print("Missing color for operand: ", .{});
+                op.print();
+                std.debug.print("\n", .{});
+                return error.MissingColor;
+            };
             const reg_id = node.register orelse return error.MissingColor;
 
             if (reg_id >= callee_safe_regs.len) return error.RegisterOutOfRange;
