@@ -65,7 +65,8 @@ pub fn main(init: std.process.Init) !void {
     // run optimization passses
     if (should_optim) {
         try copy.run(&ir_program, alloc);
-        try dead.run(&ir_program, alloc);
+        // TODO: turn back on once matmul works
+        // try dead.run(&ir_program, alloc);
     }
 
     try phi.eliminatePhi(&ir_program, alloc);
@@ -91,7 +92,7 @@ pub fn main(init: std.process.Init) !void {
 
     defer file.close(io);
 
-    var colored = try loop.run(&ir_program, &alloc_program, alloc, null);
+    var colored = try loop.run(&ir_program, &alloc_program, should_optim, alloc, null);
     defer colored.deinit();
 
     // dump colored graph
@@ -102,6 +103,38 @@ pub fn main(init: std.process.Init) !void {
 
     const asm_text = try emit(&ir_program, &colored, alloc);
     defer alloc.free(asm_text);
+
+    // TODO: break metrics up into their own module
+    if (should_dump_ir) {
+        var lines = std.mem.splitScalar(u8, asm_text, '\n');
+        var line_count: usize = 0;
+        var mov_count: usize = 0;
+        var memory_load_count: usize = 0;
+        var memory_store_count: usize = 0;
+        var branches: usize = 0;
+        var calls: usize = 0;
+        while (lines.next()) |line| {
+            const trim = std.mem.trim(u8, line, "\t");
+
+            if (trim.len == 0) continue;
+
+            if (trim[0] == '.' or trim[0] == '_') continue;
+
+            line_count += 1;
+            if (std.mem.startsWith(u8, trim, "mov ")) mov_count += 1;
+            if (std.mem.startsWith(u8, trim, "ldr ")) memory_load_count += 1;
+            if (std.mem.startsWith(u8, trim, "str ")) memory_store_count += 1;
+            if (std.mem.startsWith(u8, trim, "ret ") or std.mem.startsWith(u8, trim, "b ")) branches += 1;
+            if (std.mem.startsWith(u8, trim, "bl ")) calls += 1;
+        }
+        std.debug.print("\n{s}performance report:{s}\n", .{ underline_code, reset_code });
+        std.debug.print("number of asm lines: {d}\n", .{line_count});
+        std.debug.print("mov count: {d}\n", .{mov_count});
+        std.debug.print("memory load count: {d}\n", .{memory_load_count});
+        std.debug.print("memory store count: {d}\n", .{memory_store_count});
+        std.debug.print("branch count: {d}\n", .{branches});
+        std.debug.print("call count: {d}\n", .{calls});
+    }
 
     try file_writer.interface.writeAll(asm_text);
     try file_writer.interface.flush();

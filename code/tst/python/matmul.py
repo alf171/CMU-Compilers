@@ -4,8 +4,9 @@ P = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
 
 # (M, N) @ (N, K) => (M, K)
 
-# for m in range(len(M)):
-for m in range(3):
+lm = len(M)
+for m in range(lm):
+# for m in range(3):
     # for k in range(len(N[0])):
     for k in range(3):
         acc = 0

@@ -27,17 +27,24 @@ pub const Node = struct {
 
 pub const IGraph = struct {
     nodes: std.AutoHashMap(Operand, Node),
+    aliases: std.AutoHashMap(Operand, Operand),
 
-    pub fn init(allocator: Allocator) @This() {
-        return IGraph{ .nodes = std.AutoHashMap(Operand, Node).init(allocator) };
+    pub fn init(alloc: Allocator) @This() {
+        return IGraph{
+            .aliases = std.AutoHashMap(Operand, Operand).init(alloc),
+            .nodes = std.AutoHashMap(Operand, Node).init(alloc),
+        };
     }
 
     pub fn deinit(self: *@This()) void {
-        var it = self.nodes.valueIterator();
-        while (it.next()) |n| {
-            n.deinit();
+        {
+            var it = self.nodes.valueIterator();
+            while (it.next()) |n| {
+                n.deinit();
+            }
+            self.nodes.deinit();
         }
-        self.nodes.deinit();
+        self.aliases.deinit();
     }
 
     pub fn print(self: *@This(), allocator: Allocator, writer: Writer) !void {
@@ -63,41 +70,76 @@ pub const IGraph = struct {
     }
 
     /// merge dst and src into a single node. dst will represent both nodes.
-    /// not concerned with validility or merge just functionality.
-    /// TODO: need a graph wide swap now of dst <- src
     pub fn mergeNodes(self: *@This(), dst: Operand, src: Operand) !void {
-        var dst_node = self.nodes.get(dst) orelse {
+        var dst_node = self.nodes.getPtr(dst) orelse {
             return error.IllegalGraph;
         };
-        var src_node = self.nodes.get(src) orelse {
+        var src_node = self.nodes.getPtr(src) orelse {
             return error.IllegalGraph;
         };
 
-        defer src_node.deinit();
+        {
+            var it = src_node.neighbors.keyIterator();
+            // union of nbors \ eachother
+            while (it.next()) |k| {
+                try dst_node.neighbors.put(k.*, {});
+            }
+            _ = dst_node.neighbors.remove(src);
+            _ = dst_node.neighbors.remove(dst);
+
+            // union of moves \ eachother
+            var moves_it = src_node.moves.keyIterator();
+            while (moves_it.next()) |nbor| {
+                try dst_node.moves.put(nbor.*, {});
+            }
+            _ = dst_node.moves.remove(src);
+            _ = dst_node.moves.remove(dst);
+
+            dst_node.selected = false;
+            dst_node.spill = src_node.spill or dst_node.spill;
+            // do we have sleeper nodes like mem and special?
+            const degree: u8 = @intCast(dst_node.neighbors.count());
+            dst_node.cur_degree = degree;
+            dst_node.static_degree = degree;
+        }
+
+        {
+            // loop other nodes looking for merged node
+            var it = self.nodes.iterator();
+            while (it.next()) |key| {
+                const node = key.value_ptr;
+
+                // fix nbors
+                if (node.neighbors.contains(src)) {
+                    _ = node.neighbors.remove(src);
+                    // prevent self reflection
+                    if (!node.val.equal(dst)) {
+                        _ = try node.neighbors.put(dst, {});
+                    }
+                }
+                // fix moves
+                if (node.moves.contains(src)) {
+                    _ = node.moves.remove(src);
+                    // prevent self reflection
+                    if (!node.val.equal(dst)) {
+                        _ = try node.moves.put(dst, {});
+                    }
+                }
+            }
+        }
+        // setup aliases
+        try self.aliases.put(src, dst);
+        // free
+        src_node.deinit();
         _ = self.nodes.remove(src);
+    }
 
-        var it = src_node.neighbors.keyIterator();
-        // union of nbors \ eachother
-        while (it.next()) |k| {
-            try dst_node.neighbors.put(k.*, {});
+    pub fn resolveAlias(self: *@This(), op: Operand) Operand {
+        var cur = op;
+        while (self.aliases.get(cur)) |found| {
+            cur = found;
         }
-        _ = dst_node.neighbors.remove(src);
-        _ = dst_node.neighbors.remove(dst);
-
-        // union of moves \ eachother
-        var moves_it = src_node.moves.keyIterator();
-        while (moves_it.next()) |nbor| {
-            try dst_node.moves.put(nbor.*, {});
-        }
-        _ = dst_node.moves.remove(src);
-        _ = dst_node.moves.remove(dst);
-
-        dst_node.selected = false;
-        dst_node.spill = src_node.spill or dst_node.spill;
-        // do we have sleeper nodes like mem and special?
-        const degree: u8 = @intCast(dst_node.neighbors.count());
-        dst_node.cur_degree = degree;
-        dst_node.static_degree = degree;
+        return cur;
     }
 };
 
@@ -138,6 +180,11 @@ fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
         std.debug.assert(line.uses.ops.count() == 1);
         const define = try line.defines.single();
         const uses = try line.uses.single();
+
+        if (define == .mem or uses == .mem) {
+            return;
+        }
+
         std.debug.assert(!define.equal(uses));
         try defineNodeIfDoesntExist(igraph, define, allocator);
         try igraph.nodes.getPtr(define).?.moves.put(uses, {});
@@ -150,4 +197,40 @@ fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, allocator: Allocator) !
     if (!graph.nodes.contains(val)) {
         try graph.nodes.put(val, Node.init(val, allocator));
     }
+}
+
+// nodes: A, B, C
+// A <-> B <- C
+// :call: merge(A, B)
+// result: A <- C
+test "coalesce removes stale move refs" {
+    const alloc = std.testing.allocator;
+    var graph = IGraph.init(alloc);
+    defer graph.deinit();
+    const a = Operand{ .temp = 0 };
+    const b = Operand{ .temp = 1 };
+    const c = Operand{ .temp = 2 };
+    // init nodes
+    try graph.nodes.put(a, Node.init(a, alloc));
+    try graph.nodes.put(b, Node.init(b, alloc));
+    try graph.nodes.put(c, Node.init(c, alloc));
+    // establish moves
+    try graph.nodes.getPtr(a).?.moves.put(b, {});
+    try graph.nodes.getPtr(b).?.moves.put(a, {});
+    try graph.nodes.getPtr(c).?.moves.put(b, {});
+
+    try graph.mergeNodes(a, b);
+
+    try std.testing.expectEqual(2, graph.nodes.count());
+    // assert B is gone
+    if (graph.nodes.contains(b)) {
+        return error.MergeFailed;
+    }
+    // assert A <- ...
+    const a_node = graph.nodes.getPtr(a) orelse return error.CantFindA;
+    try std.testing.expectEqual(0, a_node.moves.count());
+    // assert C -> A
+    const c_node = graph.nodes.getPtr(c) orelse return error.CantFindA;
+    try std.testing.expectEqual(1, c_node.moves.count());
+    try std.testing.expect(c_node.moves.contains(a));
 }

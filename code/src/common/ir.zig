@@ -108,10 +108,22 @@ pub const Instruction = union(enum) {
         lhs: Operand,
         rhs: Operand,
     },
+    // [START] bultin functions
     print: struct {
         src: Operand,
         type: TypeInfo,
     },
+    len: struct {
+        dst: Operand,
+        value: TypedOperand,
+    },
+    range: struct {
+        dst: Operand,
+        start: Operand,
+        end: Operand,
+        step: Operand,
+    },
+    // [END] builtin functions
     jump: struct {
         target: BlockId,
     },
@@ -126,10 +138,8 @@ pub const Instruction = union(enum) {
     },
     // stack based fixed size array
     array_literal: struct {
-        dst: Operand,
+        dst: TypedOperand,
         elements: []Operand,
-        // TODO: change to TypedOperand
-        type: TypeInfo,
     },
     // dst <- array[index]
     array_load: struct {
@@ -139,10 +149,8 @@ pub const Instruction = union(enum) {
     },
     // heap based variable size
     list_literal: struct {
-        dst: Operand,
+        dst: TypedOperand,
         elements: []Operand,
-        // TODO: change to TypedOperand
-        type: TypeInfo,
     },
     // dst <- list[index]
     list_load: struct {
@@ -253,7 +261,7 @@ pub const Instruction = union(enum) {
                 std.debug.print(" ? jump block{d} : jump block{d}\n", .{ b.then_block, b.else_block });
             },
             .list_literal => |al| {
-                al.dst.print();
+                al.dst.operand.print();
                 std.debug.print(" <- [", .{});
                 for (al.elements, 0..al.elements.len) |elem, i| {
                     if (i != 0) std.debug.print(", ", .{});
@@ -262,7 +270,7 @@ pub const Instruction = union(enum) {
                 std.debug.print("]\n", .{});
             },
             .array_literal => |al| {
-                al.dst.print();
+                al.dst.operand.print();
                 std.debug.print(" <- [", .{});
                 for (al.elements, 0..al.elements.len) |elem, i| {
                     if (i != 0) std.debug.print(", ", .{});
@@ -371,7 +379,7 @@ pub const Instruction = union(enum) {
                 if (c.dst.equal(old)) c.dst = new;
             },
             .array_literal => |*al| {
-                if (al.dst.equal(old)) al.dst = new;
+                if (al.dst.operand.equal(old)) al.dst.operand = new;
             },
             else => |e| {
                 std.debug.print("defines cant handle {s}\n", .{@tagName(e)});
@@ -390,9 +398,9 @@ pub const Instruction = union(enum) {
             .unaryop => |uop| .{ .operand = uop.dst },
             .compare => |c| .{ .operand = c.dst },
             .phi => |pi| .{ .operand = pi.dst.operand },
-            .array_literal => |al| .{ .operand = al.dst },
+            .array_literal => |al| .{ .operand = al.dst.operand },
             .array_load => |al| .{ .operand = al.dst },
-            .list_literal => |ll| .{ .operand = ll.dst },
+            .list_literal => |ll| .{ .operand = ll.dst.operand },
             .list_load => |ll| .{ .operand = ll.dst },
             else => null,
         };

@@ -35,7 +35,7 @@ const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, 
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Subscript, Unknown };
 
-const BuiltinCall = enum { Print, Range };
+const BuiltinCall = enum { Print, Range, Len };
 
 const RangeBounds = struct {
     start: i64,
@@ -206,12 +206,12 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
 
                 const _type = TypeInfo{ .list = .{ .element = &.char, .size = bytes.len + 1 } };
 
+                const typed_dst = TypedOperand{ .operand = dst, .type = _type };
                 try irBuilder.emit(Instruction{ .list_literal = .{
-                    .dst = dst,
+                    .dst = typed_dst,
                     .elements = try elements.toOwnedSlice(),
-                    .type = _type,
                 } });
-                return TypedOperand{ .operand = dst, .type = _type };
+                return typed_dst;
             }
             return error.TypeNotImpl;
         },
@@ -233,16 +233,19 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             const dst = irBuilder.nextTemp();
 
             const first_elem_type = elem_type orelse return error.NoTypeFound;
-            const type_ = TypeInfo{ .list = .{ .element = try types.ownedPointer(
-                first_elem_type,
-                alloc,
-            ), .size = @intCast(len) } };
+            const type_ = TypeInfo{ .list = .{
+                .element = try types.ownedPointer(
+                    first_elem_type,
+                    alloc,
+                ),
+                .size = @intCast(len),
+            } };
+            const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
             try irBuilder.emit(Instruction{ .list_literal = .{
-                .dst = dst,
+                .dst = typed_dst,
                 .elements = try result.toOwnedSlice(),
-                .type = type_,
             } });
-            return TypedOperand{ .operand = dst, .type = type_ };
+            return typed_dst;
         },
         // Subscript(value=Name(id='items', ctx=Load()), slice=Constant(value=0), ctx=Load())
         .Subscript => {
@@ -378,22 +381,34 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     } });
                     return src;
                 },
+                .Len => {
+                    std.debug.assert(c.PyList_Size(args) == 1);
+                    const arg0 = c.PyList_GetItem(args, 0);
+                    std.debug.assert(arg0 != null);
+                    const value = try walkExpr(arg0, irBuilder, alloc);
+                    const dst = irBuilder.nextTemp();
+                    try irBuilder.emit(Instruction{ .len = .{
+                        .dst = dst,
+                        .value = value,
+                    } });
+                    return .{ .operand = dst, .type = .int };
+                },
                 // Call(func=Name(id='range', ctx=Load()), args=[Constant(value=0), Constant(value=10)])
                 .Range => {
                     const bounds = switch (c.PyList_Size(args)) {
                         1 => blk: {
                             const endItem = c.PyList_GetItem(args, 0);
                             std.debug.assert(endItem != null);
-                            const end = try getConstInt(endItem);
+                            const end = try getInt(endItem);
                             break :blk RangeBounds{ .start = 0, .end = end };
                         },
                         2 => blk: {
                             const startItem = c.PyList_GetItem(args, 0);
                             std.debug.assert(startItem != null);
-                            const start = try getConstInt(startItem);
+                            const start = try getInt(startItem);
                             const endItem = c.PyList_GetItem(args, 1);
                             std.debug.assert(endItem != null);
-                            const end = try getConstInt(endItem);
+                            const end = try getInt(endItem);
                             break :blk RangeBounds{ .start = start, .end = end };
                         },
                         else => return error.InvalidBounds,
@@ -419,16 +434,13 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                         .element = &.int,
                         .size = @intCast(bounds.end - bounds.start),
                     } };
+                    const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
                     // TODO: consider using list
                     try irBuilder.emit(Instruction{ .array_literal = .{
-                        .dst = dst,
+                        .dst = typed_dst,
                         .elements = try elements.toOwnedSlice(),
-                        .type = type_,
                     } });
-                    return TypedOperand{
-                        .operand = dst,
-                        .type = type_,
-                    };
+                    return typed_dst;
                 },
             }
         },
@@ -973,19 +985,33 @@ fn getBuiltinCall(name: []const u8) ?BuiltinCall {
         return BuiltinCall.Range;
     } else if (std.mem.eql(u8, name, "print")) {
         return BuiltinCall.Print;
+    } else if (std.mem.eql(u8, name, "len")) {
+        return BuiltinCall.Len;
     }
     return null;
 }
 
-fn getConstInt(expr: *PyObject) !i64 {
-    if (getExprKind(expr) != .Constant) return error.TypeMismatch;
+fn getInt(expr: *PyObject) !i64 {
+    const kind = getExprKind(expr);
+    switch (kind) {
+        .Constant => {
+            const value_obj = c.PyObject_GetAttrString(expr, "value");
+            std.debug.assert(value_obj != null);
 
-    const value_obj = c.PyObject_GetAttrString(expr, "value");
-    std.debug.assert(value_obj != null);
+            if (!std.mem.eql(u8, getPyType(value_obj), "int")) return error.TypeMismatch;
 
-    if (!std.mem.eql(u8, getPyType(value_obj), "int")) return error.TypeMismatch;
-
-    return c.PyLong_AsLong(value_obj);
+            return c.PyLong_AsLong(value_obj);
+        },
+        // Name(id='lm', ctx=Load())
+        .Name => {
+            printAstDump(expr);
+            return error.TypeMismatch;
+        },
+        else => |k| {
+            std.debug.print("{s}\n", .{@tagName(k)});
+            return error.TypeMismatch;
+        },
+    }
 }
 
 test "while loop" {

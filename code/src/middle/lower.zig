@@ -85,13 +85,13 @@ fn lowerBlocks(
                     try line.uses.ops.put(b.condition, {});
                 },
                 .list_literal => |al| {
-                    try line.defines.ops.put(al.dst, {});
+                    try line.defines.ops.put(al.dst.operand, {});
                     for (al.elements) |elem| {
                         try line.uses.ops.put(elem, {});
                     }
                 },
                 .array_literal => |al| {
-                    try line.defines.ops.put(al.dst, {});
+                    try line.defines.ops.put(al.dst.operand, {});
                     for (al.elements) |elem| {
                         try line.uses.ops.put(elem, {});
                     }

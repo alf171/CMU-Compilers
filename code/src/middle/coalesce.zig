@@ -7,11 +7,11 @@ const Writer = std.Io.Writer;
 const Operand = @import("common").alloc.Operand;
 
 /// merge either src or dest into later if live_out and degree let's us do so
-pub fn run(graph: *igraph.IGraph, reg_count: u8, stdout: ?*Writer) !void {
+pub fn run(graph: *igraph.IGraph, reg_count: u8, alloc: std.mem.Allocator, stdout: ?*Writer) !void {
     while (try checkForPossibleMerges(graph.*, reg_count, stdout)) |pair| {
         // try stdout.print("merging {any} and {any}\n", .{ pair.nodeA, pair.nodeB });
         try graph.mergeNodes(pair.nodeA, pair.nodeB);
-        try swapNode(graph.*, pair.nodeA, pair.nodeB);
+        try swapNode(graph, pair.nodeA, pair.nodeB, alloc);
     }
     // try stdout.flush();
 }
@@ -67,15 +67,20 @@ fn canCoalesce(graph: igraph.IGraph, a: igraph.Node, b: igraph.Node, k: u8) !boo
     return count < k;
 }
 
-fn swapNode(graph: igraph.IGraph, new: Operand, remove: Operand) !void {
+fn swapNode(graph: *igraph.IGraph, new: Operand, remove: Operand, alloc: std.mem.Allocator) !void {
     var node_it = graph.nodes.valueIterator();
     while (node_it.next()) |node| {
+        var neighbors = std.AutoHashMap(Operand, void).init(alloc);
+        errdefer neighbors.deinit();
         var nbor_it = node.neighbors.keyIterator();
         while (nbor_it.next()) |nbor_id| {
             if (nbor_id.equal(remove)) {
-                _ = node.neighbors.remove(nbor_id.*);
-                try node.neighbors.put(new, {});
+                try neighbors.put(new, {});
+            } else {
+                try neighbors.put(nbor_id.*, {});
             }
         }
+        node.neighbors.deinit();
+        node.neighbors = neighbors;
     }
 }

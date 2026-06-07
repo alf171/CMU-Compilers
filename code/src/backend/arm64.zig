@@ -89,6 +89,7 @@ fn emitFunction(
                                 // reg <- reg
                                 .temp => {
                                     const src = try regFor(m.src, colors);
+                                    if (std.mem.eql(u8, dst, src)) continue;
                                     try out.print("\tmov {s}, {s}\n", .{ dst, src });
                                 },
                                 // reg <- mem
@@ -186,7 +187,7 @@ fn emitFunction(
                     const base_slot = next_array_slot;
                     next_array_slot += al.elements.len;
 
-                    const dst = try regFor(al.dst, colors);
+                    const dst = try regFor(al.dst.operand, colors);
 
                     // array[i] = x29 - end + adjust(i)
                     for (al.elements, 0..al.elements.len) |elem, i| {
@@ -201,8 +202,8 @@ fn emitFunction(
                 },
                 // heap: [ size ] [elem 0] [...]
                 .list_literal => |ll| {
-                    const dst = try regFor(ll.dst, colors);
-                    const elem_type = try getElementType(ll.type);
+                    const dst = try regFor(ll.dst.operand, colors);
+                    const elem_type = try getElementType(ll.dst.type);
                     const elem_size = try sizeOfType(elem_type);
                     const byte_count = ll.elements.len * elem_size + 8;
                     const len = ll.elements.len;

@@ -121,19 +121,21 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
     }
 
     // phase 1, build simplify and spill
-    var it = input.nodes.iterator();
-    while (it.next()) |ptr| {
-        const node = ptr.value_ptr;
+    {
+        var it = input.nodes.iterator();
+        while (it.next()) |ptr| {
+            const node = ptr.value_ptr;
 
-        // skip already seen nodes, special registers, and spilled registers
-        if (node.selected or node.val == .spec_reg or node.val == .mem) {
-            continue;
-        }
+            // skip already seen nodes, special registers, and spilled registers
+            if (node.selected or node.val == .spec_reg or node.val == .mem) {
+                continue;
+            }
 
-        if (node.cur_degree < k) {
-            try simplify.put(node.val, {});
-        } else {
-            try spill.put(node.val, {});
+            if (node.cur_degree < k) {
+                try simplify.put(node.val, {});
+            } else {
+                try spill.put(node.val, {});
+            }
         }
     }
 
@@ -197,6 +199,28 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
             // std.debug.print("spilling reg for {s}\n", .{str});
             new_graph.deinit();
             return .{ .spill_register = id };
+        }
+    }
+
+    // phase 4: swap Operand aliases
+    {
+        var it = input.aliases.iterator();
+        while (it.next()) |key| {
+            const old = key.key_ptr.*;
+            const new = input.resolveAlias(key.value_ptr.*);
+
+            const rep_colors = new_graph.nodes.get(new) orelse return error.CantFindAlias;
+            const reg = rep_colors.register orelse return error.MissingColor;
+
+            try new_graph.nodes.put(old, .{
+                // this doesn't matter at this point
+                .node = .{
+                    .moves = Set(Operand).init(allocator),
+                    .neighbors = Set(Operand).init(allocator),
+                    .val = old,
+                },
+                .register = reg,
+            });
         }
     }
 
