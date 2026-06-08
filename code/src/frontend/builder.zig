@@ -14,7 +14,7 @@ const Program = @import("common").ir.Program;
 const Instruction = @import("common").ir.Instruction;
 const SpecialRegs = @import("common").ir.SpecialRegs;
 
-const ArrayList = std.array_list.Managed;
+const ArrayList = std.ArrayList;
 pub const LocalValues = std.AutoHashMap(LocalId, TypedOperand);
 
 pub const IrBuilder = struct {
@@ -43,7 +43,7 @@ pub const IrBuilder = struct {
             .next_temp = 0,
             .locals_by_name = std.StringHashMap(LocalId).init(alloc),
             .local_values = LocalValues.init(alloc),
-            .locals = ArrayList(LocalInfo).init(alloc),
+            .locals = ArrayList(LocalInfo).empty,
         };
     }
 
@@ -55,7 +55,7 @@ pub const IrBuilder = struct {
         }
         self.locals_by_name.deinit();
         self.local_values.deinit();
-        self.locals.deinit();
+        self.locals.deinit(alloc);
     }
 
     pub fn currentBlocks(self: *@This()) *ArrayList(BasicBlock) {
@@ -103,13 +103,13 @@ pub const IrBuilder = struct {
         const id = self.next_local;
         const owned_name = try alloc.dupe(u8, name);
         try self.locals_by_name.put(owned_name, id);
-        try self.locals.append(LocalInfo{ .id = id, .name = owned_name, .type = typeInfo });
+        try self.locals.append(alloc, LocalInfo{ .id = id, .name = owned_name, .type = typeInfo });
         self.next_local += 1;
         return id;
     }
 
-    pub fn emit(self: *@This(), instruct: Instruction) !void {
-        try self.currentBlocks().items[self.current_block].instructions.append(instruct);
+    pub fn emit(self: *@This(), instruct: Instruction, alloc: std.mem.Allocator) !void {
+        try self.currentBlocks().items[self.current_block].instructions.append(alloc, instruct);
     }
 
     pub fn newBlock(self: *@This(), alloc: std.mem.Allocator) !BlockId {
@@ -117,11 +117,11 @@ pub const IrBuilder = struct {
         self.next_block += 1;
         const new_block = BasicBlock{
             .id = id,
-            .instructions = ArrayList(Instruction).init(alloc),
-            .successors = ArrayList(BlockId).init(alloc),
+            .instructions = ArrayList(Instruction).empty,
+            .successors = ArrayList(BlockId).empty,
         };
 
-        try self.currentBlocks().append(new_block);
+        try self.currentBlocks().append(alloc, new_block);
         return id;
     }
 
@@ -129,8 +129,8 @@ pub const IrBuilder = struct {
         self.current_block = id;
     }
 
-    pub fn addSuccessor(self: *@This(), from: BlockId, to: BlockId) !void {
-        try self.currentBlocks().items[from].successors.append(to);
+    pub fn addSuccessor(self: *@This(), from: BlockId, to: BlockId, alloc: std.mem.Allocator) !void {
+        try self.currentBlocks().items[from].successors.append(alloc, to);
     }
 
     pub fn cloneLocalValues(self: *@This(), alloc: std.mem.Allocator) !LocalValues {

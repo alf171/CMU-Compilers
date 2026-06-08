@@ -1,5 +1,5 @@
 const std = @import("std");
-const ArrayList = std.array_list.Managed;
+const ArrayList = std.ArrayList;
 
 const common = @import("common");
 const TypeInfo = common.types.TypeInfo;
@@ -16,18 +16,18 @@ const CalleReturnRegister = @import("reg.zig").callee_return_reg;
 const ScratchReg = @import("reg.zig").scratch_reg;
 
 pub fn emit(program: *const common.ir.Program, colors: *const color.ColoredGraph, alloc: std.mem.Allocator) ![]u8 {
-    var out = ArrayList(u8).init(alloc);
-    errdefer out.deinit();
+    var out = ArrayList(u8).empty;
+    errdefer out.deinit(alloc);
 
-    try createProgramHeader(&out);
-    try emitFunction(&out, colors, &program.main, true);
+    try createProgramHeader(&out, alloc);
+    try emitFunction(&out, colors, &program.main, true, alloc);
     for (program.functions.items) |function| {
-        try emitFunction(&out, colors, &function, false);
+        try emitFunction(&out, colors, &function, false, alloc);
     }
 
-    try createFooter(&out);
+    try createFooter(&out, alloc);
 
-    return out.toOwnedSlice();
+    return out.toOwnedSlice(alloc);
 }
 
 fn emitFunction(
@@ -35,6 +35,7 @@ fn emitFunction(
     colors: *const color.ColoredGraph,
     function: *const Function,
     is_main: bool,
+    alloc: std.mem.Allocator,
 ) !void {
     const local_count = countLocals(&function.blocks);
     const array_slot_count = countArraySlots(&function.blocks);
@@ -50,23 +51,23 @@ fn emitFunction(
         local_stack_size + spill_stack_size,
         16,
     );
-    try createFunctionHeader(out, function.name, frame_stack_size);
+    try createFunctionHeader(out, function.name, frame_stack_size, alloc);
     var next_array_slot: usize = 0;
     for (function.blocks.items) |block| {
-        try out.print("_{s}_L{d}:\n", .{ function.name, block.id });
+        try out.print(alloc, "_{s}_L{d}:\n", .{ function.name, block.id });
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .constant => |c| {
                     const dst = try regFor(c.dst, colors);
                     switch (c.value) {
                         .int => |value| {
-                            try out.print("\tmov {s}, #{d}\n", .{ dst, value });
+                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, value });
                         },
                         .bool => |value| {
-                            try out.print("\tmov {s}, #{d}\n", .{ dst, @intFromBool(value) });
+                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, @intFromBool(value) });
                         },
                         .char => |value| {
-                            try out.print("\tmov {s}, #{d}\n", .{ dst, value });
+                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, value });
                         },
                         else => return error.NotImpl,
                     }
@@ -74,12 +75,12 @@ fn emitFunction(
                 // str: src, dst (register -> memory)
                 .store_local => |sl| {
                     const src = try regFor(sl.src, colors);
-                    try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, localOffset(sl.local.id) });
+                    try out.print(alloc, "\tstr {s}, [x29, #-{d}]\n", .{ src, localOffset(sl.local.id) });
                 },
                 // ldr: dst, src (memory -> register)
                 .load_local => |ll| {
                     const dst = try regFor(ll.dst, colors);
-                    try out.print("\tldr {s}, [x29, #-{d}]\n", .{ dst, localOffset(ll.local.id) });
+                    try out.print(alloc, "\tldr {s}, [x29, #-{d}]\n", .{ dst, localOffset(ll.local.id) });
                 },
                 .move => |m| {
                     switch (m.dst) {
@@ -90,12 +91,12 @@ fn emitFunction(
                                 .temp => {
                                     const src = try regFor(m.src, colors);
                                     if (std.mem.eql(u8, dst, src)) continue;
-                                    try out.print("\tmov {s}, {s}\n", .{ dst, src });
+                                    try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                                 },
                                 // reg <- mem
                                 .mem => |slot| {
                                     const offset = spillOffset(local_stack_size, slot);
-                                    try out.print("\tldr {s}, [x29, #-{d}]\n", .{ dst, offset });
+                                    try out.print(alloc, "\tldr {s}, [x29, #-{d}]\n", .{ dst, offset });
                                 },
                                 else => return error.NotImpl,
                             }
@@ -106,7 +107,7 @@ fn emitFunction(
                                 .temp => {
                                     const offset = spillOffset(local_stack_size, slot);
                                     const src = try regFor(m.src, colors);
-                                    try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
+                                    try out.print(alloc, "\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
                                 },
                                 .mem => {
                                     return error.MemoryToMemoryMoveDetected;
@@ -121,30 +122,30 @@ fn emitFunction(
                     switch (p.type) {
                         .int, .bool => {
                             const src = try regFor(p.src, colors);
-                            try out.appendSlice("\tsub sp, sp, #16\n");
-                            try out.print("\tstr {s}, [sp]\n", .{src});
-                            try out.appendSlice("\tadrp x0, fmt@PAGE\n");
-                            try out.appendSlice("\tadd x0, x0, fmt@PAGEOFF\n");
-                            try out.appendSlice("\tbl _printf\n");
-                            try out.appendSlice("\tadd sp, sp, #16\n");
+                            try out.appendSlice(alloc, "\tsub sp, sp, #16\n");
+                            try out.print(alloc, "\tstr {s}, [sp]\n", .{src});
+                            try out.appendSlice(alloc, "\tadrp x0, fmt@PAGE\n");
+                            try out.appendSlice(alloc, "\tadd x0, x0, fmt@PAGEOFF\n");
+                            try out.appendSlice(alloc, "\tbl _printf\n");
+                            try out.appendSlice(alloc, "\tadd sp, sp, #16\n");
                         },
                         .array => |arr| {
                             if (arr.element.* != .char) return error.TypeNotImpl;
                             const src = try regFor(p.src, colors);
                             for (0..(arr.size orelse return error.SizeMissing)) |i| {
                                 const offset = i * 8;
-                                try out.print("\tldr {s}, [{s}, #{d}]\n", .{ FirstParamRegister, src, offset });
-                                try out.appendSlice("\tbl _putchar\n");
+                                try out.print(alloc, "\tldr {s}, [{s}, #{d}]\n", .{ FirstParamRegister, src, offset });
+                                try out.appendSlice(alloc, "\tbl _putchar\n");
                             }
                             // print \n
-                            try out.print("\tmov x0, #10\n", .{});
-                            try out.appendSlice("\tbl _putchar\n");
+                            try out.print(alloc, "\tmov x0, #10\n", .{});
+                            try out.appendSlice(alloc, "\tbl _putchar\n");
                         },
                         .list => |lst| {
                             if (lst.element.* != .char) return error.TypeNotImpl;
                             const src = try regFor(p.src, colors);
-                            try out.print("\tadd x0, {s}, #8\n", .{src});
-                            try out.appendSlice("\tbl _puts\n");
+                            try out.print(alloc, "\tadd x0, {s}, #8\n", .{src});
+                            try out.appendSlice(alloc, "\tbl _puts\n");
                         },
                         else => return error.TypeNotImpl,
                     }
@@ -153,8 +154,8 @@ fn emitFunction(
                     const lhs = try regFor(c.lhs, colors);
                     const rhs = try regFor(c.rhs, colors);
                     const dst = try regFor(c.dst, colors);
-                    try out.print("\tcmp {s}, {s}\n", .{ lhs, rhs });
-                    try out.print("\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
+                    try out.print(alloc, "\tcmp {s}, {s}\n", .{ lhs, rhs });
+                    try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
                 },
                 .binop => |binop| {
                     const dst = try regFor(binop.dst, colors);
@@ -162,8 +163,8 @@ fn emitFunction(
                     const rhs = try regFor(binop.rhs, colors);
 
                     switch (binop.op) {
-                        .add => try out.print("\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
-                        .mul => try out.print("\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
+                        .add => try out.print(alloc, "\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
+                        .mul => try out.print(alloc, "\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
                         else => |op| {
                             std.debug.print("op is not supported {s}\n", .{@tagName(op)});
                             return error.NotSupported;
@@ -172,12 +173,12 @@ fn emitFunction(
                 },
                 .branch => |b| {
                     const cond = try regFor(b.condition, colors);
-                    try out.print("\tcmp {s}, #0\n", .{cond});
-                    try out.print("\tb.ne _{s}_L{d}\n", .{ function.name, b.then_block });
-                    try out.print("\tb _{s}_L{d}\n", .{ function.name, b.else_block });
+                    try out.print(alloc, "\tcmp {s}, #0\n", .{cond});
+                    try out.print(alloc, "\tb.ne _{s}_L{d}\n", .{ function.name, b.then_block });
+                    try out.print(alloc, "\tb _{s}_L{d}\n", .{ function.name, b.else_block });
                 },
                 .jump => |j| {
-                    try out.print("\tb _{s}_L{d}\n", .{ function.name, j.target });
+                    try out.print(alloc, "\tb _{s}_L{d}\n", .{ function.name, j.target });
                 },
                 // x29 - 8  local: items pointer
                 // x29 - 16 array[2]
@@ -190,15 +191,15 @@ fn emitFunction(
                     const dst = try regFor(al.dst.operand, colors);
 
                     // array[i] = x29 - end + adjust(i)
-                    for (al.elements, 0..al.elements.len) |elem, i| {
+                    for (al.elements, 0..) |elem, i| {
                         const src = try regFor(elem, colors);
                         const slot = base_slot + (al.elements.len - 1 - i);
                         const offset = arrayOffset(local_count, slot);
                         // HACK: assume everything is 8bytes wide
-                        try out.print("\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
+                        try out.print(alloc, "\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
                     }
                     // array_base = x29 - end
-                    try out.print("\tsub {s}, x29, #{d}\n", .{ dst, arrayOffset(local_count, base_slot + al.elements.len - 1) });
+                    try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, arrayOffset(local_count, base_slot + al.elements.len - 1) });
                 },
                 // heap: [ size ] [elem 0] [...]
                 .list_literal => |ll| {
@@ -207,11 +208,11 @@ fn emitFunction(
                     const elem_size = try sizeOfType(elem_type);
                     const byte_count = ll.elements.len * elem_size + 8;
                     const len = ll.elements.len;
-                    try out.print("\tmov {s}, #{d}\n", .{ FirstParamRegister, byte_count });
-                    try out.appendSlice("\tbl _arena_malloc\n");
+                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ FirstParamRegister, byte_count });
+                    try out.appendSlice(alloc, "\tbl _arena_malloc\n");
 
-                    try out.print("\tmov {s}, #{d}\n", .{ ScratchReg, len });
-                    try out.print("\tstr {s}, [{s}]\n", .{ ScratchReg, CalleReturnRegister });
+                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg, len });
+                    try out.print(alloc, "\tstr {s}, [{s}]\n", .{ ScratchReg, CalleReturnRegister });
 
                     for (ll.elements, 0..len) |element, i| {
                         const src = try regFor(element, colors);
@@ -219,15 +220,15 @@ fn emitFunction(
                         switch (elem_type) {
                             // pointers & ints are size 8
                             .int, .list, .array => {
-                                try out.print("\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
+                                try out.print(alloc, "\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
                             },
                             .bool, .char => {
-                                try out.print("\tstrb w{s}, [{s}, #{d}]\n", .{ src[1..], CalleReturnRegister, offset });
+                                try out.print(alloc, "\tstrb w{s}, [{s}, #{d}]\n", .{ src[1..], CalleReturnRegister, offset });
                             },
                             else => return error.TypeNotImpl,
                         }
                     }
-                    try out.print("\tmov {s}, x0\n", .{dst});
+                    try out.print(alloc, "\tmov {s}, x0\n", .{dst});
                 },
                 .array_load => |al| {
                     const dst = try regFor(al.dst, colors);
@@ -238,11 +239,11 @@ fn emitFunction(
                     switch (elem_type) {
                         // index = index << 3
                         .int => {
-                            try out.print("\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
-                            try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
+                            try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
+                            try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
                         },
                         .bool => {
-                            try out.print("\tldr w{s}, [{s}, {s}]\n", .{ dst[1..], array, index });
+                            try out.print(alloc, "\tldr w{s}, [{s}, {s}]\n", .{ dst[1..], array, index });
                         },
                         else => return error.TypeNotImpl,
                     }
@@ -256,13 +257,13 @@ fn emitFunction(
                     switch (elem_type) {
                         // index = (index + 1) << 3
                         .int, .list, .array => {
-                            try out.print("\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
-                            try out.print("\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                            try out.print("\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
+                            try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
+                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                            try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
                         },
                         .bool, .char => {
-                            try out.print("\tadd {s}, {s}, #8\n", .{ ScratchReg, index });
-                            try out.print("\tldrb w{s}, [{s}, {s}]\n", .{ dst[1..], array, ScratchReg });
+                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, index });
+                            try out.print(alloc, "\tldrb w{s}, [{s}, {s}]\n", .{ dst[1..], array, ScratchReg });
                         },
                         else => return error.TypeNotImpl,
                     }
@@ -271,27 +272,27 @@ fn emitFunction(
                     for (fc.args, 0..) |arg, i| {
                         const dst = try paramRegFor(i);
                         const src = try regFor(arg.operand, colors);
-                        try out.print("\tmov {s}, {s}\n", .{ dst, src });
+                        try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                     }
 
-                    try out.print("\tbl _{s}\n", .{fc.function_name});
+                    try out.print(alloc, "\tbl _{s}\n", .{fc.function_name});
 
                     if (fc.dst) |dst_op| {
                         const dst = try regFor(dst_op, colors);
-                        try out.print("\tmov {s}, x0\n", .{dst});
+                        try out.print(alloc, "\tmov {s}, x0\n", .{dst});
                     }
                 },
                 .function_param => |fp| {
                     const dst = try regFor(fp.dst.operand, colors);
                     const src = try paramRegFor(fp.index);
-                    try out.print("\tmov {s}, {s}\n", .{ dst, src });
+                    try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                 },
                 .function_return => |fr| {
                     if (fr.value) |src_op| {
                         const src = try regFor(src_op, colors);
-                        try out.print("\tmov x0, {s}\n", .{src});
+                        try out.print(alloc, "\tmov x0, {s}\n", .{src});
                     }
-                    try out.print("\tb _{s}_epilogue\n", .{function.name});
+                    try out.print(alloc, "\tb _{s}_epilogue\n", .{function.name});
                 },
                 else => |ir| {
                     std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(ir)});
@@ -300,69 +301,69 @@ fn emitFunction(
             }
         }
         if (block.successors.items.len == 0) {
-            try out.print("\tb _{s}_epilogue\n", .{function.name});
+            try out.print(alloc, "\tb _{s}_epilogue\n", .{function.name});
         }
     }
-    try createFunctionFooter(out, function.name, frame_stack_size, is_main);
+    try createFunctionFooter(out, function.name, frame_stack_size, is_main, alloc);
 }
 
-fn createProgramHeader(out: *ArrayList(u8)) !void {
-    try out.appendSlice(".section __TEXT,__text\n");
-    try out.appendSlice(".global _main\n");
+fn createProgramHeader(out: *ArrayList(u8), alloc: std.mem.Allocator) !void {
+    try out.appendSlice(alloc, ".section __TEXT,__text\n");
+    try out.appendSlice(alloc, ".global _main\n");
 }
 
-fn createFunctionHeader(out: *ArrayList(u8), name: []const u8, local_stack_size: usize) !void {
-    try out.print("_{s}:\n", .{name});
-    try out.appendSlice("\tstp x29, x30, [sp, #-16]!\n");
-    try out.appendSlice("\tmov x29, sp\n");
+fn createFunctionHeader(out: *ArrayList(u8), name: []const u8, local_stack_size: usize, alloc: std.mem.Allocator) !void {
+    try out.print(alloc, "_{s}:\n", .{name});
+    try out.appendSlice(alloc, "\tstp x29, x30, [sp, #-16]!\n");
+    try out.appendSlice(alloc, "\tmov x29, sp\n");
     if (local_stack_size > 0) {
-        try out.print("\tsub sp, sp, #{d}\n", .{local_stack_size});
+        try out.print(alloc, "\tsub sp, sp, #{d}\n", .{local_stack_size});
     }
-    try saveCallleSafeReg(out);
+    try saveCallleSafeReg(out, alloc);
 }
 
-fn saveCallleSafeReg(out: *ArrayList(u8)) !void {
+fn saveCallleSafeReg(out: *ArrayList(u8), alloc: std.mem.Allocator) !void {
     std.debug.assert(CalleeSafeRegisters.len % 2 == 0);
     var i: usize = 0;
     while (i < CalleeSafeRegisters.len) : (i += 2) {
         const reg1 = CalleeSafeRegisters[i];
         const reg2 = CalleeSafeRegisters[i + 1];
-        try out.print("\tstp {s}, {s}, [sp, #-16]!\n", .{ reg1, reg2 });
+        try out.print(alloc, "\tstp {s}, {s}, [sp, #-16]!\n", .{ reg1, reg2 });
     }
 }
 
-fn restoreCallleSafeReg(out: *ArrayList(u8)) !void {
+fn restoreCallleSafeReg(out: *ArrayList(u8), alloc: std.mem.Allocator) !void {
     std.debug.assert(CalleeSafeRegisters.len % 2 == 0);
     var i: usize = CalleeSafeRegisters.len;
     while (i > 0) {
         i -= 2;
         const reg1 = CalleeSafeRegisters[i];
         const reg2 = CalleeSafeRegisters[i + 1];
-        try out.print("\tldp {s}, {s}, [sp], #16\n", .{ reg1, reg2 });
+        try out.print(alloc, "\tldp {s}, {s}, [sp], #16\n", .{ reg1, reg2 });
     }
 }
 
-fn createFunctionFooter(out: *ArrayList(u8), name: []const u8, local_stack_size: usize, is_main: bool) !void {
-    try out.print("_{s}_epilogue:\n", .{name});
+fn createFunctionFooter(out: *ArrayList(u8), name: []const u8, local_stack_size: usize, is_main: bool, alloc: std.mem.Allocator) !void {
+    try out.print(alloc, "_{s}_epilogue:\n", .{name});
     if (is_main) {
-        try out.appendSlice("\tbl _arena_free\n");
-        try out.appendSlice("\tmov w0, #0\n");
+        try out.appendSlice(alloc, "\tbl _arena_free\n");
+        try out.appendSlice(alloc, "\tmov w0, #0\n");
     }
 
-    try restoreCallleSafeReg(out);
+    try restoreCallleSafeReg(out, alloc);
     if (local_stack_size > 0) {
-        try out.print("\tadd sp, sp, #{d}\n", .{local_stack_size});
+        try out.print(alloc, "\tadd sp, sp, #{d}\n", .{local_stack_size});
     }
 
     // restore frame pointer and return address
-    try out.appendSlice("\tldp x29, x30, [sp], #16\n");
-    try out.appendSlice("\tret\n");
+    try out.appendSlice(alloc, "\tldp x29, x30, [sp], #16\n");
+    try out.appendSlice(alloc, "\tret\n");
 }
 
-fn createFooter(out: *ArrayList(u8)) !void {
-    try out.appendSlice("\n.section __TEXT,__cstring\n");
-    try out.appendSlice("fmt:\n");
-    try out.appendSlice("\t.asciz \"%ld\\n\"\n");
+fn createFooter(out: *ArrayList(u8), alloc: std.mem.Allocator) !void {
+    try out.appendSlice(alloc, "\n.section __TEXT,__cstring\n");
+    try out.appendSlice(alloc, "fmt:\n");
+    try out.appendSlice(alloc, "\t.asciz \"%ld\\n\"\n");
 }
 
 fn countLocals(blocks: *const ArrayList(Block)) usize {

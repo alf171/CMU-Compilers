@@ -32,7 +32,7 @@ pub fn run(ir_program: *IrProgram, init_program: *AllocProgram, should_coalesce:
         // split in ir
         try spill.spillRegInIr(ir_program, program, graph_attempt.spill_register, alloc);
         try live.calculateLiveOut(&new_program, alloc);
-        program.deinit();
+        program.deinit(alloc);
         program.* = new_program;
         // try program.print(stdout);
         graph = try igraph.createIgraph(program.lines, alloc);

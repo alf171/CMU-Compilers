@@ -1,5 +1,5 @@
 const std = @import("std");
-const ArrayList = std.array_list.Managed;
+const ArrayList = std.ArrayList;
 
 const common = @import("common");
 const AllocProgram = common.alloc.AllocProgram;
@@ -12,8 +12,8 @@ const FrontEndProgram = common.ir.Program;
 /// generate the necessary information such that we do register selection eventually
 pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProgram {
     var res = AllocProgram{
-        .lines = ArrayList(AllocLine).init(alloc),
-        .blocks = ArrayList(AllocBlock).init(alloc),
+        .lines = ArrayList(AllocLine).empty,
+        .blocks = ArrayList(AllocBlock).empty,
         .register_count = common.alloc.REG_COUNT,
     };
 
@@ -125,14 +125,14 @@ fn lowerBlocks(
                 },
             }
 
-            try res.lines.append(line);
+            try res.lines.append(alloc, line);
             instruction_index.* += 1;
         }
         const end = res.lines.items.len;
-        var successors = ArrayList(u32).init(alloc);
-        try successors.appendSlice(block.successors.items);
+        var successors = ArrayList(u32).empty;
+        try successors.appendSlice(alloc, block.successors.items);
 
-        try res.blocks.append(AllocBlock{
+        try res.blocks.append(alloc, AllocBlock{
             .id = block.id,
             .start = start,
             .end = end,

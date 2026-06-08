@@ -1,7 +1,7 @@
 const std = @import("std");
 const parser = @import("parse.zig");
 const live = @import("live.zig");
-const ArrayList = std.array_list.Managed;
+const ArrayList = std.ArrayList;
 
 const common = @import("common");
 const Instruction = common.ir.Instruction;
@@ -34,12 +34,12 @@ fn spillRegInFunction(
     alloc: std.mem.Allocator,
 ) !void {
     for (function.blocks.items) |*block| {
-        var new_instructions = ArrayList(Instruction).init(alloc);
+        var new_instructions = ArrayList(Instruction).empty;
         for (block.instructions.items) |old_instruction| {
             var instruction = old_instruction;
             const maybe_defines = old_instruction.getDefines();
-            const uses = try old_instruction.getUses(alloc);
-            defer uses.deinit();
+            var uses = try old_instruction.getUses(alloc);
+            defer uses.deinit(alloc);
             for (uses.items) |use_item| {
                 // :spill A:
                 // A <- op A, B
@@ -52,7 +52,7 @@ fn spillRegInFunction(
                         if (use_op.equal(spilled)) {
                             const t1 = Operand{ .temp = next_temp.* };
                             next_temp.* += 1;
-                            try new_instructions.append(Instruction{ .move = .{
+                            try new_instructions.append(alloc, Instruction{ .move = .{
                                 .dst = t1,
                                 .src = Operand{ .mem = slot },
                             } });
@@ -69,8 +69,8 @@ fn spillRegInFunction(
                         const t2 = Operand{ .temp = next_temp.* };
                         next_temp.* += 1;
                         try instruction.replaceDefines(spilled, t2);
-                        try new_instructions.append(instruction);
-                        try new_instructions.append(Instruction{ .move = .{
+                        try new_instructions.append(alloc, instruction);
+                        try new_instructions.append(alloc, Instruction{ .move = .{
                             .dst = Operand{ .mem = slot },
                             .src = t2,
                         } });
@@ -79,20 +79,20 @@ fn spillRegInFunction(
                 },
                 .local => {},
             };
-            try new_instructions.append(instruction);
+            try new_instructions.append(alloc, instruction);
         }
-        block.instructions.deinit();
+        block.instructions.deinit(alloc);
         block.instructions = new_instructions;
     }
 }
 
 pub fn spillReg(current_program: *const AllocProgram, reg: Operand, alloc: std.mem.Allocator) !AllocProgram {
     var new_program = AllocProgram{
-        .lines = ArrayList(Line).init(alloc),
-        .blocks = ArrayList(Block).init(alloc),
+        .lines = ArrayList(Line).empty,
+        .blocks = ArrayList(Block).empty,
         .register_count = current_program.register_count,
     };
-    errdefer new_program.deinit();
+    errdefer new_program.deinit(alloc);
 
     var next_temp = current_program.nextTemp();
     const memory_pointer = current_program.nextMem();
@@ -103,10 +103,10 @@ pub fn spillReg(current_program: *const AllocProgram, reg: Operand, alloc: std.m
             try spillLine(&new_program, line, reg, memory_pointer, &next_temp, alloc);
         }
 
-        var successors = ArrayList(u32).init(alloc);
-        try successors.appendSlice(block.successors.items);
+        var successors = ArrayList(u32).empty;
+        try successors.appendSlice(alloc, block.successors.items);
 
-        try new_program.blocks.append(.{
+        try new_program.blocks.append(alloc, .{
             .id = block.id,
             .start = new_start,
             .end = new_program.lines.items.len,
@@ -145,14 +145,14 @@ fn spillLine(
         try temp.ops.put(Operand{ .temp = next_temp.* }, {});
         const temp_line_number: usize = @intCast(new_program.lines.items.len + 1);
         const p1 = Line{ .uses = try line.uses.clone(alloc), .live_out = Operands.init(alloc), .defines = temp, .instruction_index = temp_line_number, .move = line.move };
-        try new_program.lines.append(p1);
+        try new_program.lines.append(alloc, p1);
         // p2: M[] <- temp_new
         var mem = Operands.init(alloc);
         try mem.ops.put(Operand{ .mem = memory_pointer }, {});
         const new_uses = try temp.clone(alloc);
         const new_line_number: usize = @intCast(new_program.lines.items.len + 1);
         const new_line = Line{ .uses = new_uses, .live_out = Operands.init(alloc), .defines = mem, .instruction_index = new_line_number, .move = false };
-        try new_program.lines.append(new_line);
+        try new_program.lines.append(alloc, new_line);
         next_temp.* += 1;
         return;
     }
@@ -167,7 +167,7 @@ fn spillLine(
             try mem.ops.put(Operand{ .mem = memory_pointer }, {});
             const new_line_number: usize = @intCast(new_program.lines.items.len + 1);
             const new_line = Line{ .live_out = Operands.init(alloc), .defines = temp, .instruction_index = new_line_number, .move = line.move, .uses = mem };
-            try new_program.lines.append(new_line);
+            try new_program.lines.append(alloc, new_line);
             // p2: replace reg_{spill} with temp_i
             // std.debug.print("trying to remove {any} from line.uses: {any}", .{ reg, line.uses.ops.items });
             var mut_uses = try Operands.remove(line.uses, reg, alloc);
@@ -175,7 +175,7 @@ fn spillLine(
             const mut_defines = try line.defines.clone(alloc);
             const mut_line_count: usize = @intCast(new_program.lines.items.len + 1);
             const rewritten_line = Line{ .uses = mut_uses, .defines = mut_defines, .live_out = Operands.init(alloc), .move = line.move, .instruction_index = mut_line_count };
-            try new_program.lines.append(rewritten_line);
+            try new_program.lines.append(alloc, rewritten_line);
 
             next_temp.* += 1;
             return;
@@ -185,7 +185,7 @@ fn spillLine(
     if (line.live_out.ops.contains(reg)) {
         const new_line_number: usize = @intCast(new_program.lines.items.len + 1);
         const new_line = Line{ .live_out = Operands.init(alloc), .defines = try line.defines.clone(alloc), .instruction_index = new_line_number, .move = line.move, .uses = try line.uses.clone(alloc) };
-        try new_program.lines.append(new_line);
+        try new_program.lines.append(alloc, new_line);
         return;
     }
 
@@ -193,19 +193,19 @@ fn spillLine(
     // line number needs to be recalculated at least!
     const new_line_number: usize = @intCast(new_program.lines.items.len + 1);
     const new_line = Line{ .uses = try line.uses.clone(alloc), .defines = try line.defines.clone(alloc), .live_out = Operands.init(alloc), .move = line.move, .instruction_index = new_line_number };
-    try new_program.lines.append(new_line);
+    try new_program.lines.append(alloc, new_line);
 }
 
 test "spillReg basic spill of defined reg" {
-    const allocator = std.testing.allocator;
+    const alloc = std.testing.allocator;
 
     const reg = Operand{ .temp = 1 };
 
-    var defines_ops = Operands.init(allocator);
+    var defines_ops = Operands.init(alloc);
     try defines_ops.ops.put(reg, {});
 
-    const uses_ops = Operands.init(allocator);
-    const live_out_ops = Operands.init(allocator);
+    const uses_ops = Operands.init(alloc);
+    const live_out_ops = Operands.init(alloc);
 
     const line = Line{
         .defines = defines_ops,
@@ -215,21 +215,26 @@ test "spillReg basic spill of defined reg" {
         .move = false,
     };
 
-    var lines = std.array_list.Managed(Line).init(allocator);
-    try lines.append(line);
+    var lines = ArrayList(Line).empty;
+    try lines.append(alloc, line);
 
-    var blocks = std.array_list.Managed(Block).init(allocator);
-    try blocks.append(Block{ .id = 0, .start = 0, .end = lines.items.len, .successors = ArrayList(u32).init(allocator) });
+    var blocks = ArrayList(Block).empty;
+    try blocks.append(alloc, Block{
+        .id = 0,
+        .start = 0,
+        .end = lines.items.len,
+        .successors = .empty,
+    });
 
     var program = AllocProgram{
         .lines = lines,
         .register_count = 2,
         .blocks = blocks,
     };
-    defer program.deinit();
+    defer program.deinit(alloc);
 
-    var new_prog = try spillReg(&program, reg, allocator);
-    defer new_prog.deinit();
+    var new_prog = try spillReg(&program, reg, alloc);
+    defer new_prog.deinit(alloc);
 
     try std.testing.expect(new_prog.nextMem() == program.nextMem() + 1);
     try std.testing.expect(new_prog.lines.items.len > 0);
@@ -238,16 +243,16 @@ test "spillReg basic spill of defined reg" {
 test "spill reg function" {
     const alloc = std.testing.allocator;
 
-    var blocks = ArrayList(BasicBlock).init(alloc);
-    var instructions = ArrayList(Instruction).init(alloc);
+    var blocks = ArrayList(BasicBlock).empty;
+    var instructions = ArrayList(Instruction).empty;
     // A <- op A, B
     const A = Operand{ .temp = 0 };
     const B = Operand{ .temp = 1 };
-    try instructions.append(Instruction{ .binop = .{ .dst = A, .lhs = A, .op = .add, .rhs = B } });
-    try blocks.append(BasicBlock{
+    try instructions.append(alloc, Instruction{ .binop = .{ .dst = A, .lhs = A, .op = .add, .rhs = B } });
+    try blocks.append(alloc, BasicBlock{
         .id = 0,
         .instructions = instructions,
-        .successors = ArrayList(BlockId).init(alloc),
+        .successors = .empty,
     });
     var function = Function{
         .name = "test",
@@ -255,13 +260,14 @@ test "spill reg function" {
         .entry_block = 0,
         .params = &.{},
         .return_type = .int,
+        .next_temp = 1,
     };
     defer {
         for (blocks.items) |*block| {
-            block.instructions.deinit();
-            block.successors.deinit();
+            block.instructions.deinit(alloc);
+            block.successors.deinit(alloc);
         }
-        blocks.deinit();
+        blocks.deinit(alloc);
     }
 
     // :spill A:

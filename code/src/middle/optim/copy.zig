@@ -94,17 +94,17 @@ test "basic block copy prop" {
     var instructions = &program.main.blocks.items[0].instructions;
 
     // t1 = t0
-    try instructions.append(Instruction{ .move = .{
+    try instructions.append(alloc, Instruction{ .move = .{
         .dst = .{ .temp = 1 },
         .src = .{ .temp = 0 },
     } });
     // t2 = t1
-    try instructions.append(Instruction{ .move = .{
+    try instructions.append(alloc, Instruction{ .move = .{
         .dst = .{ .temp = 2 },
         .src = .{ .temp = 1 },
     } });
     // print(t2)
-    try instructions.append(Instruction{ .print = .{
+    try instructions.append(alloc, Instruction{ .print = .{
         .src = .{ .temp = 2 },
         .type = .int,
     } });

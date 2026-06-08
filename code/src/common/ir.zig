@@ -1,5 +1,5 @@
 const std = @import("std");
-const ArrayList = std.array_list.Managed;
+const ArrayList = std.ArrayList;
 const TypeInfo = @import("types.zig").TypeInfo;
 const TypedOperand = @import("alloc.zig").TypedOperand;
 const Param = @import("alloc.zig").Param;
@@ -263,7 +263,7 @@ pub const Instruction = union(enum) {
             .list_literal => |al| {
                 al.dst.operand.print();
                 std.debug.print(" <- [", .{});
-                for (al.elements, 0..al.elements.len) |elem, i| {
+                for (al.elements, 0..) |elem, i| {
                     if (i != 0) std.debug.print(", ", .{});
                     elem.print();
                 }
@@ -272,7 +272,7 @@ pub const Instruction = union(enum) {
             .array_literal => |al| {
                 al.dst.operand.print();
                 std.debug.print(" <- [", .{});
-                for (al.elements, 0..al.elements.len) |elem, i| {
+                for (al.elements, 0..) |elem, i| {
                     if (i != 0) std.debug.print(", ", .{});
                     elem.print();
                 }
@@ -300,7 +300,7 @@ pub const Instruction = union(enum) {
                     std.debug.print(" <- ", .{});
                 }
                 std.debug.print("{s}(", .{fc.function_name});
-                for (fc.args, 0..fc.args.len) |arg, i| {
+                for (fc.args, 0..) |arg, i| {
                     if (i != 0) std.debug.print(", ", .{});
                     arg.operand.print();
                 }
@@ -407,71 +407,71 @@ pub const Instruction = union(enum) {
     }
 
     pub fn getUses(instruction: Instruction, alloc: std.mem.Allocator) !ArrayList(SeenValue) {
-        var res = ArrayList(SeenValue).init(alloc);
-        errdefer res.deinit();
+        var res = ArrayList(SeenValue).empty;
+        errdefer res.deinit(alloc);
 
         switch (instruction) {
             .store_local => |sl| {
                 const val = SeenValue{ .operand = sl.src };
-                try res.append(val);
+                try res.append(alloc, val);
             },
             .load_local => |ll| {
                 const val = SeenValue{ .local = ll.local.id };
-                try res.append(val);
+                try res.append(alloc, val);
             },
             .binop => |bop| {
                 const lhs = SeenValue{ .operand = bop.lhs };
-                try res.append(lhs);
+                try res.append(alloc, lhs);
                 const rhs = SeenValue{ .operand = bop.rhs };
-                try res.append(rhs);
+                try res.append(alloc, rhs);
             },
             .move => |m| {
                 const val = SeenValue{ .operand = m.src };
-                try res.append(val);
+                try res.append(alloc, val);
             },
             .unaryop => |uop| {
                 const val = SeenValue{ .operand = uop.src };
-                try res.append(val);
+                try res.append(alloc, val);
             },
             .compare => |c| {
                 const lhs = SeenValue{ .operand = c.lhs };
-                try res.append(lhs);
+                try res.append(alloc, lhs);
                 const rhs = SeenValue{ .operand = c.rhs };
-                try res.append(rhs);
+                try res.append(alloc, rhs);
             },
             .phi => |pi| {
                 for (pi.inputs) |phi_input| {
                     const val = SeenValue{ .operand = phi_input.value };
-                    try res.append(val);
+                    try res.append(alloc, val);
                 }
             },
             .print => |pi| {
                 const val = SeenValue{ .operand = pi.src };
-                try res.append(val);
+                try res.append(alloc, val);
             },
             .branch => |b| {
                 const val = SeenValue{ .operand = b.condition };
-                try res.append(val);
+                try res.append(alloc, val);
             },
             .array_literal => |al| {
                 for (al.elements) |elem| {
                     const val = SeenValue{ .operand = elem };
-                    try res.append(val);
+                    try res.append(alloc, val);
                 }
             },
             .array_load => |al| {
-                try res.append(SeenValue{ .operand = al.array.operand });
-                try res.append(SeenValue{ .operand = al.index });
+                try res.append(alloc, SeenValue{ .operand = al.array.operand });
+                try res.append(alloc, SeenValue{ .operand = al.index });
             },
             .list_literal => |ll| {
                 for (ll.elements) |elem| {
                     const val = SeenValue{ .operand = elem };
-                    try res.append(val);
+                    try res.append(alloc, val);
                 }
             },
             .list_load => |il| {
-                try res.append(SeenValue{ .operand = il.list.operand });
-                try res.append(SeenValue{ .operand = il.index });
+                try res.append(alloc, SeenValue{ .operand = il.list.operand });
+                try res.append(alloc, SeenValue{ .operand = il.index });
             },
             else => {},
         }
@@ -484,11 +484,11 @@ pub const BasicBlock = struct {
     instructions: ArrayList(Instruction),
     successors: ArrayList(BlockId),
 
-    pub fn init(id: BlockId, alloc: std.mem.Allocator) BasicBlock {
+    pub fn init(id: BlockId) BasicBlock {
         return BasicBlock{
             .id = id,
-            .instructions = ArrayList(Instruction).init(alloc),
-            .successors = ArrayList(BlockId).init(alloc),
+            .instructions = ArrayList(Instruction).empty,
+            .successors = ArrayList(BlockId).empty,
         };
     }
 };
@@ -499,6 +499,7 @@ pub const Function = struct {
     return_type: TypeInfo,
     blocks: ArrayList(BasicBlock),
     entry_block: BlockId,
+    next_temp: TempId,
 };
 
 pub const Program = struct {
@@ -506,9 +507,9 @@ pub const Program = struct {
     functions: ArrayList(Function),
 
     pub fn init(alloc: std.mem.Allocator) !Program {
-        var blocks = ArrayList(BasicBlock).init(alloc);
-        const entry = BasicBlock.init(0, alloc);
-        try blocks.append(entry);
+        var blocks = ArrayList(BasicBlock).empty;
+        const entry = BasicBlock.init(0);
+        try blocks.append(alloc, entry);
 
         return Program{
             .main = Function{
@@ -517,8 +518,9 @@ pub const Program = struct {
                 .entry_block = 0,
                 .params = &.{},
                 .return_type = .int,
+                .next_temp = 1,
             },
-            .functions = ArrayList(Function).init(alloc),
+            .functions = ArrayList(Function).empty,
         };
     }
 
@@ -539,10 +541,10 @@ pub const Program = struct {
                     else => {},
                 }
             }
-            block.instructions.deinit();
-            block.successors.deinit();
+            block.instructions.deinit(alloc);
+            block.successors.deinit(alloc);
         }
-        self.main.blocks.deinit();
+        self.main.blocks.deinit(alloc);
     }
 
     pub fn print(self: @This()) !void {

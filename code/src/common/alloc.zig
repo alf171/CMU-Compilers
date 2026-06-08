@@ -6,7 +6,7 @@ const TempId = @import("ir.zig").TempId;
 const TypeInfo = @import("types.zig").TypeInfo;
 
 const Allocator = std.mem.Allocator;
-const ArrayList = std.array_list.Managed;
+const ArrayList = std.ArrayList;
 const HashMap = std.AutoHashMap;
 const Writer = std.io.Writer;
 
@@ -191,8 +191,8 @@ pub const AllocBlock = struct {
     end: usize,
     successors: ArrayList(BlockId),
 
-    pub fn deinit(self: *@This()) void {
-        self.successors.deinit();
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        self.successors.deinit(alloc);
     }
 };
 
@@ -204,15 +204,15 @@ pub const AllocProgram = struct {
     /// how many registers the program needs to utilize
     register_count: u8,
 
-    pub fn deinit(self: *@This()) void {
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         for (self.lines.items) |*line| {
             line.deinit();
         }
         for (self.blocks.items) |*block| {
-            block.deinit();
+            block.deinit(alloc);
         }
-        self.lines.deinit();
-        self.blocks.deinit();
+        self.lines.deinit(alloc);
+        self.blocks.deinit(alloc);
     }
 
     pub fn nextTemp(self: @This()) u8 {

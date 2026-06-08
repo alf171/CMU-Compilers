@@ -1,5 +1,5 @@
 const std = @import("std");
-const ArrayList = std.array_list.Managed;
+const ArrayList = std.ArrayList;
 const HashMap = std.AutoHashMap;
 
 const BlockId = @import("common").ir.BlockId;
@@ -22,12 +22,12 @@ pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
             const instruction = instructions[i];
 
             const defines = instruction.getDefines();
-            const uses = try instruction.getUses(alloc);
+            var uses = try instruction.getUses(alloc);
 
             // if operand hasn't been used yet, instruction can be removed
             if (!hasSideEffects(instruction) and defines != null and !seen.contains(defines.?)) {
                 _ = block.instructions.orderedRemove(i);
-                uses.deinit();
+                uses.deinit(alloc);
                 continue;
             }
 
@@ -36,7 +36,7 @@ pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
 
             // we've already seen this operand being used
             for (uses.items) |use| try seen.put(use, {});
-            uses.deinit();
+            uses.deinit(alloc);
         }
         seen.clearRetainingCapacity();
     }
@@ -57,17 +57,17 @@ test "basic block elim" {
     var instructions = &program.main.blocks.items[0].instructions;
 
     // t1 = t0
-    try instructions.append(Instruction{ .move = .{
+    try instructions.append(alloc, Instruction{ .move = .{
         .dst = .{ .temp = 1 },
         .src = .{ .temp = 0 },
     } });
     // t2 = t0
-    try instructions.append(Instruction{ .move = .{
+    try instructions.append(alloc, Instruction{ .move = .{
         .dst = .{ .temp = 2 },
         .src = .{ .temp = 0 },
     } });
     // print(t0)
-    try instructions.append(Instruction{ .print = .{
+    try instructions.append(alloc, Instruction{ .print = .{
         .src = .{ .temp = 0 },
         .type = .char,
     } });

@@ -57,8 +57,8 @@ pub fn walkLoop(
     const exit_block = try irBuilder.newBlock(alloc);
 
     const entry_block = irBuilder.current_block;
-    try irBuilder.emit(Instruction{ .jump = .{ .target = condition_block } });
-    try irBuilder.addSuccessor(entry_block, condition_block);
+    try irBuilder.emit(Instruction{ .jump = .{ .target = condition_block } }, alloc);
+    try irBuilder.addSuccessor(entry_block, condition_block, alloc);
 
     irBuilder.setCurrentBlock(condition_block);
     irBuilder.local_values.clearRetainingCapacity();
@@ -84,7 +84,7 @@ pub fn walkLoop(
         try irBuilder.emit(Instruction{ .phi = .{
             .dst = dst,
             .inputs = inputs,
-        } });
+        } }, alloc);
         try irBuilder.local_values.put(local, dst);
         try loop_values.put(local, dst);
         try loop_phis.append(LoopPhi{
@@ -106,7 +106,7 @@ pub fn walkLoop(
         try irBuilder.emit(Instruction{ .phi = .{
             .dst = dst,
             .inputs = inputs,
-        } });
+        } }, alloc);
 
         carry.current = dst;
         carry.inputs = inputs;
@@ -123,7 +123,7 @@ pub fn walkLoop(
                 .lhs = lhs.operand,
                 .op = comp.cmp,
                 .rhs = rhs.operand,
-            } });
+            } }, alloc);
             break :blk dst;
         },
         .operand_compare => |comp| blk: {
@@ -134,7 +134,7 @@ pub fn walkLoop(
                 .lhs = lhs.operand,
                 .op = comp.cmp,
                 .rhs = comp.rhs.operand,
-            } });
+            } }, alloc);
             break :blk dst;
         },
     };
@@ -145,9 +145,9 @@ pub fn walkLoop(
             .then_block = body_block,
             .else_block = exit_block,
         },
-    });
-    try irBuilder.addSuccessor(condition_block, body_block);
-    try irBuilder.addSuccessor(condition_block, exit_block);
+    }, alloc);
+    try irBuilder.addSuccessor(condition_block, body_block, alloc);
+    try irBuilder.addSuccessor(condition_block, exit_block, alloc);
 
     // body block
     irBuilder.setCurrentBlock(body_block);
@@ -178,8 +178,8 @@ pub fn walkLoop(
 
     try irBuilder.emit(Instruction{
         .jump = .{ .target = condition_block },
-    });
-    try irBuilder.addSuccessor(backedge_block, condition_block);
+    }, alloc);
+    try irBuilder.addSuccessor(backedge_block, condition_block, alloc);
 
     // exit block
     irBuilder.setCurrentBlock(exit_block);

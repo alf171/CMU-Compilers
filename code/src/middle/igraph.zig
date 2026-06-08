@@ -1,6 +1,7 @@
 const std = @import("std");
 const parser = @import("parse.zig");
 
+const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 const Writer = std.io.Writer;
 const Line = @import("common").alloc.AllocLine;
@@ -143,7 +144,7 @@ pub const IGraph = struct {
     }
 };
 
-pub fn createIgraph(lines: std.array_list.Managed(Line), allocator: Allocator) !IGraph {
+pub fn createIgraph(lines: ArrayList(Line), allocator: Allocator) !IGraph {
     var igraph = IGraph.init(allocator);
     for (lines.items) |line| {
         try placeNodes(&igraph, line, allocator);

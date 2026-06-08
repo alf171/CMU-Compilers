@@ -38,6 +38,7 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - [ ] [critical edge splitting](https://nickdesaulniers.github.io/blog/2023/01/27/critical-edge-splitting/)
 - [ ] blocks could have names for better printing
 - [ ] parallel copy needed according to `lecture 6` in `phi.zig`
+  - `tst/python/if.py` should produce (2, 1)
 - [ ] sub, mul, div, unary ops like neg
 - [ ] and + or support?
 - [ ] make current optimization cross block + less hacky

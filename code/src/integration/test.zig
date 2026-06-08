@@ -79,7 +79,7 @@ pub fn main(init: std.process.Init) !void {
 
     var alloc_program = try lower.lowerAlloc(ir_program, alloc);
 
-    defer alloc_program.deinit();
+    defer alloc_program.deinit(alloc);
 
     try live.calculateLiveOut(&alloc_program, alloc);
 

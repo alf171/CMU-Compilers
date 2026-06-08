@@ -1,5 +1,6 @@
 const std = @import("std");
 
+// TODO: support void return types
 pub const TypeInfo = union(enum) {
     int,
     float,
