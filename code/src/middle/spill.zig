@@ -88,8 +88,8 @@ fn spillRegInFunction(
 
 pub fn spillReg(current_program: *const AllocProgram, reg: Operand, alloc: std.mem.Allocator) !AllocProgram {
     var new_program = AllocProgram{
-        .lines = ArrayList(Line).empty,
-        .blocks = ArrayList(Block).empty,
+        .lines = .empty,
+        .blocks = .empty,
         .register_count = current_program.register_count,
     };
     errdefer new_program.deinit(alloc);

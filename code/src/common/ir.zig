@@ -40,6 +40,8 @@ pub const UnaryOp = enum { neg };
 
 pub const PhiInput = struct { pred: BlockId, value: Operand };
 
+pub const Copy = struct { dst: Operand, src: Operand };
+
 pub const LoopPhi = struct {
     local: LocalId,
     phi_inputs: []PhiInput,
@@ -132,6 +134,7 @@ pub const Instruction = union(enum) {
         then_block: BlockId,
         else_block: BlockId,
     },
+    // HIR ONLY
     phi: struct {
         dst: TypedOperand,
         inputs: []PhiInput,
@@ -176,6 +179,10 @@ pub const Instruction = union(enum) {
         dst: TypedOperand,
         name: []const u8,
         index: usize,
+    },
+    // MIR ONLY
+    parallel_copy: struct {
+        copies: []Copy,
     },
     unkown,
 
@@ -316,6 +323,20 @@ pub const Instruction = union(enum) {
             .function_param => |fp| {
                 fp.dst.operand.print();
                 std.debug.print(" <- param {d}\n", .{fp.index});
+            },
+            .parallel_copy => |pc| {
+                std.debug.print("(", .{});
+                for (pc.copies, 0..) |copy, i| {
+                    if (i != 0) std.debug.print(", ", .{});
+                    copy.dst.print();
+                }
+                std.debug.print(") <- ", .{});
+                std.debug.print("(", .{});
+                for (pc.copies, 0..) |copy, i| {
+                    if (i != 0) std.debug.print(", ", .{});
+                    copy.src.print();
+                }
+                std.debug.print(")\n", .{});
             },
             else => |term| {
                 std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
@@ -487,8 +508,8 @@ pub const BasicBlock = struct {
     pub fn init(id: BlockId) BasicBlock {
         return BasicBlock{
             .id = id,
-            .instructions = ArrayList(Instruction).empty,
-            .successors = ArrayList(BlockId).empty,
+            .instructions = .empty,
+            .successors = .empty,
         };
     }
 };
@@ -518,9 +539,9 @@ pub const Program = struct {
                 .entry_block = 0,
                 .params = &.{},
                 .return_type = .int,
-                .next_temp = 1,
+                .next_temp = 0,
             },
-            .functions = ArrayList(Function).empty,
+            .functions = .empty,
         };
     }
 

@@ -23,7 +23,6 @@ pub const IrBuilder = struct {
     current_function: ?usize,
     next_block: BlockId,
     next_local: LocalId,
-    next_temp: TempId,
     // name -> LocalId
     locals_by_name: std.StringHashMap(LocalId),
     // LocalId -> TypedOperand
@@ -40,10 +39,9 @@ pub const IrBuilder = struct {
             .current_block = 0,
             .next_block = 1,
             .next_local = 0,
-            .next_temp = 0,
             .locals_by_name = std.StringHashMap(LocalId).init(alloc),
             .local_values = LocalValues.init(alloc),
-            .locals = ArrayList(LocalInfo).empty,
+            .locals = .empty,
         };
     }
 
@@ -82,8 +80,9 @@ pub const IrBuilder = struct {
     }
 
     pub fn nextTemp(self: *@This()) Operand {
-        const id = self.next_temp;
-        self.next_temp += 1;
+        const function = self.currentFunction() catch &self.program.main;
+        const id = function.next_temp;
+        function.next_temp += 1;
         return Operand{ .temp = id };
     }
 
@@ -117,8 +116,8 @@ pub const IrBuilder = struct {
         self.next_block += 1;
         const new_block = BasicBlock{
             .id = id,
-            .instructions = ArrayList(Instruction).empty,
-            .successors = ArrayList(BlockId).empty,
+            .instructions = .empty,
+            .successors = .empty,
         };
 
         try self.currentBlocks().append(alloc, new_block);

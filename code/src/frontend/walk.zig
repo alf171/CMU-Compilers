@@ -800,7 +800,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
         .return_type = return_type,
         .blocks = blocks,
         .entry_block = 0,
-        .next_temp = irBuilder.next_temp,
+        .next_temp = 0,
     });
 
     // save function state

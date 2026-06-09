@@ -9,6 +9,7 @@ const live = middle.live;
 const igraph = middle.igraph;
 const color = middle.color;
 const phi = middle.phi;
+const parallel_copies = middle.parallel_copies;
 const copy = middle.copy;
 const dead = middle.dead;
 const emit = @import("backend").emit;
@@ -76,6 +77,9 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("\n{s}post phi elimination:{s}\n", .{ underline_code, reset_code });
         try ir_program.print();
     }
+
+    // TODO: move above post phi dump
+    try parallel_copies.lower(&ir_program, alloc);
 
     var alloc_program = try lower.lowerAlloc(ir_program, alloc);
 

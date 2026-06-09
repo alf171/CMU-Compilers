@@ -12,8 +12,8 @@ const FrontEndProgram = common.ir.Program;
 /// generate the necessary information such that we do register selection eventually
 pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProgram {
     var res = AllocProgram{
-        .lines = ArrayList(AllocLine).empty,
-        .blocks = ArrayList(AllocBlock).empty,
+        .lines = .empty,
+        .blocks = .empty,
         .register_count = common.alloc.REG_COUNT,
     };
 
@@ -118,6 +118,12 @@ fn lowerBlocks(
                 .function_return => |fr| {
                     if (fr.value) |value| {
                         try line.uses.ops.put(value, {});
+                    }
+                },
+                .parallel_copy => |pc| {
+                    for (pc.copies) |copy| {
+                        try line.defines.ops.put(copy.dst, {});
+                        try line.uses.ops.put(copy.src, {});
                     }
                 },
                 else => {
