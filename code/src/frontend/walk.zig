@@ -845,12 +845,17 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
 }
 
 // Return(value=BinOp(left=Name(id='x', ctx=Load()), op=Add(), right=Name(id='y', ctx=Load())))
+// Return()
 fn walkReturn(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !void {
     const value = c.PyObject_GetAttrString(stmt, "value");
     std.debug.assert(value != null);
-    const expr = try walkExpr(value, irBuilder, alloc);
+    const return_operand = if (value == c.Py_None())
+        null
+    else
+        (try walkExpr(value, irBuilder, alloc)).operand;
+
     try irBuilder.emit(Instruction{ .function_return = .{
-        .value = expr.operand,
+        .value = return_operand,
     } }, alloc);
 }
 
@@ -974,7 +979,13 @@ fn parseTypeAnnotation(annotation: *PyObject) !TypeInfo {
             return .{ .list = .{ .element = &.bool, .size = null } };
         }
         return error.TypeNotSupported;
+    } else if (std.mem.eql(u8, kind, "Constant")) {
+        const value_obj = c.PyObject_GetAttrString(annotation, "value");
+        if (value_obj == c.Py_None()) {
+            return .void;
+        }
     }
+    std.debug.print("kind not supported {s}\n", .{kind});
     return error.NotImpl;
 }
 
