@@ -106,6 +106,16 @@ fn lowerBlocks(
                     try line.uses.ops.put(al.array.operand, {});
                     try line.uses.ops.put(al.index, {});
                 },
+                .list_store => |ls| {
+                    try line.uses.ops.put(ls.list.operand, {});
+                    try line.uses.ops.put(ls.index, {});
+                    try line.uses.ops.put(ls.src, {});
+                },
+                .array_store => |as| {
+                    try line.uses.ops.put(as.array.operand, {});
+                    try line.uses.ops.put(as.index, {});
+                    try line.uses.ops.put(as.src, {});
+                },
                 .function_call => |fc| {
                     if (fc.dst) |dst| try line.defines.ops.put(dst, {});
                     for (fc.args) |arg| {

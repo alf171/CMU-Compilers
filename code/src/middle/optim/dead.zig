@@ -4,17 +4,38 @@ const HashMap = std.AutoHashMap;
 
 const BlockId = @import("common").ir.BlockId;
 const BasicBlock = @import("common").ir.BasicBlock;
+const Function = @import("common").ir.Function;
 const Program = @import("common").ir.Program;
+const AllocProgram = @import("common").alloc.AllocProgram;
 const Operand = @import("common").alloc.Operand;
 const LocalId = @import("common").ir.LocalId;
 const Instruction = @import("common").ir.Instruction;
 const SeenValue = @import("common").ir.SeenValue;
 
 /// run dead code elimination
-pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
-    for (program.main.blocks.items) |*block| {
+pub fn run(program: *Program, alloc_program: *const AllocProgram, alloc: std.mem.Allocator) !void {
+    try runFunction(&program.main, alloc_program, alloc);
+    for (program.functions.items) |*function| {
+        try runFunction(function, alloc_program, alloc);
+    }
+}
+
+fn runFunction(function: *Function, alloc_program: *const AllocProgram, alloc: std.mem.Allocator) !void {
+    for (function.blocks.items, 0..) |*block, block_i| {
         const instructions = block.instructions.items;
         var seen = HashMap(SeenValue, void).init(alloc);
+        // seed seen with what's live from the previous block
+        const alloc_block = alloc_program.blocks.items[block_i];
+        if (alloc_block.end != alloc_block.start) {
+            const live_out = alloc_program.lines.items[alloc_block.end - 1].live_out;
+            var it = live_out.ops.keyIterator();
+            while (it.next()) |key| {
+                try seen.put(SeenValue{
+                    .operand = key.*,
+                }, {});
+            }
+        }
+
         defer seen.deinit();
         var i: usize = block.instructions.items.len;
         while (i > 0) {
@@ -44,7 +65,16 @@ pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
 
 fn hasSideEffects(instruction: Instruction) bool {
     return switch (instruction) {
-        .print, .jump, .branch, .phi => true,
+        .print,
+        .jump,
+        .branch,
+        .phi,
+        .array_store,
+        .list_store,
+        .function_call,
+        .function_return,
+        .store_local,
+        => true,
         else => false,
     };
 }

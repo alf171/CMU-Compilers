@@ -8,6 +8,7 @@ const BasicBlock = @import("common").ir.BasicBlock;
 const types = @import("common").types;
 const getElementType = @import("common").types.getElementType;
 const getElementSize = @import("common").types.getElementSize;
+const ownedPointer = @import("common").types.ownedPointer;
 const TypeInfo = types.TypeInfo;
 const Operand = @import("common").alloc.Operand;
 const TypedOperand = @import("common").alloc.TypedOperand;
@@ -89,9 +90,8 @@ pub fn walkStmt(raw_stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloc
     }
 }
 
-// x = y = 1
-// targets = [Name(id="x"), Name(id="y")]
-// value = Constant(1)
+// Assign(targets=[Subscript(value=Name(id='items', ctx=Load()), slice=Constant(value=3), ctx=Store())], value=Constant(value=0))
+// Assign(targets=[Name(id='x', ctx=Store())], value=Constant(value=3))
 fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !void {
     const targets = c.PyObject_GetAttrString(stmt, "targets");
     std.debug.assert(targets != null);
@@ -99,24 +99,61 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
     const lhs = c.PyList_GetItem(targets, 0);
     std.debug.assert(lhs != null);
 
-    const id_obj = c.PyObject_GetAttrString(lhs, "id");
-    const id = c.PyUnicode_AsUTF8(id_obj);
-
     const rhs = c.PyObject_GetAttrString(stmt, "value");
     const rhs_value = try walkExpr(rhs, irBuilder, alloc);
 
-    const local = try irBuilder.getOrCreateLocal(std.mem.span(id), null, alloc);
-    try irBuilder.local_values.put(local, rhs_value);
-    try irBuilder.emit(Instruction{
-        .store_local = .{
-            .local = .{
-                .id = local,
-                .name = try alloc.dupe(u8, std.mem.span(id)),
-                .type = null,
-            },
-            .src = rhs_value.operand,
+    const expr = getExprKind(lhs);
+    switch (expr) {
+        .Name => {
+            const id_obj = c.PyObject_GetAttrString(lhs, "id");
+            std.debug.assert(id_obj != null);
+            const id = c.PyUnicode_AsUTF8(id_obj);
+
+            const local = try irBuilder.getOrCreateLocal(std.mem.span(id), null, alloc);
+            try irBuilder.local_values.put(local, rhs_value);
+            try irBuilder.emit(Instruction{
+                .store_local = .{
+                    .local = .{
+                        .id = local,
+                        .name = try alloc.dupe(u8, std.mem.span(id)),
+                        .type = null,
+                    },
+                    .src = rhs_value.operand,
+                },
+            }, alloc);
         },
-    }, alloc);
+        .Subscript => {
+            const slice_obj = c.PyObject_GetAttrString(lhs, "slice");
+            std.debug.assert(slice_obj != null);
+            const slice = try walkExpr(slice_obj, irBuilder, alloc);
+            const value_obj = c.PyObject_GetAttrString(lhs, "value");
+            std.debug.assert(value_obj != null);
+            const container = try walkExpr(value_obj, irBuilder, alloc);
+
+            switch (container.type) {
+                .array => {
+                    try irBuilder.emit(Instruction{
+                        .list_store = .{
+                            .list = container,
+                            .index = slice.operand,
+                            .src = rhs_value.operand,
+                        },
+                    }, alloc);
+                },
+                .list => {
+                    try irBuilder.emit(Instruction{
+                        .list_store = .{
+                            .list = container,
+                            .index = slice.operand,
+                            .src = rhs_value.operand,
+                        },
+                    }, alloc);
+                },
+                else => return error.UnexpectedType,
+            }
+        },
+        else => return error.NotImpl,
+    }
 }
 
 // 1. AnnAssign(target=Name(id='a', ctx=Store()), annotation=..., value=Constant(value=5), simple=1)
@@ -132,7 +169,7 @@ fn walkAnnotatedAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.me
     const rhs_value = try walkExpr(rhs, irBuilder, alloc);
     const annotation = c.PyObject_GetAttrString(stmt, "annotation");
 
-    const type_ = try parseTypeAnnotation(annotation);
+    const type_ = try parseTypeAnnotation(annotation, alloc);
     const local = try irBuilder.getOrCreateLocal(std.mem.span(target_id), type_, alloc);
     try irBuilder.local_values.put(local, rhs_value);
     try irBuilder.emit(Instruction{ .store_local = .{
@@ -322,7 +359,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             const dst = irBuilder.nextTemp();
             const local = try irBuilder.locals.items[localId].duplicate(alloc);
             try irBuilder.emit(Instruction{ .load_local = .{ .dst = dst, .local = local } }, alloc);
-            return TypedOperand{ .operand = dst, .type = .int };
+            return TypedOperand{ .operand = dst, .type = local.type orelse .int };
         },
         // Compare(left=Constant(1),ops=[Lt()],comparators=[Constant(2)])
         .Compare => {
@@ -777,7 +814,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
         std.debug.assert(arg_obj_name != null);
         const annotation = c.PyObject_GetAttrString(arg_obj, "annotation");
         std.debug.assert(annotation != null);
-        const arg_type = try parseTypeAnnotation(annotation);
+        const arg_type = try parseTypeAnnotation(annotation, alloc);
         const raw_name = c.PyUnicode_AsUTF8(arg_obj_name);
         std.debug.assert(raw_name != null);
         const name = std.mem.span(raw_name);
@@ -789,7 +826,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     }
 
     const returns = c.PyObject_GetAttrString(stmt, "returns");
-    const return_type = try parseTypeAnnotation(returns);
+    const return_type = try parseTypeAnnotation(returns, alloc);
 
     var blocks = ArrayList(BasicBlock).empty;
     try blocks.append(alloc, BasicBlock.init(0));
@@ -938,7 +975,7 @@ fn getPyType(stmt: *PyObject) []const u8 {
     return std.mem.span(c.PyUnicode_AsUTF8(name_ptr));
 }
 
-fn parseTypeAnnotation(annotation: *PyObject) !TypeInfo {
+fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInfo {
     const kind = getPyType(annotation);
     // Name(id='int', ctx=Load())
     if (std.mem.eql(u8, kind, "Name")) {
@@ -968,17 +1005,13 @@ fn parseTypeAnnotation(annotation: *PyObject) !TypeInfo {
 
         const slice_obj = c.PyObject_GetAttrString(annotation, "slice");
         std.debug.assert(slice_obj != null);
-        const slice_type_obj = c.PyObject_GetAttrString(slice_obj, "id");
-        std.debug.assert(slice_type_obj != null);
-        const slice_type = c.PyUnicode_AsUTF8(slice_type_obj);
-        std.debug.assert(slice_type != null);
 
-        if (std.mem.eql(u8, std.mem.span(slice_type), "int")) {
-            return .{ .list = .{ .element = &.int, .size = null } };
-        } else if (std.mem.eql(u8, std.mem.span(slice_type), "bool")) {
-            return .{ .list = .{ .element = &.bool, .size = null } };
-        }
-        return error.TypeNotSupported;
+        // recursively get type
+        const elem_type = try parseTypeAnnotation(slice_obj, alloc);
+        return .{ .list = .{
+            .element = try ownedPointer(elem_type, alloc),
+            .size = null,
+        } };
     } else if (std.mem.eql(u8, kind, "Constant")) {
         const value_obj = c.PyObject_GetAttrString(annotation, "value");
         if (value_obj == c.Py_None()) {

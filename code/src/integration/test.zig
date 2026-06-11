@@ -66,11 +66,10 @@ pub fn main(init: std.process.Init) !void {
     // run optimization passses
     if (should_optim) {
         try copy.run(&ir_program, alloc);
-        // TODO: turn back on once matmul works
-        // try dead.run(&ir_program, alloc);
     }
 
     try phi.eliminatePhi(&ir_program, alloc);
+    try parallel_copies.lower(&ir_program, alloc);
 
     // dump ir after optim pass
     if (should_dump_ir) {
@@ -78,14 +77,18 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    // TODO: move above post phi dump
-    try parallel_copies.lower(&ir_program, alloc);
-
     var alloc_program = try lower.lowerAlloc(ir_program, alloc);
+    try live.calculateLiveOut(&alloc_program, alloc);
+
+    // run optimzation passes
+    if (should_optim) {
+        try dead.run(&ir_program, &alloc_program, alloc);
+        alloc_program.deinit(alloc);
+        alloc_program = try lower.lowerAlloc(ir_program, alloc);
+        try live.calculateLiveOut(&alloc_program, alloc);
+    }
 
     defer alloc_program.deinit(alloc);
-
-    try live.calculateLiveOut(&alloc_program, alloc);
 
     var graph = try igraph.createIgraph(alloc_program.lines, alloc);
     defer graph.deinit();

@@ -24,6 +24,12 @@ pub const Node = struct {
         self.neighbors.deinit();
         self.moves.deinit();
     }
+
+    pub fn placeNode(self: *@This(), operand: Operand) !void {
+        try self.neighbors.put(operand, {});
+        self.static_degree += 1;
+        self.cur_degree += 1;
+    }
 };
 
 pub const IGraph = struct {
@@ -166,12 +172,8 @@ fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
             if (!Operand.equal(define_op.*, live_out_op.*)) {
                 std.debug.assert(igraph.nodes.contains(live_out_op.*));
                 std.debug.assert(igraph.nodes.contains(define_op.*));
-                try igraph.nodes.getPtr(define_op.*).?.neighbors.put(live_out_op.*, {});
-                igraph.nodes.getPtr(define_op.*).?.static_degree += 1;
-                igraph.nodes.getPtr(define_op.*).?.cur_degree += 1;
-                try igraph.nodes.getPtr(live_out_op.*).?.neighbors.put(define_op.*, {});
-                igraph.nodes.getPtr(live_out_op.*).?.static_degree += 1;
-                igraph.nodes.getPtr(live_out_op.*).?.cur_degree += 1;
+                try igraph.nodes.getPtr(define_op.*).?.placeNode(live_out_op.*);
+                try igraph.nodes.getPtr(live_out_op.*).?.placeNode(define_op.*);
             }
         }
     }

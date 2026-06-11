@@ -73,6 +73,16 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) v
             ll.list.operand = resolve(ll.list.operand, copyMap);
             ll.index = resolve(ll.index, copyMap);
         },
+        .array_store => |*as| {
+            as.array.operand = resolve(as.array.operand, copyMap);
+            as.index = resolve(as.index, copyMap);
+            as.src = resolve(as.src, copyMap);
+        },
+        .list_store => |*ls| {
+            ls.list.operand = resolve(ls.list.operand, copyMap);
+            ls.index = resolve(ls.index, copyMap);
+            ls.src = resolve(ls.src, copyMap);
+        },
         else => {},
     }
 }

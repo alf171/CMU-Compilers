@@ -268,6 +268,26 @@ fn emitFunction(
                         else => return error.TypeNotImpl,
                     }
                 },
+                .list_store => |ls| {
+                    const elem_type = try getElementType(ls.list.type);
+                    switch (elem_type) {
+                        // index = (index + 1) << 3
+                        .int, .list, .array => {
+                            const dst = try regFor(ls.list.operand, colors);
+                            const src = try regFor(ls.src, colors);
+                            const index = try regFor(ls.index, colors);
+                            try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
+                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                            try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
+                        },
+                        .bool, .char => {
+                            return error.TypesNotImpl;
+                        },
+                        else => {
+                            return error.UnexpectedType;
+                        },
+                    }
+                },
                 .function_call => |fc| {
                     for (fc.args, 0..) |arg, i| {
                         const dst = try paramRegFor(i);

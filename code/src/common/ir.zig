@@ -150,6 +150,12 @@ pub const Instruction = union(enum) {
         array: TypedOperand,
         index: Operand,
     },
+    // array[index] <- src
+    array_store: struct {
+        array: TypedOperand,
+        index: Operand,
+        src: Operand,
+    },
     // heap based variable size
     list_literal: struct {
         dst: TypedOperand,
@@ -161,11 +167,11 @@ pub const Instruction = union(enum) {
         list: TypedOperand,
         index: Operand,
     },
+    // list[index] <- src
     list_store: struct {
-        list: Operand,
+        list: TypedOperand,
         index: Operand,
         src: Operand,
-        type: TypeInfo,
     },
     function_call: struct {
         dst: ?Operand,
@@ -285,6 +291,22 @@ pub const Instruction = union(enum) {
                 }
                 std.debug.print("]\n", .{});
             },
+            .list_store => |ls| {
+                ls.list.operand.print();
+                std.debug.print("[", .{});
+                ls.index.print();
+                std.debug.print("] <- ", .{});
+                ls.src.print();
+                std.debug.print("\n", .{});
+            },
+            .array_store => |as| {
+                as.array.operand.print();
+                std.debug.print("[", .{});
+                as.index.print();
+                std.debug.print("] <- ", .{});
+                as.src.print();
+                std.debug.print("\n", .{});
+            },
             .list_load => |al| {
                 al.dst.print();
                 std.debug.print(" <- ", .{});
@@ -347,6 +369,9 @@ pub const Instruction = union(enum) {
 
     pub fn replaceUses(self: *@This(), old: Operand, new: Operand) !void {
         switch (self.*) {
+            .store_local => |*sl| {
+                if (sl.src.equal(old)) sl.src = new;
+            },
             .binop => |*bop| {
                 if (bop.lhs.equal(old)) bop.lhs = new;
                 if (bop.rhs.equal(old)) bop.rhs = new;
@@ -358,6 +383,16 @@ pub const Instruction = union(enum) {
                 if (ll.list.operand.equal(old)) ll.list.operand = new;
                 if (ll.index.equal(old)) ll.index = new;
             },
+            .list_literal => |*ll| {
+                for (ll.elements) |*elem| {
+                    if (elem.equal(old)) elem.* = new;
+                }
+            },
+            .list_store => |*ls| {
+                if (ls.list.operand.equal(old)) ls.list.operand = new;
+                if (ls.index.equal(old)) ls.index = new;
+                if (ls.src.equal(old)) ls.src = new;
+            },
             .compare => |*c| {
                 if (c.lhs.equal(old)) c.lhs = new;
                 if (c.rhs.equal(old)) c.rhs = new;
@@ -366,12 +401,26 @@ pub const Instruction = union(enum) {
                 if (al.array.operand.equal(old)) al.array.operand = new;
                 if (al.index.equal(old)) al.index = new;
             },
-            .constant => {},
             .array_literal => |*al| {
                 for (al.elements) |*elem| {
                     if (elem.equal(old)) elem.* = new;
                 }
             },
+            .array_store => |*as| {
+                if (as.array.operand.equal(old)) as.array.operand = new;
+                if (as.index.equal(old)) as.index = new;
+                if (as.src.equal(old)) as.src = new;
+            },
+            .function_call => |*fc| {
+                for (fc.args) |*arg| {
+                    if (arg.operand.equal(old)) arg.operand = new;
+                }
+            },
+            .range => |*r| {
+                if (r.start.equal(old)) r.start = new;
+                if (r.end.equal(old)) r.end = new;
+            },
+            .constant => {},
             else => |e| {
                 std.debug.print("uses cant handle {s}\n", .{@tagName(e)});
                 return error.OperandReplaceNotImpl;
@@ -402,6 +451,12 @@ pub const Instruction = union(enum) {
             .array_literal => |*al| {
                 if (al.dst.operand.equal(old)) al.dst.operand = new;
             },
+            .list_literal => |*ll| {
+                if (ll.dst.operand.equal(old)) ll.dst.operand = new;
+            },
+            .range => |*r| {
+                if (r.dst.operand.equal(old)) r.dst.operand = new;
+            },
             else => |e| {
                 std.debug.print("defines cant handle {s}\n", .{@tagName(e)});
                 return error.OperandReplaceNotImpl;
@@ -423,6 +478,7 @@ pub const Instruction = union(enum) {
             .array_load => |al| .{ .operand = al.dst },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .list_load => |ll| .{ .operand = ll.dst },
+            .range => |r| .{ .operand = r.dst.operand },
             else => null,
         };
     }
@@ -433,66 +489,72 @@ pub const Instruction = union(enum) {
 
         switch (instruction) {
             .store_local => |sl| {
-                const val = SeenValue{ .operand = sl.src };
-                try res.append(alloc, val);
+                try res.append(alloc, .{ .operand = sl.src });
             },
             .load_local => |ll| {
-                const val = SeenValue{ .local = ll.local.id };
-                try res.append(alloc, val);
+                try res.append(alloc, .{ .local = ll.local.id });
             },
             .binop => |bop| {
-                const lhs = SeenValue{ .operand = bop.lhs };
-                try res.append(alloc, lhs);
-                const rhs = SeenValue{ .operand = bop.rhs };
-                try res.append(alloc, rhs);
+                try res.append(alloc, .{ .operand = bop.lhs });
+                try res.append(alloc, .{ .operand = bop.rhs });
             },
             .move => |m| {
-                const val = SeenValue{ .operand = m.src };
-                try res.append(alloc, val);
+                try res.append(alloc, .{ .operand = m.src });
             },
             .unaryop => |uop| {
-                const val = SeenValue{ .operand = uop.src };
-                try res.append(alloc, val);
+                try res.append(alloc, .{ .operand = uop.src });
             },
             .compare => |c| {
-                const lhs = SeenValue{ .operand = c.lhs };
-                try res.append(alloc, lhs);
-                const rhs = SeenValue{ .operand = c.rhs };
-                try res.append(alloc, rhs);
+                try res.append(alloc, .{ .operand = c.lhs });
+                try res.append(alloc, .{ .operand = c.rhs });
             },
             .phi => |pi| {
                 for (pi.inputs) |phi_input| {
-                    const val = SeenValue{ .operand = phi_input.value };
-                    try res.append(alloc, val);
+                    try res.append(alloc, .{ .operand = phi_input.value });
                 }
             },
             .print => |pi| {
-                const val = SeenValue{ .operand = pi.src };
-                try res.append(alloc, val);
+                try res.append(alloc, .{ .operand = pi.src });
+            },
+            .range => |r| {
+                try res.append(alloc, .{ .operand = r.start });
+                try res.append(alloc, .{ .operand = r.end });
             },
             .branch => |b| {
-                const val = SeenValue{ .operand = b.condition };
-                try res.append(alloc, val);
+                try res.append(alloc, .{ .operand = b.condition });
             },
             .array_literal => |al| {
                 for (al.elements) |elem| {
-                    const val = SeenValue{ .operand = elem };
-                    try res.append(alloc, val);
+                    try res.append(alloc, .{ .operand = elem });
                 }
             },
             .array_load => |al| {
-                try res.append(alloc, SeenValue{ .operand = al.array.operand });
-                try res.append(alloc, SeenValue{ .operand = al.index });
+                try res.append(alloc, .{ .operand = al.array.operand });
+                try res.append(alloc, .{ .operand = al.index });
+            },
+            .array_store => |as| {
+                try res.append(alloc, .{ .operand = as.array.operand });
+                try res.append(alloc, .{ .operand = as.index });
+                try res.append(alloc, .{ .operand = as.src });
             },
             .list_literal => |ll| {
                 for (ll.elements) |elem| {
-                    const val = SeenValue{ .operand = elem };
-                    try res.append(alloc, val);
+                    try res.append(alloc, .{ .operand = elem });
                 }
             },
             .list_load => |il| {
-                try res.append(alloc, SeenValue{ .operand = il.list.operand });
-                try res.append(alloc, SeenValue{ .operand = il.index });
+                try res.append(alloc, .{ .operand = il.list.operand });
+                try res.append(alloc, .{ .operand = il.index });
+            },
+            .list_store => |ls| {
+                try res.append(alloc, .{ .operand = ls.list.operand });
+                try res.append(alloc, .{ .operand = ls.index });
+                try res.append(alloc, .{ .operand = ls.src });
+            },
+            .function_call => |fc| {
+                for (fc.args) |arg| {
+                    try res.append(alloc, .{ .operand = arg.operand });
+                }
             },
             else => {},
         }

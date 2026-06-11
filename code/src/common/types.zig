@@ -1,5 +1,6 @@
 const std = @import("std");
 
+// use a pointer on element type for recursive purposes
 pub const TypeInfo = union(enum) {
     void,
     int,
