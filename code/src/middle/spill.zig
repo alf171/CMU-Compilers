@@ -19,15 +19,16 @@ pub fn spillRegInIr(program: *IrProgram, alloc_program: *const AllocProgram, spi
     const slot = alloc_program.nextMem();
     var next_temp = alloc_program.nextTemp();
 
-    try spillRegInFunction(&program.main, spilled, slot, &next_temp, alloc);
+    try spillRegInFunction(&program.main, 0, spilled, slot, &next_temp, alloc);
 
-    for (program.functions.items) |*function| {
-        try spillRegInFunction(function, spilled, slot, &next_temp, alloc);
+    for (program.functions.items, 0..) |*function, i| {
+        try spillRegInFunction(function, i + 1, spilled, slot, &next_temp, alloc);
     }
 }
 
 fn spillRegInFunction(
     function: *Function,
+    function_idx: usize,
     spilled: Operand,
     slot: u8,
     next_temp: *u8,
@@ -50,7 +51,7 @@ fn spillRegInFunction(
                 switch (use_item) {
                     .operand => |use_op| {
                         if (use_op.equal(spilled)) {
-                            const t1 = Operand{ .temp = next_temp.* };
+                            const t1 = Operand{ .temp = .{ .id = next_temp.*, .function_id = function_idx } };
                             next_temp.* += 1;
                             try new_instructions.append(alloc, Instruction{ .move = .{
                                 .dst = t1,
@@ -66,7 +67,10 @@ fn spillRegInFunction(
             if (maybe_defines) |defines| switch (defines) {
                 .operand => |define_op| {
                     if (define_op.equal(spilled)) {
-                        const t2 = Operand{ .temp = next_temp.* };
+                        const t2 = Operand{ .temp = .{
+                            .id = next_temp.*,
+                            .function_id = function_idx,
+                        } };
                         next_temp.* += 1;
                         try instruction.replaceDefines(spilled, t2);
                         try new_instructions.append(alloc, instruction);
@@ -100,7 +104,7 @@ pub fn spillReg(current_program: *const AllocProgram, reg: Operand, alloc: std.m
     for (current_program.blocks.items) |block| {
         const new_start = new_program.lines.items.len;
         for (current_program.lines.items[block.start..block.end]) |line| {
-            try spillLine(&new_program, line, reg, memory_pointer, &next_temp, alloc);
+            try spillLine(&new_program, line, reg, memory_pointer, &next_temp, block.function_id, alloc);
         }
 
         var successors = ArrayList(u32).empty;
@@ -111,6 +115,7 @@ pub fn spillReg(current_program: *const AllocProgram, reg: Operand, alloc: std.m
             .start = new_start,
             .end = new_program.lines.items.len,
             .successors = successors,
+            .function_id = block.function_id,
         });
     }
 
@@ -134,6 +139,7 @@ fn spillLine(
     reg: Operand,
     memory_pointer: u8,
     next_temp: *u8,
+    function_idx: usize,
     alloc: std.mem.Allocator,
 ) !void {
     // case 1: spill reg == the register defined in the line
@@ -142,7 +148,10 @@ fn spillLine(
     if (line.defines.ops.count() > 0 and Operand.equal(try line.defines.single(), reg)) {
         // p1: temp_new <- expr
         var temp = Operands.init(alloc);
-        try temp.ops.put(Operand{ .temp = next_temp.* }, {});
+        try temp.ops.put(Operand{ .temp = .{
+            .id = next_temp.*,
+            .function_id = function_idx,
+        } }, {});
         const temp_line_number: usize = @intCast(new_program.lines.items.len + 1);
         const p1 = Line{ .uses = try line.uses.clone(alloc), .live_out = Operands.init(alloc), .defines = temp, .instruction_index = temp_line_number, .move = line.move };
         try new_program.lines.append(alloc, p1);
@@ -162,7 +171,9 @@ fn spillLine(
         if (op.*.equal(reg)) {
             // p1: temp_i <- load mem_j
             var temp = Operands.init(alloc);
-            try temp.ops.put(Operand{ .temp = next_temp.* }, {});
+            try temp.ops.put(Operand{
+                .temp = .{ .id = next_temp.*, .function_id = function_idx },
+            }, {});
             var mem = Operands.init(alloc);
             try mem.ops.put(Operand{ .mem = memory_pointer }, {});
             const new_line_number: usize = @intCast(new_program.lines.items.len + 1);
@@ -171,7 +182,10 @@ fn spillLine(
             // p2: replace reg_{spill} with temp_i
             // std.debug.print("trying to remove {any} from line.uses: {any}", .{ reg, line.uses.ops.items });
             var mut_uses = try Operands.remove(line.uses, reg, alloc);
-            try mut_uses.ops.put(Operand{ .temp = next_temp.* }, {});
+            try mut_uses.ops.put(Operand{ .temp = .{
+                .id = next_temp.*,
+                .function_id = function_idx,
+            } }, {});
             const mut_defines = try line.defines.clone(alloc);
             const mut_line_count: usize = @intCast(new_program.lines.items.len + 1);
             const rewritten_line = Line{ .uses = mut_uses, .defines = mut_defines, .live_out = Operands.init(alloc), .move = line.move, .instruction_index = mut_line_count };
@@ -199,7 +213,7 @@ fn spillLine(
 test "spillReg basic spill of defined reg" {
     const alloc = std.testing.allocator;
 
-    const reg = Operand{ .temp = 1 };
+    const reg = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
 
     var defines_ops = Operands.init(alloc);
     try defines_ops.ops.put(reg, {});
@@ -221,6 +235,7 @@ test "spillReg basic spill of defined reg" {
     var blocks = ArrayList(Block).empty;
     try blocks.append(alloc, Block{
         .id = 0,
+        .function_id = 0,
         .start = 0,
         .end = lines.items.len,
         .successors = .empty,
@@ -246,8 +261,8 @@ test "spill reg function" {
     var blocks = ArrayList(BasicBlock).empty;
     var instructions = ArrayList(Instruction).empty;
     // A <- op A, B
-    const A = Operand{ .temp = 0 };
-    const B = Operand{ .temp = 1 };
+    const A = Operand{ .temp = .{ .id = 0, .function_id = 0 } };
+    const B = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
     try instructions.append(alloc, Instruction{ .binop = .{ .dst = A, .lhs = A, .op = .add, .rhs = B } });
     try blocks.append(alloc, BasicBlock{
         .id = 0,
@@ -256,6 +271,7 @@ test "spill reg function" {
     });
     var function = Function{
         .name = "test",
+        .idx = 0,
         .blocks = blocks,
         .entry_block = 0,
         .params = &.{},
@@ -276,22 +292,22 @@ test "spill reg function" {
     // t2 <- op t1, B
     // mem_slot <- t2
     var next_temp: u8 = 2;
-    try spillRegInFunction(&function, A, 0, &next_temp, alloc);
+    try spillRegInFunction(&function, 0, A, 0, &next_temp, alloc);
 
     const new_instructions = function.blocks.items[0].instructions.items;
     try std.testing.expectEqual(3, new_instructions.len);
     try std.testing.expectEqualDeep(Instruction{ .move = .{
-        .dst = Operand{ .temp = 2 },
+        .dst = Operand{ .temp = .{ .id = 2, .function_id = 0 } },
         .src = Operand{ .mem = 0 },
     } }, new_instructions[0]);
     try std.testing.expectEqualDeep(Instruction{ .binop = .{
-        .dst = Operand{ .temp = 3 },
-        .lhs = Operand{ .temp = 2 },
+        .dst = Operand{ .temp = .{ .id = 3, .function_id = 0 } },
+        .lhs = Operand{ .temp = .{ .id = 2, .function_id = 0 } },
         .op = .add,
-        .rhs = Operand{ .temp = 1 },
+        .rhs = Operand{ .temp = .{ .id = 1, .function_id = 0 } },
     } }, new_instructions[1]);
     try std.testing.expectEqualDeep(Instruction{ .move = .{
         .dst = Operand{ .mem = 0 },
-        .src = Operand{ .temp = 3 },
+        .src = Operand{ .temp = .{ .id = 3, .function_id = 0 } },
     } }, new_instructions[2]);
 }

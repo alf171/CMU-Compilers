@@ -168,6 +168,7 @@ fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
                 continue;
             }
             try defineNodeIfDoesntExist(igraph, define_op.*, allocator);
+            try defineNodeIfDoesntExist(igraph, live_out_op.*, allocator);
             // build graph
             if (!Operand.equal(define_op.*, live_out_op.*)) {
                 std.debug.assert(igraph.nodes.contains(live_out_op.*));
@@ -177,6 +178,24 @@ fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
             }
         }
     }
+
+    // things used together need an edge between them
+    var use_it = line.uses.ops.keyIterator();
+    while (use_it.next()) |first_key| {
+        var use_it_2 = line.uses.ops.keyIterator();
+        while (use_it_2.next()) |second_key| {
+            if (first_key.* == .mem or second_key.* == .mem or first_key.* == .spec_reg or second_key.* == .spec_reg) {
+                continue;
+            }
+            if (!Operand.equal(first_key.*, second_key.*)) {
+                try defineNodeIfDoesntExist(igraph, first_key.*, allocator);
+                try igraph.nodes.getPtr(first_key.*).?.placeNode(second_key.*);
+                try defineNodeIfDoesntExist(igraph, second_key.*, allocator);
+                try igraph.nodes.getPtr(second_key.*).?.placeNode(first_key.*);
+            }
+        }
+    }
+
     // keep track of moves
     if (line.move) {
         std.debug.assert(line.defines.ops.count() == 1);
@@ -210,9 +229,9 @@ test "coalesce removes stale move refs" {
     const alloc = std.testing.allocator;
     var graph = IGraph.init(alloc);
     defer graph.deinit();
-    const a = Operand{ .temp = 0 };
-    const b = Operand{ .temp = 1 };
-    const c = Operand{ .temp = 2 };
+    const a = Operand{ .temp = .{ .id = 0, .function_id = 0 } };
+    const b = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
+    const c = Operand{ .temp = .{ .id = 2, .function_id = 0 } };
     // init nodes
     try graph.nodes.put(a, Node.init(a, alloc));
     try graph.nodes.put(b, Node.init(b, alloc));

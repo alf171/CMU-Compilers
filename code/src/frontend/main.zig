@@ -45,7 +45,7 @@ test "x = 1 + 2" {
     // temp0 <- const 1
     switch (instructions[0]) {
         .constant => |instruction| {
-            try std.testing.expectEqual(@as(u32, 0), instruction.dst.temp);
+            try std.testing.expectEqual(@as(u32, 0), instruction.dst.temp.id);
             try std.testing.expect(instruction.value == .int);
             try std.testing.expectEqual(@as(i64, 1), instruction.value.int);
         },
@@ -54,7 +54,7 @@ test "x = 1 + 2" {
     // temp1 <- const 2
     switch (instructions[1]) {
         .constant => |instruction| {
-            try std.testing.expectEqual(@as(u32, 1), instruction.dst.temp);
+            try std.testing.expectEqual(@as(u32, 1), instruction.dst.temp.id);
             try std.testing.expect(instruction.value == .int);
             try std.testing.expectEqual(@as(i64, 2), instruction.value.int);
         },
@@ -63,10 +63,10 @@ test "x = 1 + 2" {
     // temp2 <- add temp0, temp1
     switch (instructions[2]) {
         .binop => |instruction| {
-            try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp);
+            try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp.id);
             try std.testing.expectEqual(.add, instruction.op);
-            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.temp);
-            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.temp);
+            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.temp.id);
+            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.temp.id);
         },
         else => return error.ExpectedBinop,
     }
@@ -74,7 +74,7 @@ test "x = 1 + 2" {
     switch (instructions[3]) {
         .store_local => |instruction| {
             try std.testing.expectEqual(@as(u32, 0), instruction.local.id);
-            try std.testing.expectEqual(@as(u32, 2), instruction.src.temp);
+            try std.testing.expectEqual(@as(u32, 2), instruction.src.temp.id);
         },
         else => return error.ExpectedBinop,
     }
@@ -102,7 +102,7 @@ test "x = true != false" {
     // temp0 <- const True
     switch (instructions[0]) {
         .constant => |instruction| {
-            try std.testing.expectEqual(@as(u32, 0), instruction.dst.temp);
+            try std.testing.expectEqual(@as(u32, 0), instruction.dst.temp.id);
             try std.testing.expect(instruction.value == .bool);
             try std.testing.expectEqual(true, instruction.value.bool);
         },
@@ -111,7 +111,7 @@ test "x = true != false" {
     // temp1 <- const False
     switch (instructions[1]) {
         .constant => |instruction| {
-            try std.testing.expectEqual(@as(u32, 1), instruction.dst.temp);
+            try std.testing.expectEqual(@as(u32, 1), instruction.dst.temp.id);
             try std.testing.expect(instruction.value == .bool);
             try std.testing.expectEqual(false, instruction.value.bool);
         },
@@ -120,10 +120,10 @@ test "x = true != false" {
     // temp2 <- temp0 != temp1
     switch (instructions[2]) {
         .compare => |instruction| {
-            try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp);
+            try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp.id);
             try std.testing.expectEqual(.neq, instruction.op);
-            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.temp);
-            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.temp);
+            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.temp.id);
+            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.temp.id);
         },
         else => return error.ExpectedBinop,
     }
@@ -131,7 +131,7 @@ test "x = true != false" {
     switch (instructions[3]) {
         .store_local => |instruction| {
             try std.testing.expectEqual(@as(u32, 0), instruction.local.id);
-            try std.testing.expectEqual(@as(u32, 2), instruction.src.temp);
+            try std.testing.expectEqual(@as(u32, 2), instruction.src.temp.id);
         },
         else => return error.ExpectedBinop,
     }

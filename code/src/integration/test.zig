@@ -2,6 +2,7 @@ const std = @import("std");
 
 const c = @import("frontend").python.c;
 const walkAst = @import("frontend").walk.walkAst;
+const range = @import("frontend").range;
 const middle = @import("middle");
 const loop = middle.loop;
 const lower = middle.lower;
@@ -36,10 +37,12 @@ pub fn main(init: std.process.Init) !void {
     var should_run = false;
     var should_optim = false;
     var should_dump_ir = false;
+    var should_dump_stats = false;
     for (args[3..]) |arg| {
         if (std.mem.eql(u8, arg, "--run")) should_run = true;
         if (std.mem.eql(u8, arg, "--optim")) should_optim = true;
         if (std.mem.eql(u8, arg, "--dump-ir")) should_dump_ir = true;
+        if (std.mem.eql(u8, arg, "--dump-stats")) should_dump_stats = true;
     }
 
     const code = try std.Io.Dir.cwd().readFileAlloc(io, input_file, alloc, .limited(1 << 20));
@@ -68,6 +71,9 @@ pub fn main(init: std.process.Init) !void {
         try copy.run(&ir_program, alloc);
     }
 
+    // range elimination?
+    try range.rewrite(&ir_program, alloc);
+    // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
     try parallel_copies.lower(&ir_program, alloc);
 
@@ -99,7 +105,7 @@ pub fn main(init: std.process.Init) !void {
 
     defer file.close(io);
 
-    var colored = try loop.run(&ir_program, &alloc_program, should_optim, alloc, null);
+    var colored = try loop.run(&ir_program, &alloc_program, should_optim, alloc, null, should_dump_ir);
     defer colored.deinit();
 
     // dump colored graph
@@ -112,7 +118,7 @@ pub fn main(init: std.process.Init) !void {
     defer alloc.free(asm_text);
 
     // TODO: break metrics up into their own module
-    if (should_dump_ir) {
+    if (should_dump_stats) {
         var lines = std.mem.splitScalar(u8, asm_text, '\n');
         var line_count: usize = 0;
         var mov_count: usize = 0;

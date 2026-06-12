@@ -105,17 +105,17 @@ test "basic block copy prop" {
 
     // t1 = t0
     try instructions.append(alloc, Instruction{ .move = .{
-        .dst = .{ .temp = 1 },
-        .src = .{ .temp = 0 },
+        .dst = .{ .temp = .{ .id = 1, .function_id = 0 } },
+        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
     } });
     // t2 = t1
     try instructions.append(alloc, Instruction{ .move = .{
-        .dst = .{ .temp = 2 },
-        .src = .{ .temp = 1 },
+        .dst = .{ .temp = .{ .id = 2, .function_id = 0 } },
+        .src = .{ .temp = .{ .id = 1, .function_id = 0 } },
     } });
     // print(t2)
     try instructions.append(alloc, Instruction{ .print = .{
-        .src = .{ .temp = 2 },
+        .src = .{ .temp = .{ .id = 2, .function_id = 0 } },
         .type = .int,
     } });
 
@@ -125,17 +125,17 @@ test "basic block copy prop" {
 
     // t1 = t0
     try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .move = .{
-        .dst = .{ .temp = 1 },
-        .src = .{ .temp = 0 },
+        .dst = .{ .temp = .{ .id = 1, .function_id = 0 } },
+        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
     } });
     // t2 = t0
     try std.testing.expectEqualDeep(new_instructions[1], Instruction{ .move = .{
-        .dst = .{ .temp = 2 },
-        .src = .{ .temp = 0 },
+        .dst = .{ .temp = .{ .id = 2, .function_id = 0 } },
+        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
     } });
     // print(t0)
     try std.testing.expectEqualDeep(new_instructions[2], Instruction{ .print = .{
-        .src = .{ .temp = 0 },
+        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
         .type = .int,
     } });
 }

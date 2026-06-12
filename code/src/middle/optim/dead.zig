@@ -8,6 +8,7 @@ const Function = @import("common").ir.Function;
 const Program = @import("common").ir.Program;
 const AllocProgram = @import("common").alloc.AllocProgram;
 const Operand = @import("common").alloc.Operand;
+const Operands = @import("common").alloc.Operands;
 const LocalId = @import("common").ir.LocalId;
 const Instruction = @import("common").ir.Instruction;
 const SeenValue = @import("common").ir.SeenValue;
@@ -86,28 +87,45 @@ test "basic block elim" {
     defer program.deinit(alloc);
     var instructions = &program.main.blocks.items[0].instructions;
 
+    var alloc_program = AllocProgram{ .blocks = .empty, .lines = .empty, .register_count = 1 };
+    try alloc_program.blocks.append(alloc, .{
+        .start = 0,
+        .end = 1,
+        .function_id = 0,
+        .id = 0,
+        .successors = .empty,
+    });
+    try alloc_program.lines.append(alloc, .{
+        .defines = Operands.init(alloc),
+        .instruction_index = 0,
+        .live_out = Operands.init(alloc),
+        .move = false,
+        .uses = Operands.init(alloc),
+    });
+    defer alloc_program.deinit(alloc);
+
     // t1 = t0
     try instructions.append(alloc, Instruction{ .move = .{
-        .dst = .{ .temp = 1 },
-        .src = .{ .temp = 0 },
+        .dst = .{ .temp = .{ .id = 1, .function_id = 0 } },
+        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
     } });
     // t2 = t0
     try instructions.append(alloc, Instruction{ .move = .{
-        .dst = .{ .temp = 2 },
-        .src = .{ .temp = 0 },
+        .dst = .{ .temp = .{ .id = 2, .function_id = 0 } },
+        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
     } });
     // print(t0)
     try instructions.append(alloc, Instruction{ .print = .{
-        .src = .{ .temp = 0 },
+        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
         .type = .char,
     } });
 
-    try run(&program, alloc);
+    try run(&program, &alloc_program, alloc);
     const new_instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(1, new_instructions.len);
     // print(t0)
     try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .print = .{
-        .src = .{ .temp = 0 },
+        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
         .type = .char,
     } });
 }

@@ -18,10 +18,10 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
     };
 
     var instruction_index: usize = 0;
-    for (program.functions.items) |function| {
-        try lowerBlocks(function.blocks.items, &res, &instruction_index, alloc);
+    for (program.functions.items, 0..) |function, i| {
+        try lowerBlocks(function.blocks.items, &res, &instruction_index, i + 1, alloc);
     }
-    try lowerBlocks(program.main.blocks.items, &res, &instruction_index, alloc);
+    try lowerBlocks(program.main.blocks.items, &res, &instruction_index, 0, alloc);
 
     return res;
 }
@@ -30,6 +30,7 @@ fn lowerBlocks(
     blocks: []const common.ir.BasicBlock,
     res: *AllocProgram,
     instruction_index: *usize,
+    function_id: usize,
     alloc: std.mem.Allocator,
 ) !void {
     var locals = std.AutoHashMap(common.ir.LocalId, common.alloc.Operand).init(alloc);
@@ -74,6 +75,15 @@ fn lowerBlocks(
                 },
                 .print => |pi| {
                     try line.uses.ops.put(pi.src, {});
+                },
+                .range => |r| {
+                    try line.defines.ops.put(r.dst.operand, {});
+                    try line.uses.ops.put(r.start.operand, {});
+                    try line.uses.ops.put(r.end.operand, {});
+                },
+                .len => |l| {
+                    try line.defines.ops.put(l.dst, {});
+                    try line.uses.ops.put(l.value.operand, {});
                 },
                 .compare => |c| {
                     try line.defines.ops.put(c.dst, {});
@@ -153,6 +163,7 @@ fn lowerBlocks(
             .start = start,
             .end = end,
             .successors = successors,
+            .function_id = function_id,
         });
     }
 }

@@ -23,6 +23,8 @@ pub const IrBuilder = struct {
     current_function: ?usize,
     next_block: BlockId,
     next_local: LocalId,
+    // TODO: dont use usize
+    next_function_idx: usize,
     // name -> LocalId
     locals_by_name: std.StringHashMap(LocalId),
     // LocalId -> TypedOperand
@@ -39,6 +41,7 @@ pub const IrBuilder = struct {
             .current_block = 0,
             .next_block = 1,
             .next_local = 0,
+            .next_function_idx = 1,
             .locals_by_name = std.StringHashMap(LocalId).init(alloc),
             .local_values = LocalValues.init(alloc),
             .locals = .empty,
@@ -70,6 +73,13 @@ pub const IrBuilder = struct {
         return error.CantFindCurrentFunction;
     }
 
+    fn currentFunctionIdx(self: *@This()) usize {
+        if (self.current_function) |i| {
+            return i + 1;
+        }
+        return 0;
+    }
+
     pub fn getFunctionReturnType(self: *@This(), name: []const u8) !TypeInfo {
         for (self.program.functions.items) |function| {
             if (std.mem.eql(u8, function.name, name)) {
@@ -83,7 +93,16 @@ pub const IrBuilder = struct {
         const function = self.currentFunction() catch &self.program.main;
         const id = function.next_temp;
         function.next_temp += 1;
-        return Operand{ .temp = id };
+        return Operand{ .temp = .{
+            .id = id,
+            .function_id = @intCast(self.currentFunctionIdx()),
+        } };
+    }
+
+    pub fn nextFunctionIdx(self: *@This()) usize {
+        const idx = self.next_function_idx;
+        self.next_function_idx += 1;
+        return idx;
     }
 
     pub fn getLocal(self: *@This(), name: []const u8) !LocalId {

@@ -99,11 +99,11 @@ test "reject coalesce" {
     const alloc = std.testing.allocator;
     var graph = igraph.IGraph.init(alloc);
     defer graph.deinit();
-    const a = Operand{ .temp = 0 };
-    const b = Operand{ .temp = 1 };
-    const p = Operand{ .temp = 2 };
-    const q = Operand{ .temp = 3 };
-    const r = Operand{ .temp = 4 };
+    const a = Operand{ .temp = .{ .id = 0, .function_id = 0 } };
+    const b = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
+    const p = Operand{ .temp = .{ .id = 2, .function_id = 0 } };
+    const q = Operand{ .temp = .{ .id = 3, .function_id = 0 } };
+    const r = Operand{ .temp = .{ .id = 4, .function_id = 0 } };
 
     var a_node = Node.init(a, alloc);
     try a_node.placeNode(p);

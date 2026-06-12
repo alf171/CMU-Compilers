@@ -40,7 +40,10 @@ fn lowerFunction(function: *Function, alloc: std.mem.Allocator) !void {
                 .parallel_copy => |pc| {
                     for (pc.copies) |copy| {
                         if (used.contains(copy.dst)) {
-                            const temp = Operand{ .temp = function.next_temp };
+                            const temp = Operand{ .temp = .{
+                                .id = function.next_temp,
+                                .function_id = function.idx,
+                            } };
                             try new_instructions.append(alloc, Instruction{ .move = .{
                                 .dst = temp,
                                 .src = copy.dst,
@@ -89,6 +92,7 @@ test "cycle" {
     const alloc = std.testing.allocator;
     var function = Function{
         .name = "test",
+        .idx = 0,
         .blocks = .empty,
         .params = &.{},
         .entry_block = 0,
@@ -110,9 +114,9 @@ test "cycle" {
         function.blocks.deinit(alloc);
     }
 
-    const a = Operand{ .temp = 1 };
-    const b = Operand{ .temp = 2 };
-    const c = Operand{ .temp = 3 };
+    const a = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
+    const b = Operand{ .temp = .{ .id = 2, .function_id = 0 } };
+    const c = Operand{ .temp = .{ .id = 3, .function_id = 0 } };
 
     try function.blocks.items[0].instructions.append(alloc, Instruction{
         .parallel_copy = .{ .copies = try alloc.dupe(Copy, &.{

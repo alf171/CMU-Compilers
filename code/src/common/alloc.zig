@@ -15,13 +15,13 @@ pub const REG_COUNT = 10;
 pub const Operands = struct {
     ops: HashMap(Operand, void),
 
-    pub fn nextTemp(self: @This()) u8 {
-        var max_temp: u8 = 0;
+    pub fn nextTemp(self: @This()) TempId {
+        var max_temp: TempId = 0;
 
         var it = self.ops.keyIterator();
         while (it.next()) |op| {
             switch (op.*) {
-                .temp => |t| max_temp = @max(max_temp, t + 1),
+                .temp => |t| max_temp = @max(max_temp, t.id + 1),
                 else => {},
             }
         }
@@ -113,15 +113,25 @@ pub const Operands = struct {
     }
 };
 
+// value is scoped to ensure equality between blocks behaves
+pub const ScopedTemp = struct {
+    id: TempId,
+    function_id: usize,
+
+    fn equal(self: @This(), other: @This()) bool {
+        return self.id == other.id and self.function_id == other.function_id;
+    }
+};
+
 pub const Operand = union(enum) {
-    temp: TempId,
+    temp: ScopedTemp,
     spec_reg: SpecialRegs,
     mem: u8,
 
     pub fn equal(self: @This(), other: @This()) bool {
         return switch (self) {
             .temp => |t1| switch (other) {
-                .temp => |t2| t1 == t2,
+                .temp => |t2| t1.equal(t2),
                 else => false,
             },
             .spec_reg => |t1| switch (other) {
@@ -141,7 +151,7 @@ pub const Operand = union(enum) {
 
     pub fn toString(op: @This(), allocator: std.mem.Allocator) ![]u8 {
         return switch (op) {
-            .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t + 1}),
+            .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t.id + 1}),
             .spec_reg => |s| std.fmt.allocPrint(allocator, "%{s}", .{@tagName(s)}),
             .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t + 1}),
         };
@@ -149,7 +159,7 @@ pub const Operand = union(enum) {
 
     pub fn print(self: @This()) void {
         switch (self) {
-            .temp => |id| std.debug.print("temp{d}", .{id}),
+            .temp => |t| std.debug.print("temp{d}", .{t.id}),
             .spec_reg => |reg| std.debug.print("%{s}", .{@tagName(reg)}),
             .mem => |id| std.debug.print("mem{d}", .{id}),
         }
@@ -190,6 +200,8 @@ pub const AllocBlock = struct {
     /// exclusive
     end: usize,
     successors: ArrayList(BlockId),
+    // needed to make temps unique
+    function_id: usize,
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         self.successors.deinit(alloc);
@@ -247,17 +259,17 @@ test "operands equal" {
     const alloc = std.testing.allocator;
     var ops1 = HashMap(Operand, void).init(alloc);
     defer ops1.deinit();
-    try ops1.put(Operand{ .temp = 99 }, {});
+    try ops1.put(Operand{ .temp = .{ .id = 99, .function_id = 0 } }, {});
     var a = Operands{ .ops = ops1 };
 
     var ops2 = HashMap(Operand, void).init(alloc);
     defer ops2.deinit();
-    try ops2.put(Operand{ .temp = 99 }, {});
+    try ops2.put(Operand{ .temp = .{ .id = 99, .function_id = 0 } }, {});
     const b = Operands{ .ops = ops2 };
 
     try std.testing.expect(b.equal(&a));
     try std.testing.expect(a.equal(&b));
 
-    try a.ops.put(Operand{ .temp = 100 }, {});
+    try a.ops.put(Operand{ .temp = .{ .id = 100, .function_id = 0 } }, {});
     try std.testing.expect(!a.equal(&b));
 }

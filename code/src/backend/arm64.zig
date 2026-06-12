@@ -150,6 +150,23 @@ fn emitFunction(
                         else => return error.TypeNotImpl,
                     }
                 },
+                .len => |l| {
+                    const dst = try regFor(l.dst, colors);
+                    const src = try regFor(l.value.operand, colors);
+                    switch (l.value.type) {
+                        .list => {
+                            try out.print(alloc, "\tldr {s}, [{s}]\n", .{ dst, src });
+                        },
+                        .array => |a| {
+                            const size = a.size orelse return error.SizeNotFound;
+                            try out.print(alloc, "\tldr {s}, #{d}\n", .{ dst, size });
+                        },
+                        else => |e| {
+                            std.debug.print("len called on {s} unexpectedly\n", .{@tagName(e)});
+                            return error.InvalidLenCall;
+                        },
+                    }
+                },
                 .compare => |c| {
                     const lhs = try regFor(c.lhs, colors);
                     const rhs = try regFor(c.rhs, colors);
@@ -165,6 +182,7 @@ fn emitFunction(
                     switch (binop.op) {
                         .add => try out.print(alloc, "\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
                         .mul => try out.print(alloc, "\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
+                        .sub => try out.print(alloc, "\tsub {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
                         else => |op| {
                             std.debug.print("op is not supported {s}\n", .{@tagName(op)});
                             return error.NotSupported;

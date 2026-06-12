@@ -1,4 +1,5 @@
 const std = @import("std");
+const debugPrint = std.debug.print;
 const ArrayList = std.ArrayList;
 const TypeInfo = @import("types.zig").TypeInfo;
 const TypedOperand = @import("alloc.zig").TypedOperand;
@@ -120,10 +121,9 @@ pub const Instruction = union(enum) {
         value: TypedOperand,
     },
     range: struct {
-        dst: Operand,
-        start: Operand,
-        end: Operand,
-        step: Operand,
+        dst: TypedOperand,
+        start: TypedOperand,
+        end: TypedOperand,
     },
     // [END] builtin functions
     jump: struct {
@@ -192,22 +192,22 @@ pub const Instruction = union(enum) {
     },
     unkown,
 
-    pub fn debugPrint(self: @This()) !void {
+    pub fn printFn(self: @This()) !void {
         switch (self) {
             .constant => |c| {
                 c.dst.print();
                 switch (c.value) {
                     .int => |value| {
-                        std.debug.print(" <- {any}\n", .{value});
+                        debugPrint(" <- {any}\n", .{value});
                     },
                     .bool => |value| {
-                        std.debug.print(" <- {any}\n", .{value});
+                        debugPrint(" <- {any}\n", .{value});
                     },
                     .char => |value| {
-                        std.debug.print(" <- {any}\n", .{value});
+                        debugPrint(" <- {any}\n", .{value});
                     },
                     .bytes => |value| {
-                        std.debug.print(" <- {s}\n", .{value});
+                        debugPrint(" <- {s}\n", .{value});
                     },
                     .float => {
                         return error.TypeNotImpl;
@@ -216,149 +216,163 @@ pub const Instruction = union(enum) {
             },
             .binop => |binop| {
                 binop.dst.print();
-                std.debug.print(" <- {s} ", .{@tagName(binop.op)});
+                debugPrint(" <- {s} ", .{@tagName(binop.op)});
                 binop.lhs.print();
-                std.debug.print(", ", .{});
+                debugPrint(", ", .{});
                 binop.rhs.print();
-                std.debug.print("\n", .{});
+                debugPrint("\n", .{});
             },
             .store_local => |sl| {
-                std.debug.print("\"{s}\" <- ", .{sl.local.name});
+                debugPrint("\"{s}\" <- ", .{sl.local.name});
                 sl.src.print();
-                std.debug.print("\n", .{});
+                debugPrint("\n", .{});
             },
             .load_local => |ll| {
                 ll.dst.print();
-                std.debug.print(" <- \"{s}\"\n", .{ll.local.name});
+                debugPrint(" <- \"{s}\"\n", .{ll.local.name});
             },
             .unaryop => |uop| {
                 uop.dst.print();
-                std.debug.print(" <- {s} ", .{@tagName(uop.op)});
+                debugPrint(" <- {s} ", .{@tagName(uop.op)});
                 uop.src.print();
-                std.debug.print("\n", .{});
+                debugPrint("\n", .{});
             },
             .move => |m| {
                 m.dst.print();
-                std.debug.print(" <- ", .{});
+                debugPrint(" <- ", .{});
                 m.src.print();
-                std.debug.print("\n", .{});
+                debugPrint("\n", .{});
             },
             .compare => |c| {
                 c.dst.print();
-                std.debug.print(" <- ", .{});
+                debugPrint(" <- ", .{});
                 c.lhs.print();
-                std.debug.print(" {s} ", .{c.op.symbol()});
+                debugPrint(" {s} ", .{c.op.symbol()});
                 c.rhs.print();
-                std.debug.print("\n", .{});
+                debugPrint("\n", .{});
             },
             .print => |p| {
-                std.debug.print("print ", .{});
+                debugPrint("print ", .{});
                 p.src.print();
-                std.debug.print("\n", .{});
+                debugPrint("\n", .{});
+            },
+            .range => |r| {
+                r.dst.operand.print();
+                debugPrint(" <- range(", .{});
+                r.start.operand.print();
+                debugPrint(", ", .{});
+                r.end.operand.print();
+                debugPrint(")\n", .{});
+            },
+            .len => |l| {
+                l.dst.print();
+                debugPrint(" <- len(", .{});
+                l.value.operand.print();
+                debugPrint(")\n", .{});
             },
             .jump => |j| {
-                std.debug.print("jump block{d}\n", .{j.target});
+                debugPrint("jump block{d}\n", .{j.target});
             },
             .phi => |p| {
                 p.dst.operand.print();
-                std.debug.print(" <- phi (", .{});
+                debugPrint(" <- phi (", .{});
                 for (p.inputs, 0..) |phi, i| {
-                    if (i != 0) std.debug.print(", ", .{});
-                    std.debug.print("block{d}: ", .{phi.pred});
+                    if (i != 0) debugPrint(", ", .{});
+                    debugPrint("block{d}: ", .{phi.pred});
                     phi.value.print();
                 }
-                std.debug.print(")\n", .{});
+                debugPrint(")\n", .{});
             },
             .branch => |b| {
                 b.condition.print();
-                std.debug.print(" ? jump block{d} : jump block{d}\n", .{ b.then_block, b.else_block });
+                debugPrint(" ? jump block{d} : jump block{d}\n", .{ b.then_block, b.else_block });
             },
             .list_literal => |al| {
                 al.dst.operand.print();
-                std.debug.print(" <- [", .{});
+                debugPrint(" <- [", .{});
                 for (al.elements, 0..) |elem, i| {
-                    if (i != 0) std.debug.print(", ", .{});
+                    if (i != 0) debugPrint(", ", .{});
                     elem.print();
                 }
-                std.debug.print("]\n", .{});
+                debugPrint("]\n", .{});
             },
             .array_literal => |al| {
                 al.dst.operand.print();
-                std.debug.print(" <- [", .{});
+                debugPrint(" <- [", .{});
                 for (al.elements, 0..) |elem, i| {
-                    if (i != 0) std.debug.print(", ", .{});
+                    if (i != 0) debugPrint(", ", .{});
                     elem.print();
                 }
-                std.debug.print("]\n", .{});
+                debugPrint("]\n", .{});
             },
             .list_store => |ls| {
                 ls.list.operand.print();
-                std.debug.print("[", .{});
+                debugPrint("[", .{});
                 ls.index.print();
-                std.debug.print("] <- ", .{});
+                debugPrint("] <- ", .{});
                 ls.src.print();
-                std.debug.print("\n", .{});
+                debugPrint("\n", .{});
             },
             .array_store => |as| {
                 as.array.operand.print();
-                std.debug.print("[", .{});
+                debugPrint("[", .{});
                 as.index.print();
-                std.debug.print("] <- ", .{});
+                debugPrint("] <- ", .{});
                 as.src.print();
-                std.debug.print("\n", .{});
+                debugPrint("\n", .{});
             },
             .list_load => |al| {
                 al.dst.print();
-                std.debug.print(" <- ", .{});
+                debugPrint(" <- ", .{});
                 al.list.operand.print();
-                std.debug.print("[", .{});
+                debugPrint("[", .{});
                 al.index.print();
-                std.debug.print("]\n", .{});
+                debugPrint("]\n", .{});
             },
             .array_load => |al| {
                 al.dst.print();
-                std.debug.print(" <- ", .{});
+                debugPrint(" <- ", .{});
                 al.array.operand.print();
-                std.debug.print("[", .{});
+                debugPrint("[", .{});
                 al.index.print();
-                std.debug.print("]\n", .{});
+                debugPrint("]\n", .{});
             },
             .function_call => |fc| {
                 if (fc.dst) |dst| {
                     dst.print();
-                    std.debug.print(" <- ", .{});
+                    debugPrint(" <- ", .{});
                 }
-                std.debug.print("{s}(", .{fc.function_name});
+                debugPrint("{s}(", .{fc.function_name});
                 for (fc.args, 0..) |arg, i| {
-                    if (i != 0) std.debug.print(", ", .{});
+                    if (i != 0) debugPrint(", ", .{});
                     arg.operand.print();
                 }
-                std.debug.print(")\n", .{});
+                debugPrint(")\n", .{});
             },
             .function_return => |fr| {
-                std.debug.print("return ", .{});
+                debugPrint("return ", .{});
                 if (fr.value) |value| {
                     value.print();
                 }
-                std.debug.print("\n", .{});
+                debugPrint("\n", .{});
             },
             .function_param => |fp| {
                 fp.dst.operand.print();
-                std.debug.print(" <- param {d}\n", .{fp.index});
+                debugPrint(" <- param {d}\n", .{fp.index});
             },
             .parallel_copy => |pc| {
-                std.debug.print("(", .{});
+                debugPrint("(", .{});
                 for (pc.copies, 0..) |copy, i| {
-                    if (i != 0) std.debug.print(", ", .{});
+                    if (i != 0) debugPrint(", ", .{});
                     copy.dst.print();
                 }
-                std.debug.print(") <- ", .{});
-                std.debug.print("(", .{});
+                debugPrint(") <- ", .{});
+                debugPrint("(", .{});
                 for (pc.copies, 0..) |copy, i| {
-                    if (i != 0) std.debug.print(", ", .{});
+                    if (i != 0) debugPrint(", ", .{});
                     copy.src.print();
                 }
-                std.debug.print(")\n", .{});
+                debugPrint(")\n", .{});
             },
             else => |term| {
                 std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
@@ -417,12 +431,15 @@ pub const Instruction = union(enum) {
                 }
             },
             .range => |*r| {
-                if (r.start.equal(old)) r.start = new;
-                if (r.end.equal(old)) r.end = new;
+                if (r.start.operand.equal(old)) r.start.operand = new;
+                if (r.end.operand.equal(old)) r.end.operand = new;
+            },
+            .len => |*l| {
+                if (l.value.operand.equal(old)) l.value.operand = new;
             },
             .constant => {},
             else => |e| {
-                std.debug.print("uses cant handle {s}\n", .{@tagName(e)});
+                debugPrint("uses cant handle {s}\n", .{@tagName(e)});
                 return error.OperandReplaceNotImpl;
             },
         }
@@ -457,8 +474,11 @@ pub const Instruction = union(enum) {
             .range => |*r| {
                 if (r.dst.operand.equal(old)) r.dst.operand = new;
             },
+            .len => |*l| {
+                if (l.dst.equal(old)) l.dst = new;
+            },
             else => |e| {
-                std.debug.print("defines cant handle {s}\n", .{@tagName(e)});
+                debugPrint("defines cant handle {s}\n", .{@tagName(e)});
                 return error.OperandReplaceNotImpl;
             },
         }
@@ -517,8 +537,11 @@ pub const Instruction = union(enum) {
                 try res.append(alloc, .{ .operand = pi.src });
             },
             .range => |r| {
-                try res.append(alloc, .{ .operand = r.start });
-                try res.append(alloc, .{ .operand = r.end });
+                try res.append(alloc, .{ .operand = r.start.operand });
+                try res.append(alloc, .{ .operand = r.end.operand });
+            },
+            .len => |l| {
+                try res.append(alloc, .{ .operand = l.value.operand });
             },
             .branch => |b| {
                 try res.append(alloc, .{ .operand = b.condition });
@@ -578,6 +601,7 @@ pub const BasicBlock = struct {
 
 pub const Function = struct {
     name: []const u8,
+    idx: usize,
     params: []Param,
     return_type: TypeInfo,
     blocks: ArrayList(BasicBlock),
@@ -597,6 +621,7 @@ pub const Program = struct {
         return Program{
             .main = Function{
                 .name = "main",
+                .idx = 0,
                 .blocks = blocks,
                 .entry_block = 0,
                 .params = &.{},
@@ -632,23 +657,23 @@ pub const Program = struct {
 
     pub fn print(self: @This()) !void {
         for (self.functions.items) |function| {
-            std.debug.print("\n{s} -> {s}:\n", .{ function.name, @tagName(function.return_type) });
+            debugPrint("\n{s} -> {s}:\n", .{ function.name, @tagName(function.return_type) });
             for (function.blocks.items) |block| {
-                std.debug.print("block{d}:\n", .{block.id});
+                debugPrint("block{d}:\n", .{block.id});
 
                 for (block.instructions.items) |*instruction| {
-                    std.debug.print("  ", .{});
-                    try instruction.debugPrint();
+                    debugPrint("  ", .{});
+                    try instruction.printFn();
                 }
             }
         }
-        std.debug.print("\n{s} -> {s}:\n", .{ self.main.name, @tagName(self.main.return_type) });
+        debugPrint("\n{s} -> {s}:\n", .{ self.main.name, @tagName(self.main.return_type) });
         for (self.main.blocks.items) |block| {
-            std.debug.print("block{d}:\n", .{block.id});
+            debugPrint("block{d}:\n", .{block.id});
 
             for (block.instructions.items) |*instruction| {
-                std.debug.print("  ", .{});
-                try instruction.debugPrint();
+                debugPrint("  ", .{});
+                try instruction.printFn();
             }
         }
     }

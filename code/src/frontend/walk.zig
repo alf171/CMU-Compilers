@@ -39,8 +39,8 @@ const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Sub
 const BuiltinCall = enum { Print, Range, Len };
 
 const RangeBounds = struct {
-    start: i64,
-    end: i64,
+    start: TypedOperand,
+    end: TypedOperand,
 };
 
 pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
@@ -403,16 +403,25 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     const arg = try walkExpr(arg_obj, irBuilder, alloc);
                     try arguments.append(alloc, arg);
                 }
-                const dst = irBuilder.nextTemp();
+                const function_return_type = try irBuilder.getFunctionReturnType(std.mem.span(name));
+                const maybe_dst: ?Operand = if (function_return_type == .void)
+                    null
+                else
+                    irBuilder.nextTemp();
                 try irBuilder.emit(Instruction{ .function_call = .{
                     .function_name = std.mem.span(name),
-                    .dst = dst,
+                    .dst = maybe_dst,
                     .args = try arguments.toOwnedSlice(alloc),
                 } }, alloc);
-                return TypedOperand{
-                    .operand = dst,
-                    .type = try irBuilder.getFunctionReturnType(std.mem.span(name)),
-                };
+
+                if (maybe_dst) |dst| {
+                    return TypedOperand{
+                        .operand = dst,
+                        .type = try irBuilder.getFunctionReturnType(std.mem.span(name)),
+                    };
+                }
+                // HACK: no one will fetch anyway on a void function
+                return TypedOperand{ .operand = .{ .mem = 0 }, .type = .void };
             }
 
             switch (builtin.?) {
@@ -444,18 +453,27 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 .Range => {
                     const bounds = switch (c.PyList_Size(args)) {
                         1 => blk: {
+                            const start = irBuilder.nextTemp();
+                            try irBuilder.emit(Instruction{
+                                .constant = .{
+                                    .dst = start,
+                                    .value = .{ .int = 0 },
+                                },
+                            }, alloc);
+
                             const endItem = c.PyList_GetItem(args, 0);
                             std.debug.assert(endItem != null);
-                            const end = try getInt(endItem);
-                            break :blk RangeBounds{ .start = 0, .end = end };
+                            const end = try walkExpr(endItem, irBuilder, alloc);
+
+                            break :blk RangeBounds{ .start = TypedOperand{ .type = .int, .operand = start }, .end = end };
                         },
                         2 => blk: {
                             const startItem = c.PyList_GetItem(args, 0);
                             std.debug.assert(startItem != null);
-                            const start = try getInt(startItem);
+                            const start = try walkExpr(startItem, irBuilder, alloc);
                             const endItem = c.PyList_GetItem(args, 1);
                             std.debug.assert(endItem != null);
-                            const end = try getInt(endItem);
+                            const end = try walkExpr(endItem, irBuilder, alloc);
                             break :blk RangeBounds{ .start = start, .end = end };
                         },
                         else => return error.InvalidBounds,
@@ -463,30 +481,20 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
 
                     const dst = irBuilder.nextTemp();
 
-                    if (bounds.start < 0 or bounds.end < bounds.start) {
-                        return error.RangeOutOfBounds;
-                    }
-
-                    var elements = ArrayList(Operand).empty;
-                    for (@intCast(bounds.start)..@intCast(bounds.end)) |i| {
-                        const temp = irBuilder.nextTemp();
-                        try irBuilder.emit(Instruction{ .constant = .{
-                            .dst = temp,
-                            .value = .{ .int = @intCast(i) },
-                        } }, alloc);
-                        try elements.append(alloc, temp);
-                    }
-
-                    const type_ = TypeInfo{ .array = .{
-                        .element = &.int,
-                        .size = @intCast(bounds.end - bounds.start),
-                    } };
+                    const type_ = TypeInfo{
+                        .array = .{
+                            .element = &.int,
+                            .size = null,
+                        },
+                    };
                     const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
-                    // TODO: consider using list
-                    try irBuilder.emit(Instruction{ .array_literal = .{
-                        .dst = typed_dst,
-                        .elements = try elements.toOwnedSlice(alloc),
-                    } }, alloc);
+                    try irBuilder.emit(Instruction{
+                        .range = .{
+                            .dst = typed_dst,
+                            .start = bounds.start,
+                            .end = bounds.end,
+                        },
+                    }, alloc);
                     return typed_dst;
                 },
             }
@@ -752,15 +760,15 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
 
     const len_temp = irBuilder.nextTemp();
 
-    const len = switch (expr.type) {
-        .array => |array| array.size orelse error.SizeMissing,
-        .list => |list| list.size orelse error.SizeMissing,
+    switch (expr.type) {
+        .array => {},
+        .list => {},
         else => return error.IndexNotList,
-    };
+    }
 
-    try irBuilder.emit(Instruction{ .constant = .{
+    try irBuilder.emit(Instruction{ .len = .{
         .dst = len_temp,
-        .value = .{ .int = @intCast(try len) },
+        .value = expr,
     } }, alloc);
 
     // set for j in jj where type(jj) == array
@@ -831,8 +839,10 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     var blocks = ArrayList(BasicBlock).empty;
     try blocks.append(alloc, BasicBlock.init(0));
 
+    // TODO: this looks very wrong...
     try irBuilder.program.functions.append(alloc, Function{
         .name = try alloc.dupe(u8, std.mem.span(func_name)),
+        .idx = irBuilder.nextFunctionIdx(),
         .params = try params.toOwnedSlice(alloc),
         .return_type = return_type,
         .blocks = blocks,
@@ -1049,29 +1059,6 @@ fn getBuiltinCall(name: []const u8) ?BuiltinCall {
     return null;
 }
 
-fn getInt(expr: *PyObject) !i64 {
-    const kind = getExprKind(expr);
-    switch (kind) {
-        .Constant => {
-            const value_obj = c.PyObject_GetAttrString(expr, "value");
-            std.debug.assert(value_obj != null);
-
-            if (!std.mem.eql(u8, getPyType(value_obj), "int")) return error.TypeMismatch;
-
-            return c.PyLong_AsLong(value_obj);
-        },
-        // Name(id='lm', ctx=Load())
-        .Name => {
-            printAstDump(expr);
-            return error.TypeMismatch;
-        },
-        else => |k| {
-            std.debug.print("{s}\n", .{@tagName(k)});
-            return error.TypeMismatch;
-        },
-    }
-}
-
 test "while loop" {
     c.Py_Initialize();
     defer _ = c.Py_FinalizeEx();
@@ -1101,7 +1088,7 @@ test "while loop" {
     const exit = program.main.blocks.items[3].instructions.items;
 
     try std.testing.expectEqualDeep(
-        Instruction{ .constant = .{ .dst = .{ .temp = 0 }, .value = .{ .int = 0 } } },
+        Instruction{ .constant = .{ .dst = .{ .temp = .{ .id = 0, .function_id = 0 } }, .value = .{ .int = 0 } } },
         entry[0],
     );
     try std.testing.expectEqualDeep(
@@ -1109,7 +1096,7 @@ test "while loop" {
             .id = 0,
             .name = "x",
             .type = null,
-        }, .src = .{ .temp = 0 } } },
+        }, .src = .{ .temp = .{ .id = 0, .function_id = 0 } } } },
         entry[1],
     );
     try std.testing.expectEqualDeep(

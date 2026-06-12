@@ -89,18 +89,18 @@ test "simple example" {
 
     var uses = Operands.init(alloc);
     defer uses.free();
-    try uses.ops.put(Operand{ .temp = 0 }, {});
+    try uses.ops.put(Operand{ .temp = .{ .id = 0, .function_id = 0 } }, {});
 
     var defines = Operands.init(alloc);
     defer defines.free();
-    try defines.ops.put(Operand{ .temp = 1 }, {});
+    try defines.ops.put(Operand{ .temp = .{ .id = 1, .function_id = 0 } }, {});
 
     var live_out = Operands.init(alloc);
     defer live_out.free();
     const temps = [_]Operand{
-        .{ .temp = 0 },
-        .{ .temp = 1 },
-        .{ .temp = 2 },
+        .{ .temp = .{ .id = 0, .function_id = 0 } },
+        .{ .temp = .{ .id = 1, .function_id = 0 } },
+        .{ .temp = .{ .id = 2, .function_id = 0 } },
     };
     for (temps) |temp| try live_out.ops.put(temp, {});
 
@@ -116,6 +116,6 @@ test "simple example" {
     defer result.free();
 
     try std.testing.expectEqual(@as(usize, 2), result.ops.count());
-    try std.testing.expect(result.ops.contains(Operand{ .temp = 0 }));
-    try std.testing.expect(result.ops.contains(Operand{ .temp = 2 }));
+    try std.testing.expect(result.ops.contains(Operand{ .temp = .{ .id = 0, .function_id = 0 } }));
+    try std.testing.expect(result.ops.contains(Operand{ .temp = .{ .id = 2, .function_id = 0 } }));
 }

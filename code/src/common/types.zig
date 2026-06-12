@@ -1,6 +1,7 @@
 const std = @import("std");
 
 // use a pointer on element type for recursive purposes
+// things like range dont know their size at comptime
 pub const TypeInfo = union(enum) {
     void,
     int,
@@ -9,12 +10,10 @@ pub const TypeInfo = union(enum) {
     char,
     list: struct {
         element: *const TypeInfo,
-        // TODO: this shouldnt be needed
         size: ?usize,
     },
     array: struct {
         element: *const TypeInfo,
-        // TODO: make required
         size: ?usize,
     },
 };
