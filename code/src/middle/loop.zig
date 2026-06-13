@@ -9,7 +9,7 @@ const lower = @import("lower.zig");
 
 const Allocator = std.mem.Allocator;
 const AllocProgram = @import("common").alloc.AllocProgram;
-const IrProgram = @import("common").ir.Program;
+const IrProgram = @import("common").program.Program;
 const Writer = std.Io.Writer;
 
 /// feedback loop of program (lines of IR) -> inteference graph -> colored graph

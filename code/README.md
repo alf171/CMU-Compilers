@@ -23,6 +23,8 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - do all three steps above together
 `--optim`
 - run optimization passes of the compiler
+`--dump-stats`
+- dump assmebly stats useful for comparing perf
 
 ## Design Choices
 - leverage python subset of python syntax
@@ -36,15 +38,9 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 
 ### Compiler
 - [ ] [critical edge splitting](https://nickdesaulniers.github.io/blog/2023/01/27/critical-edge-splitting/)
-- [ ] blocks could have names for better printing
-- [ ] matmul
-  - [ ] array/list assignment
-  - [ ] push range() further down the stack
-- [ ] sub, mul, div, unary ops like neg
+- [ ] div, unary ops like neg
   - [ ] +=, -=, *=, /=
 - [ ] and/or support?
-- [ ] make current optimization cross block + less hacky
-  - run against more than just `_main`
 - [ ] benchmarking?
 - [ ] scalar evolution?
 - [ ] llvm backend?

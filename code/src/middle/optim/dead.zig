@@ -5,12 +5,12 @@ const HashMap = std.AutoHashMap;
 const BlockId = @import("common").ir.BlockId;
 const BasicBlock = @import("common").ir.BasicBlock;
 const Function = @import("common").ir.Function;
-const Program = @import("common").ir.Program;
+const Program = @import("common").program.Program;
 const AllocProgram = @import("common").alloc.AllocProgram;
 const Operand = @import("common").alloc.Operand;
 const Operands = @import("common").alloc.Operands;
 const LocalId = @import("common").ir.LocalId;
-const Instruction = @import("common").ir.Instruction;
+const Instruction = @import("common").mir.Instruction;
 const SeenValue = @import("common").ir.SeenValue;
 
 /// run dead code elimination
@@ -66,15 +66,21 @@ fn runFunction(function: *Function, alloc_program: *const AllocProgram, alloc: s
 
 fn hasSideEffects(instruction: Instruction) bool {
     return switch (instruction) {
+        .lir => |l| {
+            return switch (l) {
+                .jump,
+                .branch,
+                .array_store,
+                .list_store,
+                .function_call,
+                .function_return,
+                .store_local,
+                => true,
+                else => false,
+            };
+        },
         .print,
-        .jump,
-        .branch,
         .phi,
-        .array_store,
-        .list_store,
-        .function_call,
-        .function_return,
-        .store_local,
         => true,
         else => false,
     };

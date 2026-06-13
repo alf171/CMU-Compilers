@@ -10,8 +10,8 @@ const TypeInfo = @import("common").types.TypeInfo;
 const BasicBlock = @import("common").ir.BasicBlock;
 const Operand = @import("common").alloc.Operand;
 const TypedOperand = @import("common").alloc.TypedOperand;
-const Program = @import("common").ir.Program;
-const Instruction = @import("common").ir.Instruction;
+const Program = @import("common").program.Program;
+const Instruction = @import("common").mir.Instruction;
 const SpecialRegs = @import("common").ir.SpecialRegs;
 
 const ArrayList = std.ArrayList;

@@ -7,10 +7,10 @@ const IrBuilder = @import("builder.zig").IrBuilder;
 const LocalId = @import("common").ir.LocalId;
 const CmpOp = @import("common").ir.CmpOp;
 const TypedOperand = @import("common").alloc.TypedOperand;
-const PhiInput = @import("common").ir.PhiInput;
-const Instruction = @import("common").ir.Instruction;
+const PhiInput = @import("common").mir.PhiInput;
+const Instruction = @import("common").mir.Instruction;
 const LocalValues = @import("builder.zig").LocalValues;
-const LoopPhi = @import("common").ir.LoopPhi;
+const LoopPhi = @import("common").mir.LoopPhi;
 const walkExpr = @import("walk.zig").walkExpr;
 const walkStmtList = @import("walk.zig").walkStmtList;
 
@@ -57,7 +57,9 @@ pub fn walkLoop(
     const exit_block = try irBuilder.newBlock(alloc);
 
     const entry_block = irBuilder.current_block;
-    try irBuilder.emit(Instruction{ .jump = .{ .target = condition_block } }, alloc);
+    try irBuilder.emit(Instruction{ .lir = .{ .jump = .{
+        .target = condition_block,
+    } } }, alloc);
     try irBuilder.addSuccessor(entry_block, condition_block, alloc);
 
     irBuilder.setCurrentBlock(condition_block);
@@ -118,34 +120,34 @@ pub fn walkLoop(
             const dst = irBuilder.nextTemp();
             const lhs = irBuilder.local_values.get(comp.local) orelse return error.LocalNotFound;
             const rhs = irBuilder.local_values.get(comp.rhs_local) orelse return error.LocalNotFound;
-            try irBuilder.emit(Instruction{ .compare = .{
+            try irBuilder.emit(Instruction{ .lir = .{ .compare = .{
                 .dst = dst,
                 .lhs = lhs.operand,
                 .op = comp.cmp,
                 .rhs = rhs.operand,
-            } }, alloc);
+            } } }, alloc);
             break :blk dst;
         },
         .operand_compare => |comp| blk: {
             const dst = irBuilder.nextTemp();
             const lhs = carries[comp.carry_index].current;
-            try irBuilder.emit(Instruction{ .compare = .{
+            try irBuilder.emit(Instruction{ .lir = .{ .compare = .{
                 .dst = dst,
                 .lhs = lhs.operand,
                 .op = comp.cmp,
                 .rhs = comp.rhs.operand,
-            } }, alloc);
+            } } }, alloc);
             break :blk dst;
         },
     };
 
-    try irBuilder.emit(Instruction{
+    try irBuilder.emit(Instruction{ .lir = .{
         .branch = .{
             .condition = condition_expr,
             .then_block = body_block,
             .else_block = exit_block,
         },
-    }, alloc);
+    } }, alloc);
     try irBuilder.addSuccessor(condition_block, body_block, alloc);
     try irBuilder.addSuccessor(condition_block, exit_block, alloc);
 
@@ -176,9 +178,9 @@ pub fn walkLoop(
         };
     }
 
-    try irBuilder.emit(Instruction{
+    try irBuilder.emit(Instruction{ .lir = .{
         .jump = .{ .target = condition_block },
-    }, alloc);
+    } }, alloc);
     try irBuilder.addSuccessor(backedge_block, condition_block, alloc);
 
     // exit block

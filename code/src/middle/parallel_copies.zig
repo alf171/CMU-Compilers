@@ -4,10 +4,10 @@ const HashMap = std.AutoHashMap;
 const ArrayList = std.ArrayList;
 
 const Block = common.ir.BasicBlock;
-const Copy = common.ir.Copy;
-const FrontEndProgram = common.ir.Program;
+const Copy = common.mir.Copy;
+const FrontEndProgram = common.program.Program;
 const Function = common.ir.Function;
-const Instruction = common.ir.Instruction;
+const Instruction = common.mir.Instruction;
 const Operand = common.alloc.Operand;
 
 pub fn lower(program: *FrontEndProgram, alloc: std.mem.Allocator) !void {
@@ -44,29 +44,29 @@ fn lowerFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 .id = function.next_temp,
                                 .function_id = function.idx,
                             } };
-                            try new_instructions.append(alloc, Instruction{ .move = .{
+                            try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                                 .dst = temp,
                                 .src = copy.dst,
-                            } });
+                            } } });
                             try used.put(copy.dst, temp);
                             function.next_temp += 1;
                             // emit the original instruction too
                             const src = if (used.get(copy.src)) |entry| entry orelse copy.src else copy.src;
-                            try new_instructions.append(alloc, Instruction{ .move = .{
+                            try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                                 .dst = copy.dst,
                                 .src = src,
-                            } });
+                            } } });
                         } else if (used.get(copy.src)) |entry| {
                             const temp = entry orelse copy.src;
-                            try new_instructions.append(alloc, Instruction{ .move = .{
+                            try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                                 .dst = copy.dst,
                                 .src = temp,
-                            } });
+                            } } });
                         } else {
-                            try new_instructions.append(alloc, Instruction{ .move = .{
+                            try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                                 .dst = copy.dst,
                                 .src = copy.src,
-                            } });
+                            } } });
                         }
                     }
                     alloc.free(pc.copies);

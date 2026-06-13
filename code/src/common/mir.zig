@@ -1,0 +1,184 @@
+const std = @import("std");
+const ArrayList = @import("std").ArrayList;
+const debugPrint = std.debug.print;
+const LocalInfo = @import("ir.zig").LocalInfo;
+const Operand = @import("alloc.zig").Operand;
+const ConstValue = @import("ir.zig").ConstValue;
+const BinOp = @import("ir.zig").BinOp;
+const BlockId = @import("ir.zig").BlockId;
+const LocalId = @import("ir.zig").LocalId;
+const CmpOp = @import("ir.zig").CmpOp;
+const UnaryOp = @import("ir.zig").UnaryOp;
+const SeenValue = @import("ir.zig").SeenValue;
+const TypeInfo = @import("types.zig").TypeInfo;
+const TypedOperand = @import("alloc.zig").TypedOperand;
+const LirInstruction = @import("lir.zig").Instruction;
+
+pub const PhiInput = struct { pred: BlockId, value: Operand };
+
+pub const Copy = struct { dst: Operand, src: Operand };
+
+pub const LoopPhi = struct {
+    local: LocalId,
+    phi_inputs: []PhiInput,
+    dst: TypedOperand,
+};
+
+pub const Instruction = union(enum) {
+    print: struct {
+        src: Operand,
+        type: TypeInfo,
+    },
+    len: struct {
+        dst: Operand,
+        value: TypedOperand,
+    },
+    range: struct {
+        dst: TypedOperand,
+        start: TypedOperand,
+        end: TypedOperand,
+    },
+    phi: struct {
+        dst: TypedOperand,
+        inputs: []PhiInput,
+    },
+    parallel_copy: struct {
+        copies: []Copy,
+    },
+    // deglate to LIR impl
+    lir: LirInstruction,
+    unkown,
+
+    pub fn printFn(self: @This()) !void {
+        switch (self) {
+            .print => |p| {
+                debugPrint("print ", .{});
+                p.src.print();
+                debugPrint("\n", .{});
+            },
+            .range => |r| {
+                r.dst.operand.print();
+                debugPrint(" <- range(", .{});
+                r.start.operand.print();
+                debugPrint(", ", .{});
+                r.end.operand.print();
+                debugPrint(")\n", .{});
+            },
+            .len => |l| {
+                l.dst.print();
+                debugPrint(" <- len(", .{});
+                l.value.operand.print();
+                debugPrint(")\n", .{});
+            },
+            .phi => |p| {
+                p.dst.operand.print();
+                debugPrint(" <- phi (", .{});
+                for (p.inputs, 0..) |phi, i| {
+                    if (i != 0) debugPrint(", ", .{});
+                    debugPrint("block{d}: ", .{phi.pred});
+                    phi.value.print();
+                }
+                debugPrint(")\n", .{});
+            },
+            .parallel_copy => |pc| {
+                debugPrint("(", .{});
+                for (pc.copies, 0..) |copy, i| {
+                    if (i != 0) debugPrint(", ", .{});
+                    copy.dst.print();
+                }
+                debugPrint(") <- ", .{});
+                debugPrint("(", .{});
+                for (pc.copies, 0..) |copy, i| {
+                    if (i != 0) debugPrint(", ", .{});
+                    copy.src.print();
+                }
+                debugPrint(")\n", .{});
+            },
+            // delegate to lir
+            .lir => |l| try l.printFn(),
+            else => |term| {
+                std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
+                return error.NotImplemented;
+            },
+        }
+    }
+
+    pub fn replaceUses(self: *@This(), old: Operand, new: Operand) !void {
+        switch (self.*) {
+            .range => |*r| {
+                if (r.start.operand.equal(old)) r.start.operand = new;
+                if (r.end.operand.equal(old)) r.end.operand = new;
+            },
+            .len => |*l| {
+                if (l.value.operand.equal(old)) l.value.operand = new;
+            },
+            // delegate to lir
+            .lir => |*l| {
+                try l.replaceUses(old, new);
+            },
+            else => |e| {
+                debugPrint("uses cant handle {s}\n", .{@tagName(e)});
+                return error.OperandReplaceNotImpl;
+            },
+        }
+    }
+
+    pub fn replaceDefines(self: *@This(), old: Operand, new: Operand) !void {
+        switch (self.*) {
+            .range => |*r| {
+                if (r.dst.operand.equal(old)) r.dst.operand = new;
+            },
+            .len => |*l| {
+                if (l.dst.equal(old)) l.dst = new;
+            },
+            .lir => |*l| {
+                try l.replaceDefines(old, new);
+            },
+            else => |e| {
+                debugPrint("defines cant handle {s}\n", .{@tagName(e)});
+                return error.OperandReplaceNotImpl;
+            },
+        }
+    }
+
+    pub fn getDefines(instruction: Instruction) ?SeenValue {
+        return switch (instruction) {
+            .phi => |pi| .{ .operand = pi.dst.operand },
+            .range => |r| .{ .operand = r.dst.operand },
+            .lir => |l| l.getDefines(),
+            else => null,
+        };
+    }
+
+    pub fn getUses(instruction: Instruction, alloc: std.mem.Allocator) !ArrayList(SeenValue) {
+        var res = ArrayList(SeenValue).empty;
+        errdefer res.deinit(alloc);
+
+        switch (instruction) {
+            .phi => |pi| {
+                for (pi.inputs) |phi_input| {
+                    try res.append(alloc, .{ .operand = phi_input.value });
+                }
+            },
+            .print => |pi| {
+                try res.append(alloc, .{ .operand = pi.src });
+            },
+            .range => |r| {
+                try res.append(alloc, .{ .operand = r.start.operand });
+                try res.append(alloc, .{ .operand = r.end.operand });
+            },
+            .len => |l| {
+                try res.append(alloc, .{ .operand = l.value.operand });
+            },
+            .lir => |l| {
+                var seen = try l.getUses(alloc);
+                defer seen.deinit(alloc);
+                for (seen.items) |s| {
+                    try res.append(alloc, s);
+                }
+            },
+            else => {},
+        }
+        return res;
+    }
+};

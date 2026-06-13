@@ -15,11 +15,11 @@ const TypedOperand = @import("common").alloc.TypedOperand;
 const Param = @import("common").alloc.Param;
 const LocalInfo = @import("common").ir.LocalInfo;
 const LocalId = @import("common").ir.LocalId;
-const Instruction = @import("common").ir.Instruction;
+const Instruction = @import("common").mir.Instruction;
 const BinOp = @import("common").ir.BinOp;
 const CmpOp = @import("common").ir.CmpOp;
-const Program = @import("common").ir.Program;
-const PhiInput = @import("common").ir.PhiInput;
+const Program = @import("common").program.Program;
+const PhiInput = @import("common").mir.PhiInput;
 const UnaryOp = @import("common").ir.UnaryOp;
 
 const IrBuilder = @import("builder.zig").IrBuilder;
@@ -111,16 +111,14 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
 
             const local = try irBuilder.getOrCreateLocal(std.mem.span(id), null, alloc);
             try irBuilder.local_values.put(local, rhs_value);
-            try irBuilder.emit(Instruction{
-                .store_local = .{
-                    .local = .{
-                        .id = local,
-                        .name = try alloc.dupe(u8, std.mem.span(id)),
-                        .type = null,
-                    },
-                    .src = rhs_value.operand,
+            try irBuilder.emit(Instruction{ .lir = .{ .store_local = .{
+                .local = .{
+                    .id = local,
+                    .name = try alloc.dupe(u8, std.mem.span(id)),
+                    .type = null,
                 },
-            }, alloc);
+                .src = rhs_value.operand,
+            } } }, alloc);
         },
         .Subscript => {
             const slice_obj = c.PyObject_GetAttrString(lhs, "slice");
@@ -132,22 +130,18 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
 
             switch (container.type) {
                 .array => {
-                    try irBuilder.emit(Instruction{
-                        .list_store = .{
-                            .list = container,
-                            .index = slice.operand,
-                            .src = rhs_value.operand,
-                        },
-                    }, alloc);
+                    try irBuilder.emit(Instruction{ .lir = .{ .list_store = .{
+                        .list = container,
+                        .index = slice.operand,
+                        .src = rhs_value.operand,
+                    } } }, alloc);
                 },
                 .list => {
-                    try irBuilder.emit(Instruction{
-                        .list_store = .{
-                            .list = container,
-                            .index = slice.operand,
-                            .src = rhs_value.operand,
-                        },
-                    }, alloc);
+                    try irBuilder.emit(Instruction{ .lir = .{ .list_store = .{
+                        .list = container,
+                        .index = slice.operand,
+                        .src = rhs_value.operand,
+                    } } }, alloc);
                 },
                 else => return error.UnexpectedType,
             }
@@ -172,14 +166,14 @@ fn walkAnnotatedAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.me
     const type_ = try parseTypeAnnotation(annotation, alloc);
     const local = try irBuilder.getOrCreateLocal(std.mem.span(target_id), type_, alloc);
     try irBuilder.local_values.put(local, rhs_value);
-    try irBuilder.emit(Instruction{ .store_local = .{
+    try irBuilder.emit(Instruction{ .lir = .{ .store_local = .{
         .local = .{
             .id = local,
             .name = try alloc.dupe(u8, std.mem.span(target_id)),
             .type = type_,
         },
         .src = rhs_value.operand,
-    } }, alloc);
+    } } }, alloc);
 }
 
 pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !TypedOperand {
@@ -198,12 +192,12 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
 
             const dst = irBuilder.nextTemp();
 
-            const instruction = Instruction{ .binop = .{
+            const instruction = Instruction{ .lir = .{ .binop = .{
                 .dst = dst,
                 .op = op,
                 .lhs = lhs.operand,
                 .rhs = rhs.operand,
-            } };
+            } } };
             try irBuilder.emit(instruction, alloc);
             return TypedOperand{ .operand = dst, .type = .int };
         },
@@ -212,7 +206,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             const src = try walkExpr(operand_obj, irBuilder, alloc);
             const dst = irBuilder.nextTemp();
             const op = try getUnaryOp(stmt);
-            try irBuilder.emit(Instruction{ .unaryop = .{ .dst = dst, .op = op, .src = src.operand } }, alloc);
+            try irBuilder.emit(Instruction{ .lir = .{ .unaryop = .{
+                .dst = dst,
+                .op = op,
+                .src = src.operand,
+            } } }, alloc);
             return TypedOperand{ .operand = dst, .type = .int };
         },
         .Constant => {
@@ -222,12 +220,12 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             if (std.mem.eql(u8, value_type, "int")) {
                 const value = ConstValue{ .int = c.PyLong_AsLong(value_obj) };
                 const dst = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .constant = .{ .dst = dst, .value = value } }, alloc);
+                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{ .dst = dst, .value = value } } }, alloc);
                 return TypedOperand{ .operand = dst, .type = .int };
             } else if (std.mem.eql(u8, value_type, "bool")) {
                 const value = ConstValue{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
                 const dst = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .constant = .{ .dst = dst, .value = value } }, alloc);
+                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{ .dst = dst, .value = value } } }, alloc);
                 return TypedOperand{ .operand = dst, .type = .bool };
             } else if (std.mem.eql(u8, value_type, "str")) {
                 const raw = c.PyUnicode_AsUTF8(value_obj);
@@ -237,27 +235,27 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 var elements = ArrayList(Operand).empty;
                 for (bytes) |char| {
                     const temp = irBuilder.nextTemp();
-                    try irBuilder.emit(Instruction{ .constant = .{
+                    try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
                         .dst = temp,
                         .value = .{ .char = char },
-                    } }, alloc);
+                    } } }, alloc);
                     try elements.append(alloc, temp);
                 }
                 // null terminator
                 const zero = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .constant = .{
+                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
                     .dst = zero,
                     .value = .{ .char = 0 },
-                } }, alloc);
+                } } }, alloc);
                 try elements.append(alloc, zero);
 
                 const _type = TypeInfo{ .list = .{ .element = &.char, .size = bytes.len + 1 } };
 
                 const typed_dst = TypedOperand{ .operand = dst, .type = _type };
-                try irBuilder.emit(Instruction{ .list_literal = .{
+                try irBuilder.emit(Instruction{ .lir = .{ .list_literal = .{
                     .dst = typed_dst,
                     .elements = try elements.toOwnedSlice(alloc),
-                } }, alloc);
+                } } }, alloc);
                 return typed_dst;
             }
             return error.TypeNotImpl;
@@ -288,10 +286,10 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 .size = @intCast(len),
             } };
             const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
-            try irBuilder.emit(Instruction{ .list_literal = .{
+            try irBuilder.emit(Instruction{ .lir = .{ .list_literal = .{
                 .dst = typed_dst,
                 .elements = try result.toOwnedSlice(alloc),
-            } }, alloc);
+            } } }, alloc);
             return typed_dst;
         },
         // Subscript(value=Name(id='items', ctx=Load()), slice=Constant(value=0), ctx=Load())
@@ -312,29 +310,22 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     const elem_type = list.element.*;
 
                     const dst = irBuilder.nextTemp();
-                    try irBuilder.emit(Instruction{
-                        .list_load = .{
-                            .dst = dst,
-                            .list = value,
-                            .index = index.operand,
-                        },
-                    }, alloc);
-                    return TypedOperand{
-                        .operand = dst,
-                        .type = elem_type,
-                    };
+                    try irBuilder.emit(Instruction{ .lir = .{ .list_load = .{
+                        .dst = dst,
+                        .list = value,
+                        .index = index.operand,
+                    } } }, alloc);
+                    return TypedOperand{ .operand = dst, .type = elem_type };
                 },
                 .array => |array| {
                     const elem_type = array.element.*;
 
                     const dst = irBuilder.nextTemp();
-                    try irBuilder.emit(Instruction{
-                        .array_load = .{
-                            .dst = dst,
-                            .array = value,
-                            .index = index.operand,
-                        },
-                    }, alloc);
+                    try irBuilder.emit(Instruction{ .lir = .{ .array_load = .{
+                        .dst = dst,
+                        .array = value,
+                        .index = index.operand,
+                    } } }, alloc);
                     return TypedOperand{
                         .operand = dst,
                         .type = elem_type,
@@ -358,7 +349,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
 
             const dst = irBuilder.nextTemp();
             const local = try irBuilder.locals.items[localId].duplicate(alloc);
-            try irBuilder.emit(Instruction{ .load_local = .{ .dst = dst, .local = local } }, alloc);
+            try irBuilder.emit(Instruction{ .lir = .{ .load_local = .{ .dst = dst, .local = local } } }, alloc);
             return TypedOperand{ .operand = dst, .type = local.type orelse .int };
         },
         // Compare(left=Constant(1),ops=[Lt()],comparators=[Constant(2)])
@@ -375,7 +366,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             const dst = irBuilder.nextTemp();
             const op = try getCompareOp(stmt);
 
-            try irBuilder.emit(Instruction{ .compare = .{ .dst = dst, .lhs = lhs.operand, .op = op, .rhs = rhs.operand } }, alloc);
+            try irBuilder.emit(Instruction{ .lir = .{ .compare = .{ .dst = dst, .lhs = lhs.operand, .op = op, .rhs = rhs.operand } } }, alloc);
 
             return TypedOperand{ .operand = dst, .type = .bool };
         },
@@ -408,11 +399,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     null
                 else
                     irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .function_call = .{
+                try irBuilder.emit(Instruction{ .lir = .{ .function_call = .{
                     .function_name = std.mem.span(name),
                     .dst = maybe_dst,
                     .args = try arguments.toOwnedSlice(alloc),
-                } }, alloc);
+                } } }, alloc);
 
                 if (maybe_dst) |dst| {
                     return TypedOperand{
@@ -454,12 +445,10 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     const bounds = switch (c.PyList_Size(args)) {
                         1 => blk: {
                             const start = irBuilder.nextTemp();
-                            try irBuilder.emit(Instruction{
-                                .constant = .{
-                                    .dst = start,
-                                    .value = .{ .int = 0 },
-                                },
-                            }, alloc);
+                            try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
+                                .dst = start,
+                                .value = .{ .int = 0 },
+                            } } }, alloc);
 
                             const endItem = c.PyList_GetItem(args, 0);
                             std.debug.assert(endItem != null);
@@ -488,13 +477,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                         },
                     };
                     const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
-                    try irBuilder.emit(Instruction{
-                        .range = .{
-                            .dst = typed_dst,
-                            .start = bounds.start,
-                            .end = bounds.end,
-                        },
-                    }, alloc);
+                    try irBuilder.emit(Instruction{ .range = .{
+                        .dst = typed_dst,
+                        .start = bounds.start,
+                        .end = bounds.end,
+                    } }, alloc);
                     return typed_dst;
                 },
             }
@@ -522,13 +509,11 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     const merge_block = try irBuilder.newBlock(alloc);
 
     const condition = try walkExpr(test_, irBuilder, alloc);
-    try irBuilder.emit(Instruction{
-        .branch = .{
-            .condition = condition.operand,
-            .then_block = then_block,
-            .else_block = else_block,
-        },
-    }, alloc);
+    try irBuilder.emit(Instruction{ .lir = .{ .branch = .{
+        .condition = condition.operand,
+        .then_block = then_block,
+        .else_block = else_block,
+    } } }, alloc);
     try irBuilder.addSuccessor(irBuilder.current_block, then_block, alloc);
     try irBuilder.addSuccessor(irBuilder.current_block, else_block, alloc);
 
@@ -541,9 +526,9 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     // save then locals
     var then_values = try irBuilder.cloneLocalValues(alloc);
     defer then_values.deinit();
-    try irBuilder.emit(Instruction{
+    try irBuilder.emit(Instruction{ .lir = .{
         .jump = .{ .target = merge_block },
-    }, alloc);
+    } }, alloc);
     try irBuilder.addSuccessor(then_exit_block, merge_block, alloc);
 
     // else block
@@ -555,9 +540,9 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     const else_exit_block = irBuilder.current_block;
     var else_values = try irBuilder.cloneLocalValues(alloc);
     defer else_values.deinit();
-    try irBuilder.emit(Instruction{
+    try irBuilder.emit(Instruction{ .lir = .{
         .jump = .{ .target = merge_block },
-    }, alloc);
+    } }, alloc);
     try irBuilder.addSuccessor(else_exit_block, merge_block, alloc);
 
     irBuilder.setCurrentBlock(merge_block);
@@ -677,10 +662,10 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
     std.debug.assert(expr.type == .list or expr.type == .array);
 
     const index0 = irBuilder.nextTemp();
-    try irBuilder.emit(Instruction{ .constant = .{
+    try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
         .dst = index0,
         .value = .{ .int = 0 },
-    } }, alloc);
+    } } }, alloc);
 
     const callback = struct {
         fn loop(input_body_: LoopBody, carries: []LoopCarry, irBuilder_: *IrBuilder, alloc_: std.mem.Allocator) anyerror!void {
@@ -697,18 +682,18 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 body_.iterator;
             switch (iterable.type) {
                 .array => {
-                    try irBuilder_.emit(Instruction{ .array_load = .{
+                    try irBuilder_.emit(Instruction{ .lir = .{ .array_load = .{
                         .dst = value,
                         .array = iterable,
                         .index = index.operand,
-                    } }, alloc_);
+                    } } }, alloc_);
                 },
                 .list => {
-                    try irBuilder_.emit(Instruction{ .list_load = .{
+                    try irBuilder_.emit(Instruction{ .lir = .{ .list_load = .{
                         .dst = value,
                         .list = iterable,
                         .index = index.operand,
-                    } }, alloc_);
+                    } } }, alloc_);
                 },
                 else => return error.CantIndexInto,
             }
@@ -719,30 +704,30 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 .operand = value,
                 .type = elem_type,
             });
-            try irBuilder_.emit(Instruction{ .store_local = .{
+            try irBuilder_.emit(Instruction{ .lir = .{ .store_local = .{
                 .local = .{
                     .id = local,
                     .name = try alloc_.dupe(u8, body_.condition_var_name),
                     .type = elem_type,
                 },
                 .src = value,
-            } }, alloc_);
+            } } }, alloc_);
 
             try walkStmtList(body_.stmt_list, irBuilder_, alloc_);
             // index += 1
             const one = irBuilder_.nextTemp();
-            try irBuilder_.emit(Instruction{ .constant = .{
+            try irBuilder_.emit(Instruction{ .lir = .{ .constant = .{
                 .dst = one,
                 .value = .{ .int = 1 },
-            } }, alloc_);
+            } } }, alloc_);
 
             const index_next = irBuilder_.nextTemp();
-            try irBuilder_.emit(Instruction{ .binop = .{
+            try irBuilder_.emit(Instruction{ .lir = .{ .binop = .{
                 .dst = index_next,
                 .op = .add,
                 .lhs = index.operand,
                 .rhs = one,
-            } }, alloc_);
+            } } }, alloc_);
             carries[0].next = TypedOperand{
                 .operand = index_next,
                 .type = .int,
@@ -871,11 +856,11 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
             .type = param.type,
         };
 
-        try irBuilder.emit(Instruction{ .function_param = .{
+        try irBuilder.emit(Instruction{ .lir = .{ .function_param = .{
             .dst = value,
             .name = try alloc.dupe(u8, param.name),
             .index = i,
-        } }, alloc);
+        } } }, alloc);
 
         const local = try irBuilder.getOrCreateLocal(param.name, param.type, alloc);
         try irBuilder.local_values.put(local, value);
@@ -901,9 +886,9 @@ fn walkReturn(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     else
         (try walkExpr(value, irBuilder, alloc)).operand;
 
-    try irBuilder.emit(Instruction{ .function_return = .{
+    try irBuilder.emit(Instruction{ .lir = .{ .function_return = .{
         .value = return_operand,
-    } }, alloc);
+    } } }, alloc);
 }
 
 fn getBinOp(expr: *PyObject) !BinOp {

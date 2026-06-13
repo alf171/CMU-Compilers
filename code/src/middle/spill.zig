@@ -4,8 +4,8 @@ const live = @import("live.zig");
 const ArrayList = std.ArrayList;
 
 const common = @import("common");
-const Instruction = common.ir.Instruction;
-const IrProgram = common.ir.Program;
+const Instruction = common.mir.Instruction;
+const IrProgram = common.program.Program;
 const Function = common.ir.Function;
 const AllocProgram = common.alloc.AllocProgram;
 const BasicBlock = common.ir.BasicBlock;
@@ -53,10 +53,10 @@ fn spillRegInFunction(
                         if (use_op.equal(spilled)) {
                             const t1 = Operand{ .temp = .{ .id = next_temp.*, .function_id = function_idx } };
                             next_temp.* += 1;
-                            try new_instructions.append(alloc, Instruction{ .move = .{
+                            try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                                 .dst = t1,
                                 .src = Operand{ .mem = slot },
-                            } });
+                            } } });
                             try instruction.replaceUses(spilled, t1);
                             continue;
                         }
@@ -74,10 +74,10 @@ fn spillRegInFunction(
                         next_temp.* += 1;
                         try instruction.replaceDefines(spilled, t2);
                         try new_instructions.append(alloc, instruction);
-                        try new_instructions.append(alloc, Instruction{ .move = .{
+                        try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                             .dst = Operand{ .mem = slot },
                             .src = t2,
-                        } });
+                        } } });
                         continue;
                     }
                 },

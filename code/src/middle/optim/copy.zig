@@ -3,9 +3,9 @@ const ArrayList = std.array_list.Managed;
 
 const BlockId = @import("common").ir.BlockId;
 const BasicBlock = @import("common").ir.BasicBlock;
-const Program = @import("common").ir.Program;
+const Program = @import("common").program.Program;
 const Operand = @import("common").alloc.Operand;
-const Instruction = @import("common").ir.Instruction;
+const Instruction = @import("common").mir.Instruction;
 
 const HashMap = std.AutoHashMap;
 
@@ -18,12 +18,14 @@ pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
         for (block.instructions.items) |*instruction| {
             rewriteUses(instruction, &copyMap);
 
-            if (instruction.* == .move) {
-                const dst = instruction.move.dst;
-                const src = resolve(instruction.move.src, &copyMap);
+            if (instruction.* == .lir) {
+                if (instruction.lir == .move) {
+                    const dst = instruction.lir.move.dst;
+                    const src = resolve(instruction.lir.move.src, &copyMap);
 
-                if (!dst.equal(src)) {
-                    try copyMap.put(dst, src);
+                    if (!dst.equal(src)) {
+                        try copyMap.put(dst, src);
+                    }
                 }
             }
         }
@@ -32,56 +34,61 @@ pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
 
 fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) void {
     switch (instruction.*) {
-        .binop => |*bop| {
-            bop.lhs = resolve(bop.lhs, copyMap);
-            bop.rhs = resolve(bop.rhs, copyMap);
-        },
-        .compare => |*c| {
-            c.lhs = resolve(c.lhs, copyMap);
-            c.rhs = resolve(c.rhs, copyMap);
-        },
-        .move => |*m| {
-            m.src = resolve(m.src, copyMap);
-        },
-        .unaryop => |*uo| {
-            uo.src = resolve(uo.src, copyMap);
-        },
-        .branch => |*b| {
-            b.condition = resolve(b.condition, copyMap);
-        },
-        .store_local => |*sl| {
-            sl.src = resolve(sl.src, copyMap);
+        .lir => |*l| {
+            switch (l.*) {
+                .binop => |*bop| {
+                    bop.lhs = resolve(bop.lhs, copyMap);
+                    bop.rhs = resolve(bop.rhs, copyMap);
+                },
+                .compare => |*c| {
+                    c.lhs = resolve(c.lhs, copyMap);
+                    c.rhs = resolve(c.rhs, copyMap);
+                },
+                .move => |*m| {
+                    m.src = resolve(m.src, copyMap);
+                },
+                .unaryop => |*uo| {
+                    uo.src = resolve(uo.src, copyMap);
+                },
+                .branch => |*b| {
+                    b.condition = resolve(b.condition, copyMap);
+                },
+                .store_local => |*sl| {
+                    sl.src = resolve(sl.src, copyMap);
+                },
+                .array_literal => |*al| {
+                    for (al.elements) |*elem| {
+                        elem.* = resolve(elem.*, copyMap);
+                    }
+                },
+                .list_literal => |*ll| {
+                    for (ll.elements) |*elem| {
+                        elem.* = resolve(elem.*, copyMap);
+                    }
+                },
+                .array_load => |*al| {
+                    al.array.operand = resolve(al.array.operand, copyMap);
+                    al.index = resolve(al.index, copyMap);
+                },
+                .list_load => |*ll| {
+                    ll.list.operand = resolve(ll.list.operand, copyMap);
+                    ll.index = resolve(ll.index, copyMap);
+                },
+                .array_store => |*as| {
+                    as.array.operand = resolve(as.array.operand, copyMap);
+                    as.index = resolve(as.index, copyMap);
+                    as.src = resolve(as.src, copyMap);
+                },
+                .list_store => |*ls| {
+                    ls.list.operand = resolve(ls.list.operand, copyMap);
+                    ls.index = resolve(ls.index, copyMap);
+                    ls.src = resolve(ls.src, copyMap);
+                },
+                else => {},
+            }
         },
         .print => |*pi| {
             pi.src = resolve(pi.src, copyMap);
-        },
-        .array_literal => |*al| {
-            for (al.elements) |*elem| {
-                elem.* = resolve(elem.*, copyMap);
-            }
-        },
-        .list_literal => |*ll| {
-            for (ll.elements) |*elem| {
-                elem.* = resolve(elem.*, copyMap);
-            }
-        },
-        .array_load => |*al| {
-            al.array.operand = resolve(al.array.operand, copyMap);
-            al.index = resolve(al.index, copyMap);
-        },
-        .list_load => |*ll| {
-            ll.list.operand = resolve(ll.list.operand, copyMap);
-            ll.index = resolve(ll.index, copyMap);
-        },
-        .array_store => |*as| {
-            as.array.operand = resolve(as.array.operand, copyMap);
-            as.index = resolve(as.index, copyMap);
-            as.src = resolve(as.src, copyMap);
-        },
-        .list_store => |*ls| {
-            ls.list.operand = resolve(ls.list.operand, copyMap);
-            ls.index = resolve(ls.index, copyMap);
-            ls.src = resolve(ls.src, copyMap);
         },
         else => {},
     }

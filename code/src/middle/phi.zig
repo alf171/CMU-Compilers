@@ -4,10 +4,10 @@ const HashMap = std.AutoHashMap;
 
 const common = @import("common");
 const BlockId = common.ir.BlockId;
-const Copy = common.ir.Copy;
+const Copy = common.mir.Copy;
 const Function = common.ir.Function;
-const Instruction = common.ir.Instruction;
-const Program = common.ir.Program;
+const Instruction = common.mir.Instruction;
+const Program = common.program.Program;
 
 pub fn eliminatePhi(program: *Program, alloc: std.mem.Allocator) !void {
     try eliminatePhiInFunction(&program.main, alloc);
@@ -61,20 +61,20 @@ pub fn eliminatePhiInFunction(function: *Function, alloc: std.mem.Allocator) !vo
     }
 }
 
-fn insertParallelCopyBeforeTerminator(
-    function: *Function,
-    pred: common.ir.BlockId,
-    instruction: common.ir.Instruction,
-    alloc: std.mem.Allocator,
-) !void {
+fn insertParallelCopyBeforeTerminator(function: *Function, pred: BlockId, instruction: Instruction, alloc: std.mem.Allocator) !void {
     var instructions = &function.blocks.items[pred].instructions;
     const len = instructions.items.len;
 
     if (len > 0) {
         switch (instructions.items[len - 1]) {
-            .jump, .branch => {
-                try instructions.insert(alloc, len - 1, instruction);
-                return;
+            .lir => |l| {
+                switch (l) {
+                    .jump, .branch => {
+                        try instructions.insert(alloc, len - 1, instruction);
+                        return;
+                    },
+                    else => {},
+                }
             },
             else => {},
         }
