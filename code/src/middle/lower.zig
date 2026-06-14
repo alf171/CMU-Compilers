@@ -26,6 +26,7 @@ pub fn lowerAlloc(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProg
     return res;
 }
 
+/// TODO: fetch Operands using ir method(s)
 fn lowerBlocks(
     blocks: []const common.ir.BasicBlock,
     res: *AllocProgram,
@@ -130,11 +131,16 @@ fn lowerBlocks(
                                 try line.uses.ops.put(value, {});
                             }
                         },
+                        .write => |w| {
+                            try line.uses.ops.put(w.fd, {});
+                            try line.uses.ops.put(w.buf.operand, {});
+                            try line.uses.ops.put(w.len, {});
+                        },
                         else => return error.NotImplemented,
                     }
                 },
                 .print => |pi| {
-                    try line.uses.ops.put(pi.src, {});
+                    try line.uses.ops.put(pi.src.operand, {});
                 },
                 .range => |r| {
                     try line.defines.ops.put(r.dst.operand, {});

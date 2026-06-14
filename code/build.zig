@@ -19,15 +19,6 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    const middle = b.addExecutable(.{
-        .name = "middle",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/middle/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-
     const backend = b.addExecutable(.{
         .name = "backend",
         .root_module = b.createModule(.{
@@ -67,7 +58,6 @@ pub fn build(b: *std.Build) void {
     // share irs between stages
     frontend.root_module.addImport("common", common);
     frontend_mod.addImport("common", common);
-    middle.root_module.addImport("common", common);
     middle_mod.addImport("common", common);
     backend.root_module.addImport("common", common);
     backend.root_module.addImport("middle", middle_mod);
@@ -96,7 +86,6 @@ pub fn build(b: *std.Build) void {
     integration_test_step.dependOn(&run_integration_tests.step);
     if (b.args) |args| run_integration_tests.addArgs(args);
 
-    b.installArtifact(middle);
     b.installArtifact(frontend);
 
     const frontend_run = b.addRunArtifact(frontend);
@@ -127,9 +116,6 @@ pub fn build(b: *std.Build) void {
     const common_test_step = b.step("common-test", "Run common tests");
     common_test_step.dependOn(&run_common_tests.step);
 
-    const run_middle_step = b.step("middle-run", "Run liveness demo");
-    const run_middle_cmd = b.addRunArtifact(middle);
-
     const backend_run = b.addRunArtifact(backend);
     const run_backend_step = b.step("backend-run", "Run backend");
     run_backend_step.dependOn(&backend_run.step);
@@ -138,16 +124,11 @@ pub fn build(b: *std.Build) void {
     const backend_test_step = b.step("backend-test", "Run backend tests");
     backend_test_step.dependOn(&run_backend_tests.step);
 
-    run_middle_step.dependOn(&run_middle_cmd.step);
-    run_middle_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_middle_cmd.addArgs(args);
-
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_common_tests.step);
     test_step.dependOn(&run_frontend_tests.step);
     test_step.dependOn(&run_middle_tests.step);
 
     const check_step = b.step("check", "Typecheck without emitting");
-    check_step.dependOn(&middle.step);
     check_step.dependOn(&frontend.step);
 }

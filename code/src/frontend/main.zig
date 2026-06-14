@@ -43,7 +43,8 @@ test "x = 1 + 2" {
     const instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(instructions.len, 4);
     // temp0 <- const 1
-    switch (instructions[0]) {
+    try std.testing.expectEqual(.lir, std.meta.activeTag(instructions[0]));
+    switch (instructions[0].lir) {
         .constant => |instruction| {
             try std.testing.expectEqual(@as(u32, 0), instruction.dst.temp.id);
             try std.testing.expect(instruction.value == .int);
@@ -52,7 +53,8 @@ test "x = 1 + 2" {
         else => return error.ExpectedConstant,
     }
     // temp1 <- const 2
-    switch (instructions[1]) {
+    try std.testing.expectEqual(.lir, std.meta.activeTag(instructions[1]));
+    switch (instructions[1].lir) {
         .constant => |instruction| {
             try std.testing.expectEqual(@as(u32, 1), instruction.dst.temp.id);
             try std.testing.expect(instruction.value == .int);
@@ -61,7 +63,8 @@ test "x = 1 + 2" {
         else => return error.ExpectedConstant,
     }
     // temp2 <- add temp0, temp1
-    switch (instructions[2]) {
+    try std.testing.expectEqual(.lir, std.meta.activeTag(instructions[2]));
+    switch (instructions[2].lir) {
         .binop => |instruction| {
             try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp.id);
             try std.testing.expectEqual(.add, instruction.op);
@@ -71,7 +74,8 @@ test "x = 1 + 2" {
         else => return error.ExpectedBinop,
     }
     // local0 <- temp2
-    switch (instructions[3]) {
+    try std.testing.expectEqual(.lir, std.meta.activeTag(instructions[3]));
+    switch (instructions[3].lir) {
         .store_local => |instruction| {
             try std.testing.expectEqual(@as(u32, 0), instruction.local.id);
             try std.testing.expectEqual(@as(u32, 2), instruction.src.temp.id);
@@ -100,7 +104,8 @@ test "x = true != false" {
     const instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(instructions.len, 4);
     // temp0 <- const True
-    switch (instructions[0]) {
+    try std.testing.expectEqual(.lir, std.meta.activeTag(instructions[0]));
+    switch (instructions[0].lir) {
         .constant => |instruction| {
             try std.testing.expectEqual(@as(u32, 0), instruction.dst.temp.id);
             try std.testing.expect(instruction.value == .bool);
@@ -109,7 +114,8 @@ test "x = true != false" {
         else => return error.ExpectedConstant,
     }
     // temp1 <- const False
-    switch (instructions[1]) {
+    try std.testing.expectEqual(.lir, std.meta.activeTag(instructions[1]));
+    switch (instructions[1].lir) {
         .constant => |instruction| {
             try std.testing.expectEqual(@as(u32, 1), instruction.dst.temp.id);
             try std.testing.expect(instruction.value == .bool);
@@ -118,7 +124,8 @@ test "x = true != false" {
         else => return error.ExpectedConstant,
     }
     // temp2 <- temp0 != temp1
-    switch (instructions[2]) {
+    try std.testing.expectEqual(.lir, std.meta.activeTag(instructions[2]));
+    switch (instructions[2].lir) {
         .compare => |instruction| {
             try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp.id);
             try std.testing.expectEqual(.neq, instruction.op);
@@ -128,7 +135,8 @@ test "x = true != false" {
         else => return error.ExpectedBinop,
     }
     // local0 <- temp2
-    switch (instructions[3]) {
+    try std.testing.expectEqual(.lir, std.meta.activeTag(instructions[3]));
+    switch (instructions[3].lir) {
         .store_local => |instruction| {
             try std.testing.expectEqual(@as(u32, 0), instruction.local.id);
             try std.testing.expectEqual(@as(u32, 2), instruction.src.temp.id);

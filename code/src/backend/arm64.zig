@@ -287,6 +287,15 @@ fn emitFunction(
                             try out.print(alloc, "\tcmp {s}, {s}\n", .{ lhs, rhs });
                             try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
                         },
+                        .write => |w| {
+                            const fd = try regFor(w.fd, colors);
+                            const buf = try regFor(w.buf.operand, colors);
+                            const len = try regFor(w.len, colors);
+                            try out.print(alloc, "\t mov x0, {s}\n", .{fd});
+                            try out.print(alloc, "\t mov x1, {s}\n", .{buf});
+                            try out.print(alloc, "\t mov x2, {s}\n", .{len});
+                            try out.print(alloc, "\tbl _write \n", .{});
+                        },
                         else => |lir| {
                             std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(lir)});
                             return error.NotSupported;
@@ -294,9 +303,9 @@ fn emitFunction(
                     }
                 },
                 .print => |p| {
-                    switch (p.type) {
+                    switch (p.src.type) {
                         .int, .bool => {
-                            const src = try regFor(p.src, colors);
+                            const src = try regFor(p.src.operand, colors);
                             try out.appendSlice(alloc, "\tsub sp, sp, #16\n");
                             try out.print(alloc, "\tstr {s}, [sp]\n", .{src});
                             try out.appendSlice(alloc, "\tadrp x0, fmt@PAGE\n");
@@ -306,7 +315,7 @@ fn emitFunction(
                         },
                         .array => |arr| {
                             if (arr.element.* != .char) return error.TypeNotImpl;
-                            const src = try regFor(p.src, colors);
+                            const src = try regFor(p.src.operand, colors);
                             for (0..(arr.size orelse return error.SizeMissing)) |i| {
                                 const offset = i * 8;
                                 try out.print(alloc, "\tldr {s}, [{s}, #{d}]\n", .{ FirstParamRegister, src, offset });
@@ -318,7 +327,7 @@ fn emitFunction(
                         },
                         .list => |lst| {
                             if (lst.element.* != .char) return error.TypeNotImpl;
-                            const src = try regFor(p.src, colors);
+                            const src = try regFor(p.src.operand, colors);
                             try out.print(alloc, "\tadd x0, {s}, #8\n", .{src});
                             try out.appendSlice(alloc, "\tbl _puts\n");
                         },

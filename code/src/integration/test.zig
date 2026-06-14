@@ -3,6 +3,7 @@ const std = @import("std");
 const c = @import("frontend").python.c;
 const walkAst = @import("frontend").walk.walkAst;
 const range = @import("frontend").range;
+const write = @import("frontend").write;
 const middle = @import("middle");
 const loop = middle.loop;
 const lower = middle.lower;
@@ -73,6 +74,7 @@ pub fn main(init: std.process.Init) !void {
 
     // range elimination?
     try range.rewrite(&ir_program, alloc);
+    try write.rewrite(&ir_program, alloc);
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
     try parallel_copies.lower(&ir_program, alloc);

@@ -88,7 +88,7 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) v
             }
         },
         .print => |*pi| {
-            pi.src = resolve(pi.src, copyMap);
+            pi.src.operand = resolve(pi.src.operand, copyMap);
         },
         else => {},
     }
@@ -111,38 +111,40 @@ test "basic block copy prop" {
     var instructions = &program.main.blocks.items[0].instructions;
 
     // t1 = t0
-    try instructions.append(alloc, Instruction{ .move = .{
+    try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
         .dst = .{ .temp = .{ .id = 1, .function_id = 0 } },
         .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
-    } });
+    } } });
     // t2 = t1
-    try instructions.append(alloc, Instruction{ .move = .{
+    try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
         .dst = .{ .temp = .{ .id = 2, .function_id = 0 } },
         .src = .{ .temp = .{ .id = 1, .function_id = 0 } },
-    } });
+    } } });
     // print(t2)
-    try instructions.append(alloc, Instruction{ .print = .{
-        .src = .{ .temp = .{ .id = 2, .function_id = 0 } },
+    try instructions.append(alloc, Instruction{ .print = .{ .src = .{
+        .operand = .{ .temp = .{ .id = 2, .function_id = 0 } },
         .type = .int,
-    } });
+    } } });
 
     try run(&program, alloc);
     const new_instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(3, new_instructions.len);
 
     // t1 = t0
-    try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .move = .{
+    try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .lir = .{ .move = .{
         .dst = .{ .temp = .{ .id = 1, .function_id = 0 } },
         .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
-    } });
+    } } });
     // t2 = t0
-    try std.testing.expectEqualDeep(new_instructions[1], Instruction{ .move = .{
+    try std.testing.expectEqualDeep(new_instructions[1], Instruction{ .lir = .{ .move = .{
         .dst = .{ .temp = .{ .id = 2, .function_id = 0 } },
         .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
-    } });
+    } } });
     // print(t0)
     try std.testing.expectEqualDeep(new_instructions[2], Instruction{ .print = .{
-        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
-        .type = .int,
+        .src = .{
+            .operand = .{ .temp = .{ .id = 0, .function_id = 0 } },
+            .type = .int,
+        },
     } });
 }

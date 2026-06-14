@@ -423,8 +423,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     const src = try walkExpr(arg0, irBuilder, alloc);
 
                     try irBuilder.emit(Instruction{ .print = .{
-                        .src = src.operand,
-                        .type = src.type,
+                        .src = src,
                     } }, alloc);
                     return src;
                 },
@@ -1073,19 +1072,22 @@ test "while loop" {
     const exit = program.main.blocks.items[3].instructions.items;
 
     try std.testing.expectEqualDeep(
-        Instruction{ .constant = .{ .dst = .{ .temp = .{ .id = 0, .function_id = 0 } }, .value = .{ .int = 0 } } },
+        Instruction{ .lir = .{ .constant = .{
+            .dst = .{ .temp = .{ .id = 0, .function_id = 0 } },
+            .value = .{ .int = 0 },
+        } } },
         entry[0],
     );
     try std.testing.expectEqualDeep(
-        Instruction{ .store_local = .{ .local = LocalInfo{
+        Instruction{ .lir = .{ .store_local = .{ .local = LocalInfo{
             .id = 0,
             .name = "x",
             .type = null,
-        }, .src = .{ .temp = .{ .id = 0, .function_id = 0 } } } },
+        }, .src = .{ .temp = .{ .id = 0, .function_id = 0 } } } } },
         entry[1],
     );
     try std.testing.expectEqualDeep(
-        Instruction{ .jump = .{ .target = 1 } },
+        Instruction{ .lir = .{ .jump = .{ .target = 1 } } },
         entry[2],
     );
 
@@ -1096,7 +1098,8 @@ test "while loop" {
         else => return error.ExpectedPhi,
     }
 
-    switch (body[1]) {
+    try std.testing.expectEqual(.lir, std.meta.activeTag(body[1]));
+    switch (body[1].lir) {
         .binop => {},
         else => return error.ExpectedBinOp,
     }

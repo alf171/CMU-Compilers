@@ -88,4 +88,13 @@ pub const Function = struct {
     blocks: ArrayList(BasicBlock),
     entry_block: BlockId,
     next_temp: TempId,
+
+    pub fn nextTemp(self: *@This()) Operand {
+        const id = self.next_temp;
+        self.next_temp += 1;
+        return Operand{ .temp = .{
+            .id = id,
+            .function_id = self.idx,
+        } };
+    }
 };

@@ -10,7 +10,6 @@ const LocalId = @import("ir.zig").LocalId;
 const CmpOp = @import("ir.zig").CmpOp;
 const UnaryOp = @import("ir.zig").UnaryOp;
 const SeenValue = @import("ir.zig").SeenValue;
-const TypeInfo = @import("types.zig").TypeInfo;
 const TypedOperand = @import("alloc.zig").TypedOperand;
 const LirInstruction = @import("lir.zig").Instruction;
 
@@ -26,8 +25,7 @@ pub const LoopPhi = struct {
 
 pub const Instruction = union(enum) {
     print: struct {
-        src: Operand,
-        type: TypeInfo,
+        src: TypedOperand,
     },
     len: struct {
         dst: Operand,
@@ -53,7 +51,7 @@ pub const Instruction = union(enum) {
         switch (self) {
             .print => |p| {
                 debugPrint("print ", .{});
-                p.src.print();
+                p.src.operand.print();
                 debugPrint("\n", .{});
             },
             .range => |r| {
@@ -161,7 +159,7 @@ pub const Instruction = union(enum) {
                 }
             },
             .print => |pi| {
-                try res.append(alloc, .{ .operand = pi.src });
+                try res.append(alloc, .{ .operand = pi.src.operand });
             },
             .range => |r| {
                 try res.append(alloc, .{ .operand = r.start.operand });

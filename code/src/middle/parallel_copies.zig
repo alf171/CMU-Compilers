@@ -148,7 +148,8 @@ test "cycle" {
     // alternatively, we could handle this reduction in another pass
     try std.testing.expectEqual(6, new_instructions.items.len);
     for (new_instructions.items) |instruction| {
-        switch (instruction) {
+        try std.testing.expectEqual(.lir, std.meta.activeTag(instruction));
+        switch (instruction.lir) {
             .move => |m| {
                 if (originally_defined.contains(m.src) and seen_defined_operands.contains(m.src)) {
                     std.debug.print("using {} again", .{m.src.temp});

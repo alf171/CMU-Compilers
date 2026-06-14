@@ -101,6 +101,11 @@ pub const Instruction = union(enum) {
         name: []const u8,
         index: usize,
     },
+    write: struct {
+        fd: Operand,
+        buf: TypedOperand,
+        len: Operand,
+    },
     unkown,
 
     pub fn printFn(self: @This()) !void {
@@ -241,6 +246,15 @@ pub const Instruction = union(enum) {
             .function_param => |fp| {
                 fp.dst.operand.print();
                 debugPrint(" <- param {d}\n", .{fp.index});
+            },
+            .write => |w| {
+                debugPrint("write(", .{});
+                w.fd.print();
+                debugPrint(", ", .{});
+                w.buf.operand.print();
+                debugPrint(", ", .{});
+                w.len.print();
+                debugPrint(")\n", .{});
             },
             else => |term| {
                 std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
@@ -416,6 +430,11 @@ pub const Instruction = union(enum) {
                 for (fc.args) |arg| {
                     try res.append(alloc, .{ .operand = arg.operand });
                 }
+            },
+            .write => |w| {
+                try res.append(alloc, .{ .operand = w.fd });
+                try res.append(alloc, .{ .operand = w.buf.operand });
+                try res.append(alloc, .{ .operand = w.len });
             },
             else => {},
         }
