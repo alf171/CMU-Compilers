@@ -28,8 +28,8 @@ pub const Operands = struct {
         return max_temp;
     }
 
-    pub fn nextMem(self: @This()) u8 {
-        var max_mem: u8 = 0;
+    pub fn nextMem(self: @This()) MemoryId {
+        var max_mem: MemoryId = 0;
 
         var it = self.ops.keyIterator();
         while (it.next()) |op| {
@@ -123,10 +123,13 @@ pub const ScopedTemp = struct {
     }
 };
 
+/// we only permit 255 spills per program
+pub const MemoryId = u8;
+
 pub const Operand = union(enum) {
     temp: ScopedTemp,
     spec_reg: SpecialRegs,
-    mem: u8,
+    mem: MemoryId,
 
     pub fn equal(self: @This(), other: @This()) bool {
         return switch (self) {
@@ -227,8 +230,8 @@ pub const AllocProgram = struct {
         self.blocks.deinit(alloc);
     }
 
-    pub fn nextTemp(self: @This()) u8 {
-        var next_temp: u8 = 0;
+    pub fn nextTemp(self: @This()) TempId {
+        var next_temp: TempId = 0;
         for (self.lines.items) |line| {
             next_temp = @max(next_temp, line.uses.nextTemp());
             next_temp = @max(next_temp, line.defines.nextTemp());
@@ -237,8 +240,8 @@ pub const AllocProgram = struct {
         return next_temp;
     }
 
-    pub fn nextMem(self: @This()) u8 {
-        var next_mem: u8 = 0;
+    pub fn nextMem(self: @This()) MemoryId {
+        var next_mem: MemoryId = 0;
         for (self.lines.items) |line| {
             next_mem = @max(next_mem, line.uses.nextMem());
             next_mem = @max(next_mem, line.defines.nextMem());

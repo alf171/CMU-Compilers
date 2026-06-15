@@ -296,6 +296,14 @@ fn emitFunction(
                             try out.print(alloc, "\t mov x2, {s}\n", .{len});
                             try out.print(alloc, "\tbl _write \n", .{});
                         },
+                        .select => |s| {
+                            const dst = try regFor(s.dst, colors);
+                            const if_reg = try regFor(s.if_value, colors);
+                            const else_reg = try regFor(s.else_value, colors);
+                            const condition = try regFor(s.condition, colors);
+                            try out.print(alloc, "\tcmp {s}, #0\n", .{condition});
+                            try out.print(alloc, "\tcsel {s}, {s}, {s}, ne\n", .{ dst, if_reg, else_reg });
+                        },
                         else => |lir| {
                             std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(lir)});
                             return error.NotSupported;

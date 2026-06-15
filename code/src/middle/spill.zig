@@ -4,6 +4,8 @@ const live = @import("live.zig");
 const ArrayList = std.ArrayList;
 
 const common = @import("common");
+const TempId = common.ir.TempId;
+const MemoryId = common.alloc.MemoryId;
 const Instruction = common.mir.Instruction;
 const IrProgram = common.program.Program;
 const Function = common.ir.Function;
@@ -30,8 +32,8 @@ fn spillRegInFunction(
     function: *Function,
     function_idx: usize,
     spilled: Operand,
-    slot: u8,
-    next_temp: *u8,
+    slot: MemoryId,
+    next_temp: *TempId,
     alloc: std.mem.Allocator,
 ) !void {
     for (function.blocks.items) |*block| {
@@ -137,8 +139,8 @@ fn spillLine(
     new_program: *AllocProgram,
     line: Line,
     reg: Operand,
-    memory_pointer: u8,
-    next_temp: *u8,
+    memory_pointer: MemoryId,
+    next_temp: *TempId,
     function_idx: usize,
     alloc: std.mem.Allocator,
 ) !void {

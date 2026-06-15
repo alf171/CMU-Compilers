@@ -136,7 +136,16 @@ fn lowerBlocks(
                             try line.uses.ops.put(w.buf.operand, {});
                             try line.uses.ops.put(w.len, {});
                         },
-                        else => return error.NotImplemented,
+                        .select => |s| {
+                            try line.defines.ops.put(s.dst, {});
+                            try line.uses.ops.put(s.condition, {});
+                            try line.uses.ops.put(s.if_value, {});
+                            try line.uses.ops.put(s.else_value, {});
+                        },
+                        else => |e| {
+                            std.debug.print("{s} isn't implemented\n", .{@tagName(e)});
+                            return error.NotImplemented;
+                        },
                     }
                 },
                 .print => |pi| {

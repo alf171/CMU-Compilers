@@ -7,14 +7,16 @@ const Writer = std.io.Writer;
 const Line = @import("common").alloc.AllocLine;
 const Operand = @import("common").alloc.Operand;
 
+const DegreeCount = u16;
+
 pub const Node = struct {
     val: Operand,
     neighbors: std.AutoHashMap(Operand, void),
     moves: std.AutoHashMap(Operand, void),
     selected: bool = false,
     spill: bool = false,
-    static_degree: u8 = 0,
-    cur_degree: u8 = 0,
+    static_degree: DegreeCount = 0,
+    cur_degree: DegreeCount = 0,
 
     pub fn init(val: Operand, allocator: Allocator) Node {
         return Node{ .val = val, .neighbors = std.AutoHashMap(Operand, void).init(allocator), .moves = std.AutoHashMap(Operand, void).init(allocator) };
@@ -26,7 +28,9 @@ pub const Node = struct {
     }
 
     pub fn placeNode(self: *@This(), operand: Operand) !void {
-        try self.neighbors.put(operand, {});
+        const result = try self.neighbors.getOrPut(operand);
+        if (result.found_existing) return;
+
         self.static_degree += 1;
         self.cur_degree += 1;
     }

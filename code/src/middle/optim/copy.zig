@@ -84,6 +84,11 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) v
                     ls.index = resolve(ls.index, copyMap);
                     ls.src = resolve(ls.src, copyMap);
                 },
+                .select => |*s| {
+                    s.condition = resolve(s.condition, copyMap);
+                    s.if_value = resolve(s.if_value, copyMap);
+                    s.else_value = resolve(s.else_value, copyMap);
+                },
                 else => {},
             }
         },

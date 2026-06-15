@@ -45,9 +45,11 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - [ ] scalar evolution?
 - [ ] llvm backend?
 - [ ] watch lectures for more ideas
+
 ### Linker
 - [ ] remove clang dep
 
 ## Reading Materials
 - https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms
 - https://student.cs.uwaterloo.ca/~cs452/docs/ts7200/arm-architecture.pdf
+- https://stackoverflow.com/questions/63048341/what-is-the-difference-between-select-and-phi-in-llvm-ir

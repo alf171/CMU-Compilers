@@ -32,7 +32,7 @@ pub const LocalInfo = struct {
     }
 };
 // compiler defined variable
-pub const TempId = u8;
+pub const TempId = u16;
 
 pub const BinOp = enum { add, sub, mul, div };
 

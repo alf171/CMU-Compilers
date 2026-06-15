@@ -101,10 +101,18 @@ pub const Instruction = union(enum) {
         name: []const u8,
         index: usize,
     },
+    // sys call [START]
     write: struct {
         fd: Operand,
         buf: TypedOperand,
         len: Operand,
+    },
+    // sys call [END]
+    select: struct {
+        dst: Operand,
+        condition: Operand,
+        if_value: Operand,
+        else_value: Operand,
     },
     unkown,
 
@@ -256,6 +264,16 @@ pub const Instruction = union(enum) {
                 w.len.print();
                 debugPrint(")\n", .{});
             },
+            .select => |s| {
+                s.dst.print();
+                debugPrint(" <- ", .{});
+                s.condition.print();
+                debugPrint(" ? ", .{});
+                s.if_value.print();
+                debugPrint(" : ", .{});
+                s.else_value.print();
+                debugPrint("\n", .{});
+            },
             else => |term| {
                 std.debug.panic("ir instruction not impl: {s}", .{@tagName(term)});
                 return error.NotImplemented;
@@ -313,6 +331,11 @@ pub const Instruction = union(enum) {
                 }
             },
             .constant => {},
+            .select => |*s| {
+                if (s.condition.equal(old)) s.condition = new;
+                if (s.if_value.equal(old)) s.if_value = new;
+                if (s.else_value.equal(old)) s.else_value = new;
+            },
             else => |e| {
                 debugPrint("uses cant handle {s}\n", .{@tagName(e)});
                 return error.OperandReplaceNotImpl;
@@ -346,6 +369,9 @@ pub const Instruction = union(enum) {
             .list_literal => |*ll| {
                 if (ll.dst.operand.equal(old)) ll.dst.operand = new;
             },
+            .select => |*s| {
+                if (s.dst.equal(old)) s.dst = new;
+            },
             else => |e| {
                 debugPrint("defines cant handle {s}\n", .{@tagName(e)});
                 return error.OperandReplaceNotImpl;
@@ -366,6 +392,7 @@ pub const Instruction = union(enum) {
             .array_load => |al| .{ .operand = al.dst },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .list_load => |ll| .{ .operand = ll.dst },
+            .select => |s| .{ .operand = s.dst },
             else => null,
         };
     }
@@ -435,6 +462,11 @@ pub const Instruction = union(enum) {
                 try res.append(alloc, .{ .operand = w.fd });
                 try res.append(alloc, .{ .operand = w.buf.operand });
                 try res.append(alloc, .{ .operand = w.len });
+            },
+            .select => |s| {
+                try res.append(alloc, .{ .operand = s.condition });
+                try res.append(alloc, .{ .operand = s.if_value });
+                try res.append(alloc, .{ .operand = s.else_value });
             },
             else => {},
         }
