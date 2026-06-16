@@ -34,7 +34,7 @@ pub const LocalInfo = struct {
 // compiler defined variable
 pub const TempId = u16;
 
-pub const BinOp = enum { add, sub, mul, div };
+pub const BinOp = enum { add, sub, mul, div, mod, unknown };
 
 pub const UnaryOp = enum { neg };
 

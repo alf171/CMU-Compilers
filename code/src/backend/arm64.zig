@@ -131,6 +131,11 @@ fn emitFunction(
                                 .add => try out.print(alloc, "\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
                                 .mul => try out.print(alloc, "\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
                                 .sub => try out.print(alloc, "\tsub {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
+                                .div => try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
+                                .mod => {
+                                    try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ ScratchReg, lhs, rhs });
+                                    try out.print(alloc, "\tmsub {s}, {s}, {s}, {s}\n", .{ dst, ScratchReg, rhs, lhs });
+                                },
                                 else => |op| {
                                     std.debug.print("op is not supported {s}\n", .{@tagName(op)});
                                     return error.NotSupported;

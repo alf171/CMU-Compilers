@@ -36,7 +36,7 @@ const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, 
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Subscript, Unknown };
 
-const BuiltinCall = enum { Print, Range, Len };
+const BuiltinCall = enum { Print, Write, Range, Len };
 
 const RangeBounds = struct {
     start: TypedOperand,
@@ -426,6 +426,36 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                         .src = src,
                     } }, alloc);
                     return src;
+                },
+                .Write => {
+                    std.debug.assert(c.PyList_Size(args) == 3);
+                    const arg0 = c.PyList_GetItem(args, 0);
+                    std.debug.assert(arg0 != null);
+                    const fd = try walkExpr(arg0, irBuilder, alloc);
+                    const arg1 = c.PyList_GetItem(args, 1);
+                    std.debug.assert(arg1 != null);
+                    const buf = try walkExpr(arg1, irBuilder, alloc);
+                    const arg2 = c.PyList_GetItem(args, 2);
+                    std.debug.assert(arg2 != null);
+                    const len = try walkExpr(arg2, irBuilder, alloc);
+                    const eight = irBuilder.nextTemp();
+                    try irBuilder.emit(.{ .lir = .{ .constant = .{
+                        .dst = eight,
+                        .value = .{ .int = 8 },
+                    } } }, alloc);
+                    const data = irBuilder.nextTemp();
+                    try irBuilder.emit(.{ .lir = .{ .binop = .{
+                        .dst = data,
+                        .lhs = buf.operand,
+                        .op = .add,
+                        .rhs = eight,
+                    } } }, alloc);
+                    try irBuilder.emit(.{ .lir = .{ .write = .{
+                        .fd = fd.operand,
+                        .buf = .{ .operand = data, .type = buf.type },
+                        .len = len.operand,
+                    } } }, alloc);
+                    return .{ .operand = .{ .mem = 0 }, .type = .void };
                 },
                 .Len => {
                     std.debug.assert(c.PyList_Size(args) == 1);
@@ -899,6 +929,7 @@ fn getBinOp(expr: *PyObject) !BinOp {
     if (std.mem.eql(u8, name, "Sub")) return .sub;
     if (std.mem.eql(u8, name, "Mult")) return .mul;
     if (std.mem.eql(u8, name, "Div")) return .div;
+    if (std.mem.eql(u8, name, "Mod")) return .mod;
 
     std.debug.panic("unsupported binop: {s}", .{name});
     return error.NotFound;
@@ -1037,6 +1068,8 @@ fn getBuiltinCall(name: []const u8) ?BuiltinCall {
         return BuiltinCall.Range;
     } else if (std.mem.eql(u8, name, "print")) {
         return BuiltinCall.Print;
+    } else if (std.mem.eql(u8, name, "write")) {
+        return BuiltinCall.Write;
     } else if (std.mem.eql(u8, name, "len")) {
         return BuiltinCall.Len;
     }
