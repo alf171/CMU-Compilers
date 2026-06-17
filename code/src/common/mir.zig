@@ -133,18 +133,22 @@ pub const Instruction = union(enum) {
                 try l.replaceDefines(old, new);
             },
             else => |e| {
-                debugPrint("defines cant handle {s}\n", .{@tagName(e)});
+                debugPrint("replaceDefines cant handle {s}\n", .{@tagName(e)});
                 return error.OperandReplaceNotImpl;
             },
         }
     }
 
-    pub fn getDefines(instruction: Instruction) ?SeenValue {
+    pub fn getDefines(instruction: Instruction) !?SeenValue {
         return switch (instruction) {
             .phi => |pi| .{ .operand = pi.dst.operand },
             .range => |r| .{ .operand = r.dst.operand },
-            .lir => |l| l.getDefines(),
-            else => null,
+            .len => |l| .{ .operand = l.dst },
+            .lir => |l| try l.getDefines(),
+            else => |e| {
+                debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});
+                return error.NotImpl;
+            },
         };
     }
 
@@ -175,7 +179,10 @@ pub const Instruction = union(enum) {
                     try res.append(alloc, s);
                 }
             },
-            else => {},
+            else => |e| {
+                debugPrint("getUses cant handle {s}\n", .{@tagName(e)});
+                return error.NotImpl;
+            },
         }
         return res;
     }

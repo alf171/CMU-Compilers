@@ -43,18 +43,13 @@ const RangeBounds = struct {
     end: TypedOperand,
 };
 
-pub fn walkAst(obj: ?*c.PyObject, alloc: std.mem.Allocator) !Program {
-    var irBuilder = try IrBuilder.init(alloc);
-    defer irBuilder.deinit(alloc);
-    errdefer irBuilder.program.deinit(alloc);
-    if (obj == null) return irBuilder.program;
+pub fn walkAstIntoBuilder(obj: ?*c.PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !void {
+    if (obj == null) return;
 
     const body = c.PyObject_GetAttrString(obj, "body");
     std.debug.assert(body != null);
 
-    try walkStmtList(body, &irBuilder, alloc);
-
-    return irBuilder.program;
+    try walkStmtList(body, irBuilder, alloc);
 }
 
 pub fn walkStmtList(stmts: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!void {
@@ -856,7 +851,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     // TODO: this looks very wrong...
     try irBuilder.program.functions.append(alloc, Function{
         .name = try alloc.dupe(u8, std.mem.span(func_name)),
-        .idx = irBuilder.nextFunctionIdx(),
+        .id = irBuilder.nextFunctionIdx(),
         .params = try params.toOwnedSlice(alloc),
         .return_type = return_type,
         .blocks = blocks,
@@ -1094,7 +1089,10 @@ test "while loop" {
     const tree = c.PyObject_CallFunction(parse_fn, "s", code);
     std.debug.assert(tree != null);
 
-    var program = try walkAst(tree, alloc);
+    var irBuilder = try IrBuilder.init(alloc);
+    defer irBuilder.deinit(alloc);
+    errdefer irBuilder.program.deinit(alloc);
+    var program = try walkAstIntoBuilder(tree, &irBuilder, alloc);
     defer program.deinit(alloc);
 
     try std.testing.expectEqual(@as(usize, 4), program.main.blocks.items.len);

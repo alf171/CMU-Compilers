@@ -22,11 +22,11 @@ pub fn run(program: *Program, alloc_program: *const AllocProgram, alloc: std.mem
 }
 
 fn runFunction(function: *Function, alloc_program: *const AllocProgram, alloc: std.mem.Allocator) !void {
-    for (function.blocks.items, 0..) |*block, block_i| {
+    for (function.blocks.items) |*block| {
         const instructions = block.instructions.items;
         var seen = HashMap(SeenValue, void).init(alloc);
         // seed seen with what's live from the previous block
-        const alloc_block = alloc_program.blocks.items[block_i];
+        const alloc_block = try alloc_program.getBlockById(block.id, function.id);
         if (alloc_block.end != alloc_block.start) {
             const live_out = alloc_program.lines.items[alloc_block.end - 1].live_out;
             var it = live_out.ops.keyIterator();
@@ -43,7 +43,7 @@ fn runFunction(function: *Function, alloc_program: *const AllocProgram, alloc: s
             i -= 1;
             const instruction = instructions[i];
 
-            const defines = instruction.getDefines();
+            const defines = try instruction.getDefines();
             var uses = try instruction.getUses(alloc);
 
             // if operand hasn't been used yet, instruction can be removed

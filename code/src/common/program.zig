@@ -16,7 +16,7 @@ pub const Program = struct {
         return Program{
             .main = Function{
                 .name = "main",
-                .idx = 0,
+                .id = 0,
                 .blocks = blocks,
                 .entry_block = 0,
                 .params = &.{},

@@ -51,10 +51,13 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         .bool => {
                             try printBool(function, &new_instructions, p.src.operand, one, eight, alloc);
                         },
-                        // TODO: impl
                         .int => {
-                            try new_instructions.append(alloc, instruction.*);
-                            continue;
+                            try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
+                                .dst = null,
+                                .function_name = "print_int",
+                                .args = try alloc.dupe(TypedOperand, &.{p.src}),
+                            } } });
+                            try printNewLine(function, &new_instructions, one, eight, fd, alloc);
                         },
                         else => {
                             try new_instructions.append(alloc, instruction.*);

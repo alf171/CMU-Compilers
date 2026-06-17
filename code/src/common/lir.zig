@@ -372,6 +372,9 @@ pub const Instruction = union(enum) {
             .select => |*s| {
                 if (s.dst.equal(old)) s.dst = new;
             },
+            .function_param => |*fc| {
+                if (fc.dst.operand.equal(old)) fc.dst.operand = new;
+            },
             else => |e| {
                 debugPrint("defines cant handle {s}\n", .{@tagName(e)});
                 return error.OperandReplaceNotImpl;
@@ -379,7 +382,8 @@ pub const Instruction = union(enum) {
         }
     }
 
-    pub fn getDefines(instruction: Instruction) ?SeenValue {
+    /// are we generating a new temp for reg coloring
+    pub fn getDefines(instruction: Instruction) !?SeenValue {
         return switch (instruction) {
             .store_local => |sl| .{ .local = sl.local.id },
             .load_local => |ll| .{ .operand = ll.dst },
@@ -392,8 +396,18 @@ pub const Instruction = union(enum) {
             .array_load => |al| .{ .operand = al.dst },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .list_load => |ll| .{ .operand = ll.dst },
+            .list_store => null,
             .select => |s| .{ .operand = s.dst },
-            else => null,
+            .function_call => |fc| if (fc.dst) |op| .{ .operand = op } else null,
+            .function_param => |fp| .{ .operand = fp.dst.operand },
+            .function_return => null,
+            .write => null,
+            .branch => null,
+            .jump => null,
+            else => |e| {
+                std.debug.print("getDefines does not handle {s}\n", .{@tagName(e)});
+                return error.NotImpl;
+            },
         };
     }
 
@@ -468,7 +482,18 @@ pub const Instruction = union(enum) {
                 try res.append(alloc, .{ .operand = s.if_value });
                 try res.append(alloc, .{ .operand = s.else_value });
             },
-            else => {},
+            .function_return => |fc| {
+                if (fc.value) |op| {
+                    try res.append(alloc, .{ .operand = op });
+                }
+            },
+            .constant => {},
+            .function_param => {},
+            .jump => {},
+            else => |e| {
+                std.debug.print("getUses doesn't handle {s}\n", .{@tagName(e)});
+                return error.NotImpl;
+            },
         }
         return res;
     }

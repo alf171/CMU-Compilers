@@ -82,7 +82,7 @@ pub const BasicBlock = struct {
 
 pub const Function = struct {
     name: []const u8,
-    idx: usize,
+    id: usize,
     params: []Param,
     return_type: TypeInfo,
     blocks: ArrayList(BasicBlock),
@@ -94,7 +94,7 @@ pub const Function = struct {
         self.next_temp += 1;
         return Operand{ .temp = .{
             .id = id,
-            .function_id = self.idx,
+            .function_id = self.id,
         } };
     }
 };

@@ -163,59 +163,82 @@ pub fn createIgraph(lines: ArrayList(Line), allocator: Allocator) !IGraph {
 }
 
 fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
-    var it = line.defines.ops.keyIterator();
-    while (it.next()) |define_op| {
-        var live_out_it = line.live_out.ops.keyIterator();
-        while (live_out_it.next()) |live_out_op| {
-            // skip memory or special registers
-            if (define_op.* == .mem or live_out_op.* == .mem or define_op.* == .spec_reg or live_out_op.* == .spec_reg) {
-                continue;
+    {
+        var it = line.defines.ops.keyIterator();
+        while (it.next()) |op| {
+            if (op.shouldColor()) {
+                try defineNodeIfDoesntExist(igraph, op.*, allocator);
             }
-            try defineNodeIfDoesntExist(igraph, define_op.*, allocator);
-            try defineNodeIfDoesntExist(igraph, live_out_op.*, allocator);
-            // build graph
-            if (!Operand.equal(define_op.*, live_out_op.*)) {
-                std.debug.assert(igraph.nodes.contains(live_out_op.*));
-                std.debug.assert(igraph.nodes.contains(define_op.*));
-                try igraph.nodes.getPtr(define_op.*).?.placeNode(live_out_op.*);
-                try igraph.nodes.getPtr(live_out_op.*).?.placeNode(define_op.*);
+        }
+    }
+    {
+        var it = line.uses.ops.keyIterator();
+        while (it.next()) |op| {
+            if (op.shouldColor()) {
+                try defineNodeIfDoesntExist(igraph, op.*, allocator);
+            }
+        }
+    }
+
+    {
+        var it = line.defines.ops.keyIterator();
+        while (it.next()) |define_op| {
+            var live_out_it = line.live_out.ops.keyIterator();
+            while (live_out_it.next()) |live_out_op| {
+                // skip memory or special registers
+                if (!define_op.shouldColor() or !live_out_op.shouldColor()) {
+                    continue;
+                }
+                try defineNodeIfDoesntExist(igraph, define_op.*, allocator);
+                try defineNodeIfDoesntExist(igraph, live_out_op.*, allocator);
+                // build graph
+                if (!Operand.equal(define_op.*, live_out_op.*)) {
+                    std.debug.assert(igraph.nodes.contains(live_out_op.*));
+                    std.debug.assert(igraph.nodes.contains(define_op.*));
+                    try igraph.nodes.getPtr(define_op.*).?.placeNode(live_out_op.*);
+                    try igraph.nodes.getPtr(live_out_op.*).?.placeNode(define_op.*);
+                }
             }
         }
     }
 
     // things used together need an edge between them
-    var use_it = line.uses.ops.keyIterator();
-    while (use_it.next()) |first_key| {
-        var use_it_2 = line.uses.ops.keyIterator();
-        while (use_it_2.next()) |second_key| {
-            if (first_key.* == .mem or second_key.* == .mem or first_key.* == .spec_reg or second_key.* == .spec_reg) {
-                continue;
-            }
-            if (!Operand.equal(first_key.*, second_key.*)) {
-                try defineNodeIfDoesntExist(igraph, first_key.*, allocator);
-                try igraph.nodes.getPtr(first_key.*).?.placeNode(second_key.*);
-                try defineNodeIfDoesntExist(igraph, second_key.*, allocator);
-                try igraph.nodes.getPtr(second_key.*).?.placeNode(first_key.*);
+    {
+        var use_it = line.uses.ops.keyIterator();
+        while (use_it.next()) |first_key| {
+            var use_it_2 = line.uses.ops.keyIterator();
+            while (use_it_2.next()) |second_key| {
+                if (first_key.* == .mem or second_key.* == .mem or first_key.* == .spec_reg or second_key.* == .spec_reg) {
+                    continue;
+                }
+                if (!Operand.equal(first_key.*, second_key.*)) {
+                    try defineNodeIfDoesntExist(igraph, first_key.*, allocator);
+                    try igraph.nodes.getPtr(first_key.*).?.placeNode(second_key.*);
+                    try defineNodeIfDoesntExist(igraph, second_key.*, allocator);
+                    try igraph.nodes.getPtr(second_key.*).?.placeNode(first_key.*);
+                }
             }
         }
     }
 
     // keep track of moves
-    if (line.move) {
-        std.debug.assert(line.defines.ops.count() == 1);
-        std.debug.assert(line.uses.ops.count() == 1);
-        const define = try line.defines.single();
-        const uses = try line.uses.single();
+    {
+        if (line.move) {
+            std.debug.assert(line.defines.ops.count() == 1);
+            std.debug.assert(line.uses.ops.count() == 1);
+            const define = try line.defines.single();
+            const uses = try line.uses.single();
 
-        if (define == .mem or uses == .mem) {
-            return;
+            if (define == .mem or uses == .mem) {
+                return;
+            }
+
+            std.debug.assert(!define.equal(uses));
+            try defineNodeIfDoesntExist(igraph, define, allocator);
+            try igraph.nodes.getPtr(define).?.moves.put(uses, {});
+            try defineNodeIfDoesntExist(igraph, uses, allocator);
+            try igraph.nodes.getPtr(uses).?.moves.put(define, {});
         }
-
-        std.debug.assert(!define.equal(uses));
-        try defineNodeIfDoesntExist(igraph, define, allocator);
-        try igraph.nodes.getPtr(define).?.moves.put(uses, {});
-        try defineNodeIfDoesntExist(igraph, uses, allocator);
-        try igraph.nodes.getPtr(uses).?.moves.put(define, {});
     }
 }
 

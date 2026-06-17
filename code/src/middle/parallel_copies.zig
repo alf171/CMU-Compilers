@@ -42,7 +42,7 @@ fn lowerFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         if (used.contains(copy.dst)) {
                             const temp = Operand{ .temp = .{
                                 .id = function.next_temp,
-                                .function_id = function.idx,
+                                .function_id = function.id,
                             } };
                             try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                                 .dst = temp,

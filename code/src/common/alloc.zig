@@ -167,6 +167,13 @@ pub const Operand = union(enum) {
             .mem => |id| std.debug.print("mem{d}", .{id}),
         }
     }
+
+    pub fn shouldColor(self: @This()) bool {
+        return switch (self) {
+            .temp => true,
+            else => false,
+        };
+    }
 };
 
 pub const Param = struct {
@@ -250,9 +257,9 @@ pub const AllocProgram = struct {
         return next_mem;
     }
 
-    pub fn getBlockById(self: *const @This(), id: BlockId) !AllocBlock {
+    pub fn getBlockById(self: *const @This(), id: BlockId, function_id: usize) !AllocBlock {
         for (self.blocks.items) |block| {
-            if (block.id == id) return block;
+            if (block.id == id and block.function_id == function_id) return block;
         }
         return error.BlockNotFound;
     }

@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const c = @import("frontend").python.c;
-const walkAst = @import("frontend").walk.walkAst;
+const walkAstWithRuntime = @import("frontend").run.walkAstWithRuntime;
 const range = @import("frontend").range;
 const write = @import("frontend").write;
 const middle = @import("middle");
@@ -46,19 +46,8 @@ pub fn main(init: std.process.Init) !void {
         if (std.mem.eql(u8, arg, "--dump-stats")) should_dump_stats = true;
     }
 
-    const code = try std.Io.Dir.cwd().readFileAlloc(io, input_file, alloc, .limited(1 << 20));
-    const code_z = try alloc.dupeSentinel(u8, code, 0);
-
-    std.debug.print("{s}running program:{s}", .{ underline_code, reset_code });
-    if (should_optim) std.debug.print(" (OPTIM={})", .{should_optim});
-    std.debug.print("\n\n{s}", .{code});
-
-    const ast_module = c.PyImport_ImportModule("ast");
-    const parse_fn = c.PyObject_GetAttrString(ast_module, "parse");
-    const tree = c.PyObject_CallFunction(parse_fn, "s", code_z.ptr);
-    std.debug.assert(tree != null);
-
-    var ir_program = try walkAst(tree, alloc);
+    // walk user program
+    var ir_program = try walkAstWithRuntime(input_file, should_optim, io, alloc);
     defer ir_program.deinit(alloc);
 
     // dump ir after optim pass

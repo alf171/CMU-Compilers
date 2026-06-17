@@ -40,7 +40,7 @@ fn spillRegInFunction(
         var new_instructions = ArrayList(Instruction).empty;
         for (block.instructions.items) |old_instruction| {
             var instruction = old_instruction;
-            const maybe_defines = old_instruction.getDefines();
+            const maybe_defines = try old_instruction.getDefines();
             var uses = try old_instruction.getUses(alloc);
             defer uses.deinit(alloc);
             for (uses.items) |use_item| {

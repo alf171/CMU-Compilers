@@ -315,38 +315,6 @@ fn emitFunction(
                         },
                     }
                 },
-                .print => |p| {
-                    switch (p.src.type) {
-                        .int, .bool => {
-                            const src = try regFor(p.src.operand, colors);
-                            try out.appendSlice(alloc, "\tsub sp, sp, #16\n");
-                            try out.print(alloc, "\tstr {s}, [sp]\n", .{src});
-                            try out.appendSlice(alloc, "\tadrp x0, fmt@PAGE\n");
-                            try out.appendSlice(alloc, "\tadd x0, x0, fmt@PAGEOFF\n");
-                            try out.appendSlice(alloc, "\tbl _printf\n");
-                            try out.appendSlice(alloc, "\tadd sp, sp, #16\n");
-                        },
-                        .array => |arr| {
-                            if (arr.element.* != .char) return error.TypeNotImpl;
-                            const src = try regFor(p.src.operand, colors);
-                            for (0..(arr.size orelse return error.SizeMissing)) |i| {
-                                const offset = i * 8;
-                                try out.print(alloc, "\tldr {s}, [{s}, #{d}]\n", .{ FirstParamRegister, src, offset });
-                                try out.appendSlice(alloc, "\tbl _putchar\n");
-                            }
-                            // print \n
-                            try out.print(alloc, "\tmov x0, #10\n", .{});
-                            try out.appendSlice(alloc, "\tbl _putchar\n");
-                        },
-                        .list => |lst| {
-                            if (lst.element.* != .char) return error.TypeNotImpl;
-                            const src = try regFor(p.src.operand, colors);
-                            try out.print(alloc, "\tadd x0, {s}, #8\n", .{src});
-                            try out.appendSlice(alloc, "\tbl _puts\n");
-                        },
-                        else => return error.TypeNotImpl,
-                    }
-                },
                 .len => |l| {
                     const dst = try regFor(l.dst, colors);
                     const src = try regFor(l.value.operand, colors);

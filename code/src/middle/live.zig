@@ -22,7 +22,7 @@ pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.me
             defer live_after.free();
 
             for (block.successors.items) |id| {
-                const succ_block = try program.getBlockById(id);
+                const succ_block = try program.getBlockById(id, block.function_id);
 
                 if (succ_block.start == succ_block.end) continue;
                 std.debug.assert(succ_block.start < succ_block.end);
