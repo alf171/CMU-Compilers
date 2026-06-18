@@ -6,6 +6,7 @@ const Program = common.program.Program;
 const TypeInfo = common.types.TypeInfo;
 const sizeOfType = common.types.sizeOfType;
 const Block = common.ir.BasicBlock;
+const ConstValue = common.ir.ConstValue;
 const Function = common.ir.Function;
 const getElementType = common.types.getElementType;
 const color = @import("middle").color;
@@ -322,10 +323,6 @@ fn emitFunction(
                         .list => {
                             try out.print(alloc, "\tldr {s}, [{s}]\n", .{ dst, src });
                         },
-                        .array => |a| {
-                            const size = a.size orelse return error.SizeNotFound;
-                            try out.print(alloc, "\tldr {s}, #{d}\n", .{ dst, size });
-                        },
                         else => |e| {
                             std.debug.print("len called on {s} unexpectedly\n", .{@tagName(e)});
                             return error.InvalidLenCall;
@@ -468,6 +465,18 @@ fn spillOffset(local_stack_size: usize, slot: usize) usize {
     return local_stack_size + (slot + 1) * 8;
 }
 
-pub fn main() void {}
+fn emitConstantToReg(
+    out: *ArrayList(u8),
+    dst: []const u8,
+    value: ConstValue,
+    alloc: std.mem.Allocator,
+) !void {
+    switch (value) {
+        .int => |i| try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, i }),
+        .char => |c| try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, c }),
+        .bool => |b| try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, @intFromBool(b) }),
+        .float => return error.NotImpl,
+    }
+}
 
 test "testing" {}

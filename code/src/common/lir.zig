@@ -4,6 +4,7 @@ const debugPrint = @import("std").debug.print;
 const LocalInfo = @import("ir.zig").LocalInfo;
 const Operand = @import("alloc.zig").Operand;
 const ConstValue = @import("ir.zig").ConstValue;
+const LiteralElement = @import("ir.zig").LiteralElement;
 const BinOp = @import("ir.zig").BinOp;
 const BlockId = @import("ir.zig").BlockId;
 const CmpOp = @import("ir.zig").CmpOp;
@@ -57,7 +58,7 @@ pub const Instruction = union(enum) {
     // stack based fixed size array
     array_literal: struct {
         dst: TypedOperand,
-        elements: []Operand,
+        elements: []LiteralElement,
     },
     // dst <- array[index]
     array_load: struct {
@@ -74,7 +75,7 @@ pub const Instruction = union(enum) {
     // heap based variable size
     list_literal: struct {
         dst: TypedOperand,
-        elements: []Operand,
+        elements: []LiteralElement,
     },
     // dst <- list[index]
     list_load: struct {
@@ -129,9 +130,6 @@ pub const Instruction = union(enum) {
                     },
                     .char => |value| {
                         debugPrint(" <- {any}\n", .{value});
-                    },
-                    .bytes => |value| {
-                        debugPrint(" <- {s}\n", .{value});
                     },
                     .float => {
                         return error.TypeNotImpl;
@@ -299,7 +297,12 @@ pub const Instruction = union(enum) {
             },
             .list_literal => |*ll| {
                 for (ll.elements) |*elem| {
-                    if (elem.equal(old)) elem.* = new;
+                    switch (elem.*) {
+                        .operand => |*op| {
+                            if (op.equal(old)) op.* = new;
+                        },
+                        .constant => {},
+                    }
                 }
             },
             .list_store => |*ls| {

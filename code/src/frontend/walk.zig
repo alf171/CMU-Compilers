@@ -12,6 +12,7 @@ const ownedPointer = @import("common").types.ownedPointer;
 const TypeInfo = types.TypeInfo;
 const Operand = @import("common").alloc.Operand;
 const TypedOperand = @import("common").alloc.TypedOperand;
+const LiteralElement = @import("common").ir.LiteralElement;
 const Param = @import("common").alloc.Param;
 const LocalInfo = @import("common").ir.LocalInfo;
 const LocalId = @import("common").ir.LocalId;
@@ -227,22 +228,16 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 std.debug.assert(raw != null);
                 const bytes = std.mem.span(raw);
                 const dst = irBuilder.nextTemp();
-                var elements = ArrayList(Operand).empty;
+                var elements: ArrayList(LiteralElement) = .empty;
                 for (bytes) |char| {
-                    const temp = irBuilder.nextTemp();
-                    try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
-                        .dst = temp,
-                        .value = .{ .char = char },
-                    } } }, alloc);
-                    try elements.append(alloc, temp);
+                    try elements.append(alloc, .{ .constant = .{
+                        .char = char,
+                    } });
                 }
                 // null terminator
-                const zero = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
-                    .dst = zero,
-                    .value = .{ .char = 0 },
-                } } }, alloc);
-                try elements.append(alloc, zero);
+                try elements.append(alloc, .{ .constant = .{
+                    .char = 0,
+                } });
 
                 const _type = TypeInfo{ .list = .{ .element = &.char, .size = bytes.len + 1 } };
 
@@ -260,15 +255,38 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             const elements = c.PyObject_GetAttrString(stmt, "elts");
             std.debug.assert(elements != null);
             const len = c.PyList_Size(elements);
-            var result = ArrayList(Operand).empty;
+            var result = ArrayList(LiteralElement).empty;
             var elem_type: ?TypeInfo = null;
             for (0..@intCast(len)) |i| {
                 const elem = c.PyList_GetItem(elements, @as(isize, @intCast(i)));
                 std.debug.assert(elem != null);
-                const expr = try walkExpr(elem, irBuilder, alloc);
-                // TODO: validate all items are same type!
-                if (i == 0) elem_type = expr.type;
-                try result.append(alloc, expr.operand);
+                // [conditional] use constant instead of an operand if we can
+                switch (getExprKind(elem)) {
+                    .Constant => {
+                        const value = c.PyObject_GetAttrString(elem, "value");
+                        const value_type = getPyType(value);
+
+                        if (std.mem.eql(u8, value_type, "int")) {
+                            const constant_value = ConstValue{ .int = c.PyLong_AsLong(value) };
+                            try result.append(alloc, .{ .constant = constant_value });
+                            if (i == 0) elem_type = .int;
+                            continue;
+                        } else if (std.mem.eql(u8, value_type, "bool")) {
+                            const constant_value = ConstValue{ .bool = value == c.Py_True() };
+                            try result.append(alloc, .{ .constant = constant_value });
+                            if (i == 0) elem_type = .bool;
+                            continue;
+                        } else {
+                            return error.NotImpl;
+                        }
+                    },
+                    else => {
+                        const expr = try walkExpr(elem, irBuilder, alloc);
+                        try result.append(alloc, .{ .operand = expr.operand });
+                        // HACK: do this elsewhere
+                        if (i == 0) elem_type = expr.type;
+                    },
+                }
             }
             const dst = irBuilder.nextTemp();
 
@@ -361,7 +379,12 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             const dst = irBuilder.nextTemp();
             const op = try getCompareOp(stmt);
 
-            try irBuilder.emit(Instruction{ .lir = .{ .compare = .{ .dst = dst, .lhs = lhs.operand, .op = op, .rhs = rhs.operand } } }, alloc);
+            try irBuilder.emit(Instruction{ .lir = .{ .compare = .{
+                .dst = dst,
+                .lhs = lhs.operand,
+                .op = op,
+                .rhs = rhs.operand,
+            } } }, alloc);
 
             return TypedOperand{ .operand = dst, .type = .bool };
         },

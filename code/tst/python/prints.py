@@ -1,10 +1,12 @@
 
-a = "123"
+a = "foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz"
 b: int = 123
 c: bool = False
-# d: float = 1.25
+d: str = "FALSE" if c else "TRUE"
+# e: float = 1.25
 
 print(a)
 print(b)
 print(c)
-# print(d)
+print(d)
+# print(e)

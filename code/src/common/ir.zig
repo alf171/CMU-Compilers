@@ -43,7 +43,26 @@ pub const ConstValue = union(enum) {
     bool: bool,
     float: f64,
     char: u8,
-    bytes: []const u8,
+
+    pub fn print(self: @This()) void {
+        switch (self) {
+            .int => |i| std.debug.print("{}", .{i}),
+            .bool => |b| std.debug.print("{}", .{b}),
+            .float => |f| std.debug.print("{}", .{f}),
+            .char => |c| std.debug.print("{}", .{c}),
+        }
+    }
+};
+
+pub const LiteralElement = union(enum) {
+    operand: Operand,
+    constant: ConstValue,
+
+    pub fn print(self: @This()) void {
+        switch (self) {
+            inline else => |value| value.print(),
+        }
+    }
 };
 
 pub const CmpOp = enum {

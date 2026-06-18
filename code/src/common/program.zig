@@ -33,11 +33,6 @@ pub const Program = struct {
                 switch (instruction.*) {
                     .lir => |l| {
                         switch (l) {
-                            .constant => |c| {
-                                if (c.value == .bytes) {
-                                    alloc.free(c.value.bytes);
-                                }
-                            },
                             .store_local => |sl| alloc.free(sl.local.name),
                             .load_local => |ll| alloc.free(ll.local.name),
                             else => {},

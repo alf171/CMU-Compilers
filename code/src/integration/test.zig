@@ -96,7 +96,8 @@ pub fn main(init: std.process.Init) !void {
 
     defer file.close(io);
 
-    var colored = try loop.run(&ir_program, &alloc_program, should_optim, alloc, null, should_dump_ir);
+    const result = try loop.run(&ir_program, &alloc_program, should_optim, alloc, null);
+    var colored = result.graph;
     defer colored.deinit();
 
     // dump colored graph
@@ -138,6 +139,7 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("memory store count: {d}\n", .{memory_store_count});
         std.debug.print("branch count: {d}\n", .{branches});
         std.debug.print("call count: {d}\n", .{calls});
+        std.debug.print("spill count: {d}\n", .{result.spill_rounds});
     }
 
     try file_writer.interface.writeAll(asm_text);
