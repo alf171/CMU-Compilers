@@ -70,7 +70,7 @@ fn hasSideEffects(instruction: Instruction) bool {
             return switch (l) {
                 .jump,
                 .branch,
-                .array_store,
+                .tuple_store,
                 .list_store,
                 .function_call,
                 .function_return,

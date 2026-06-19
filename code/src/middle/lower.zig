@@ -88,13 +88,19 @@ fn lowerBlocks(
                         .list_literal => |al| {
                             try line.defines.ops.put(al.dst.operand, {});
                             for (al.elements) |elem| {
-                                try line.uses.ops.put(elem, {});
+                                switch (elem) {
+                                    .operand => |op| try line.uses.ops.put(op, {}),
+                                    .constant => {},
+                                }
                             }
                         },
-                        .array_literal => |al| {
-                            try line.defines.ops.put(al.dst.operand, {});
-                            for (al.elements) |elem| {
-                                try line.uses.ops.put(elem, {});
+                        .tuple_literal => |tl| {
+                            try line.defines.ops.put(tl.dst.operand, {});
+                            for (tl.elements) |elem| {
+                                switch (elem) {
+                                    .operand => |op| try line.uses.ops.put(op, {}),
+                                    .constant => {},
+                                }
                             }
                         },
                         .list_load => |al| {
@@ -102,20 +108,20 @@ fn lowerBlocks(
                             try line.uses.ops.put(al.list.operand, {});
                             try line.uses.ops.put(al.index, {});
                         },
-                        .array_load => |al| {
-                            try line.defines.ops.put(al.dst, {});
-                            try line.uses.ops.put(al.array.operand, {});
-                            try line.uses.ops.put(al.index, {});
+                        .tuple_load => |tl| {
+                            try line.defines.ops.put(tl.dst, {});
+                            try line.uses.ops.put(tl.tuple.operand, {});
+                            try line.uses.ops.put(tl.index, {});
                         },
                         .list_store => |ls| {
                             try line.uses.ops.put(ls.list.operand, {});
                             try line.uses.ops.put(ls.index, {});
                             try line.uses.ops.put(ls.src, {});
                         },
-                        .array_store => |as| {
-                            try line.uses.ops.put(as.array.operand, {});
-                            try line.uses.ops.put(as.index, {});
-                            try line.uses.ops.put(as.src, {});
+                        .tuple_store => |ts| {
+                            try line.uses.ops.put(ts.tuple.operand, {});
+                            try line.uses.ops.put(ts.index, {});
+                            try line.uses.ops.put(ts.src, {});
                         },
                         .function_call => |fc| {
                             if (fc.dst) |dst| try line.defines.ops.put(dst, {});

@@ -12,16 +12,17 @@ pub const TypeInfo = union(enum) {
         element: *const TypeInfo,
         size: ?usize,
     },
-    array: struct {
-        element: *const TypeInfo,
-        size: ?usize,
+    tuple: struct {
+        elements: []const TypeInfo,
     },
+    any,
 };
 
 pub fn getElementType(typeInfo: TypeInfo) !TypeInfo {
     return switch (typeInfo) {
         .list => |list_type| list_type.element.*,
-        .array => |array_type| array_type.element.*,
+        // ouch
+        .any, .tuple => .int,
         else => error.ExpectedListType,
     };
 }
@@ -44,7 +45,7 @@ pub fn sizeOfType(t: TypeInfo) !usize {
         .bool, .char => 1,
         .int => 8,
         .list => 8,
-        .array => 8,
+        .tuple => 8,
         else => error.NotImpl,
     };
 }

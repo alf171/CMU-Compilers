@@ -156,22 +156,28 @@ fn emitFunction(
                         // x29 - 16 array[2]
                         // x29 - 24 array[1]
                         // x29 - 32 array[0]  <- array_base
-                        .array_literal => |al| {
+                        .tuple_literal => |tl| {
                             const base_slot = next_array_slot;
-                            next_array_slot += al.elements.len;
+                            next_array_slot += tl.elements.len;
 
-                            const dst = try regFor(al.dst.operand, colors);
+                            const dst = try regFor(tl.dst.operand, colors);
 
                             // array[i] = x29 - end + adjust(i)
-                            for (al.elements, 0..) |elem, i| {
-                                const src = try regFor(elem, colors);
-                                const slot = base_slot + (al.elements.len - 1 - i);
+                            for (tl.elements, 0..) |elem, i| {
+                                const src = switch (elem) {
+                                    .operand => try regFor(elem.operand, colors),
+                                    .constant => |c| blk: {
+                                        try emitConstantToReg(out, ScratchReg, c, alloc);
+                                        break :blk ScratchReg;
+                                    },
+                                };
+                                const slot = base_slot + (tl.elements.len - 1 - i);
                                 const offset = arrayOffset(local_count, slot);
                                 // HACK: assume everything is 8bytes wide
                                 try out.print(alloc, "\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
                             }
                             // array_base = x29 - end
-                            try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, arrayOffset(local_count, base_slot + al.elements.len - 1) });
+                            try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, arrayOffset(local_count, base_slot + tl.elements.len - 1) });
                         },
                         // heap: [ size ] [elem 0] [...]
                         .list_literal => |ll| {
@@ -187,11 +193,17 @@ fn emitFunction(
                             try out.print(alloc, "\tstr {s}, [{s}]\n", .{ ScratchReg, CalleReturnRegister });
 
                             for (ll.elements, 0..len) |element, i| {
-                                const src = try regFor(element, colors);
+                                const src = switch (element) {
+                                    .operand => try regFor(element.operand, colors),
+                                    .constant => |c| blk: {
+                                        try emitConstantToReg(out, ScratchReg, c, alloc);
+                                        break :blk ScratchReg;
+                                    },
+                                };
                                 const offset = i * elem_size + 8;
                                 switch (elem_type) {
                                     // pointers & ints are size 8
-                                    .int, .list, .array => {
+                                    .int, .list, .tuple => {
                                         try out.print(alloc, "\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
                                     },
                                     .bool, .char => {
@@ -202,20 +214,20 @@ fn emitFunction(
                             }
                             try out.print(alloc, "\tmov {s}, x0\n", .{dst});
                         },
-                        .array_load => |al| {
-                            const dst = try regFor(al.dst, colors);
-                            const index = try regFor(al.index, colors);
-                            const array = try regFor(al.array.operand, colors);
+                        .tuple_load => |tl| {
+                            const dst = try regFor(tl.dst, colors);
+                            const index = try regFor(tl.index, colors);
+                            const tuple = try regFor(tl.tuple.operand, colors);
 
-                            const elem_type = try getElementType(al.array.type);
+                            const elem_type = try getElementType(tl.tuple.type);
                             switch (elem_type) {
                                 // index = index << 3
                                 .int => {
                                     try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
-                                    try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
+                                    try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, tuple, ScratchReg });
                                 },
                                 .bool => {
-                                    try out.print(alloc, "\tldr w{s}, [{s}, {s}]\n", .{ dst[1..], array, index });
+                                    try out.print(alloc, "\tldr w{s}, [{s}, {s}]\n", .{ dst[1..], tuple, index });
                                 },
                                 else => return error.TypeNotImpl,
                             }
@@ -228,7 +240,7 @@ fn emitFunction(
                             const elem_type = try getElementType(ll.list.type);
                             switch (elem_type) {
                                 // index = (index + 1) << 3
-                                .int, .list, .array => {
+                                .int, .list, .tuple => {
                                     try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
                                     try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
                                     try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
@@ -244,7 +256,7 @@ fn emitFunction(
                             const elem_type = try getElementType(ls.list.type);
                             switch (elem_type) {
                                 // index = (index + 1) << 3
-                                .int, .list, .array => {
+                                .int, .list, .tuple => {
                                     const dst = try regFor(ls.list.operand, colors);
                                     const src = try regFor(ls.src, colors);
                                     const index = try regFor(ls.index, colors);
@@ -431,7 +443,7 @@ fn countArraySlots(blocks: *const ArrayList(Block)) usize {
             switch (instruction) {
                 .lir => |l| {
                     switch (l) {
-                        .array_literal => |al| slots += al.elements.len,
+                        .tuple_literal => |al| slots += al.elements.len,
                         else => {},
                     }
                 },

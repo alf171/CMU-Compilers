@@ -21,7 +21,7 @@ pub const LocalId = u32;
 pub const LocalInfo = struct {
     id: LocalId,
     name: []const u8,
-    type: ?TypeInfo,
+    type: TypeInfo,
 
     pub fn duplicate(self: @This(), alloc: std.mem.Allocator) !@This() {
         return LocalInfo{

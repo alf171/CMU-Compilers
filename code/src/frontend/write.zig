@@ -23,23 +23,6 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
                 .print => |p| {
-                    // init fd
-                    const fd = function.nextTemp();
-                    try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                        .dst = fd,
-                        .value = .{ .int = 1 },
-                    } } });
-                    const one = function.nextTemp();
-                    try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                        .dst = one,
-                        .value = .{ .int = 1 },
-                    } } });
-                    const eight = function.nextTemp();
-                    try new_instructions.append(alloc, Instruction{
-                        .lir = .{
-                            .constant = .{ .dst = eight, .value = .{ .int = 8 } },
-                        },
-                    });
                     switch (p.src.type) {
                         .list => |l| {
                             if (l.element.* != .char) {
@@ -66,9 +49,9 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
                             } } });
                         },
-                        else => {
-                            try new_instructions.append(alloc, instruction.*);
-                            continue;
+                        else => |e| {
+                            std.debug.print("dont support print of type {s}\n", .{@tagName(e)});
+                            return error.UnsupportedPrint;
                         },
                     }
                 },

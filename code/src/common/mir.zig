@@ -144,6 +144,7 @@ pub const Instruction = union(enum) {
             .phi => |pi| .{ .operand = pi.dst.operand },
             .range => |r| .{ .operand = r.dst.operand },
             .len => |l| .{ .operand = l.dst },
+            .print => null,
             .lir => |l| try l.getDefines(),
             else => |e| {
                 debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});

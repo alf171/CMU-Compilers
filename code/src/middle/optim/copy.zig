@@ -56,28 +56,34 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) v
                 .store_local => |*sl| {
                     sl.src = resolve(sl.src, copyMap);
                 },
-                .array_literal => |*al| {
-                    for (al.elements) |*elem| {
-                        elem.* = resolve(elem.*, copyMap);
+                .tuple_literal => |*tl| {
+                    for (tl.elements) |*elem| {
+                        switch (elem.*) {
+                            .operand => |*op| op.* = resolve(op.*, copyMap),
+                            .constant => {},
+                        }
                     }
                 },
                 .list_literal => |*ll| {
                     for (ll.elements) |*elem| {
-                        elem.* = resolve(elem.*, copyMap);
+                        switch (elem.*) {
+                            .operand => |*op| op.* = resolve(op.*, copyMap),
+                            .constant => {},
+                        }
                     }
                 },
-                .array_load => |*al| {
-                    al.array.operand = resolve(al.array.operand, copyMap);
-                    al.index = resolve(al.index, copyMap);
+                .tuple_load => |*tl| {
+                    tl.tuple.operand = resolve(tl.tuple.operand, copyMap);
+                    tl.index = resolve(tl.index, copyMap);
                 },
                 .list_load => |*ll| {
                     ll.list.operand = resolve(ll.list.operand, copyMap);
                     ll.index = resolve(ll.index, copyMap);
                 },
-                .array_store => |*as| {
-                    as.array.operand = resolve(as.array.operand, copyMap);
-                    as.index = resolve(as.index, copyMap);
-                    as.src = resolve(as.src, copyMap);
+                .tuple_store => |*ts| {
+                    ts.tuple.operand = resolve(ts.tuple.operand, copyMap);
+                    ts.index = resolve(ts.index, copyMap);
+                    ts.src = resolve(ts.src, copyMap);
                 },
                 .list_store => |*ls| {
                     ls.list.operand = resolve(ls.list.operand, copyMap);

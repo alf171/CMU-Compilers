@@ -33,29 +33,29 @@ fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc:
                 },
                 .lir => |l| {
                     switch (l) {
-                        .array_load => |al| {
-                            const lhs = ranges.get(al.array.operand) orelse {
+                        .tuple_load => |tl| {
+                            const lhs = ranges.get(tl.tuple.operand) orelse {
                                 try new_instructions.append(alloc, instruction.*);
                                 continue;
                             };
                             instruction.* = Instruction{ .lir = .{ .binop = .{
-                                .dst = al.dst,
+                                .dst = tl.dst,
                                 .lhs = lhs.start,
                                 .op = .add,
-                                .rhs = al.index,
+                                .rhs = tl.index,
                             } } };
                             try new_instructions.append(alloc, instruction.*);
                         },
-                        .list_load => |ll| {
-                            const lhs = ranges.get(ll.list.operand) orelse {
+                        .list_load => |tl| {
+                            const lhs = ranges.get(tl.list.operand) orelse {
                                 try new_instructions.append(alloc, instruction.*);
                                 continue;
                             };
                             instruction.* = Instruction{ .lir = .{ .binop = .{
-                                .dst = ll.dst,
+                                .dst = tl.dst,
                                 .lhs = lhs.start,
                                 .op = .add,
-                                .rhs = ll.index,
+                                .rhs = tl.index,
                             } } };
                             try new_instructions.append(alloc, instruction.*);
                         },

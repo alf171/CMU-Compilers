@@ -109,7 +109,11 @@ pub const IrBuilder = struct {
         const id = self.next_local;
         const owned_name = try alloc.dupe(u8, name);
         try self.locals_by_name.put(owned_name, id);
-        try self.locals.append(alloc, LocalInfo{ .id = id, .name = owned_name, .type = typeInfo });
+        try self.locals.append(alloc, LocalInfo{
+            .id = id,
+            .name = owned_name,
+            .type = typeInfo orelse .any,
+        });
         self.next_local += 1;
         return id;
     }

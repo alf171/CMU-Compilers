@@ -7,7 +7,7 @@ def _print_int_helper(d: int) -> None:
         _print_int_helper(prev)
 
     digit = d % 10
-    buf = [digit + ascii_zero]
+    buf = (digit + ascii_zero,)
     write(1, buf, 1)
 
 # print(d: int) delegates to this method
