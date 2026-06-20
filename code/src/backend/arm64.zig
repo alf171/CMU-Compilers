@@ -80,12 +80,12 @@ fn emitFunction(
                         // str: src, dst (register -> memory)
                         .store_local => |sl| {
                             const src = try regFor(sl.src, colors);
-                            try out.print(alloc, "\tstr {s}, [x29, #-{d}]\n", .{ src, localOffset(sl.local.id) });
+                            try emitStackStore(out, src, localOffset(sl.local.id), alloc);
                         },
                         // ldr: dst, src (memory -> register)
                         .load_local => |ll| {
                             const dst = try regFor(ll.dst, colors);
-                            try out.print(alloc, "\tldr {s}, [x29, #-{d}]\n", .{ dst, localOffset(ll.local.id) });
+                            try emitStackLoad(out, dst, localOffset(ll.local.id), alloc);
                         },
                         .move => |m| {
                             switch (m.dst) {
@@ -101,7 +101,7 @@ fn emitFunction(
                                         // reg <- mem
                                         .mem => |slot| {
                                             const offset = spillOffset(local_stack_size, slot);
-                                            try out.print(alloc, "\tldr {s}, [x29, #-{d}]\n", .{ dst, offset });
+                                            try emitStackLoad(out, dst, offset, alloc);
                                         },
                                         else => return error.NotImpl,
                                     }
@@ -112,7 +112,7 @@ fn emitFunction(
                                         .temp => {
                                             const offset = spillOffset(local_stack_size, slot);
                                             const src = try regFor(m.src, colors);
-                                            try out.print(alloc, "\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
+                                            try emitStackStore(out, src, offset, alloc);
                                         },
                                         .mem => {
                                             return error.MemoryToMemoryMoveDetected;
@@ -387,6 +387,34 @@ fn restoreCallleSafeReg(out: *ArrayList(u8), alloc: std.mem.Allocator) !void {
         const reg1 = CalleeSafeRegisters[i];
         const reg2 = CalleeSafeRegisters[i + 1];
         try out.print(alloc, "\tldp {s}, {s}, [sp], #16\n", .{ reg1, reg2 });
+    }
+}
+
+fn emitStackLoad(
+    out: *ArrayList(u8),
+    dst: []const u8,
+    offset: usize,
+    alloc: std.mem.Allocator,
+) !void {
+    if (offset <= 256) {
+        try out.print(alloc, "\tldr {s}, [x29, #-{d}]\n", .{ dst, offset });
+    } else {
+        try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ ScratchReg, offset });
+        try out.print(alloc, "\tldr {s}, [{s}]\n", .{ dst, ScratchReg });
+    }
+}
+
+fn emitStackStore(
+    out: *ArrayList(u8),
+    src: []const u8,
+    offset: usize,
+    alloc: std.mem.Allocator,
+) !void {
+    if (offset <= 256) {
+        try out.print(alloc, "\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
+    } else {
+        try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ ScratchReg, offset });
+        try out.print(alloc, "\tstr {s}, [{s}]\n", .{ src, ScratchReg });
     }
 }
 
