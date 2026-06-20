@@ -65,9 +65,7 @@ fn emitFunction(
                         .constant => |c| {
                             const dst = try regFor(c.dst, colors);
                             switch (c.value) {
-                                .int => |value| {
-                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, value });
-                                },
+                                .int => |value| try emitMov(out, dst, value, alloc),
                                 .bool => |value| {
                                     try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, @intFromBool(value) });
                                 },
@@ -512,10 +510,34 @@ fn emitConstantToReg(
     alloc: std.mem.Allocator,
 ) !void {
     switch (value) {
-        .int => |i| try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, i }),
+        .int => |i| try emitMov(out, dst, i, alloc),
         .char => |c| try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, c }),
         .bool => |b| try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, @intFromBool(b) }),
         .float => return error.NotImpl,
+    }
+}
+
+fn emitMov(out: *ArrayList(u8), dst: []const u8, value: i64, alloc: std.mem.Allocator) !void {
+    if (value < 0) {
+        const positive: u64 = @intCast(-value);
+        try emitMovUnsigned(out, dst, positive, alloc);
+        try out.print(alloc, "\tneg {s}, {s}\n", .{ dst, dst });
+        return;
+    }
+    try emitMovUnsigned(out, dst, @intCast(value), alloc);
+}
+
+fn emitMovUnsigned(out: *ArrayList(u8), dst: []const u8, value: u64, alloc: std.mem.Allocator) !void {
+    // [0..] [0..] [0..] [<lower>]
+    const lower: u16 = @truncate(value);
+    // also zeros out other portions
+    try out.print(alloc, "\tmovz {s}, #{d}\n", .{ dst, lower });
+    // [<64>] [<32>] [<16>] [<done>]
+    inline for (.{ 16, 32, 48 }) |shift| {
+        const shifted_value: u16 = @truncate(value >> shift);
+        if (shifted_value != 0) {
+            try out.print(alloc, "\tmovk {s}, {d}, lsl #{d}\n", .{ dst, shifted_value, shift });
+        }
     }
 }
 
