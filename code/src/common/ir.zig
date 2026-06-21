@@ -54,6 +54,7 @@ pub const ConstValue = union(enum) {
     }
 };
 
+// TODO: decide on better name
 pub const LiteralElement = union(enum) {
     operand: Operand,
     constant: ConstValue,

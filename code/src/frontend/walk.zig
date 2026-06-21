@@ -242,8 +242,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             const instruction = Instruction{ .lir = .{ .binop = .{
                 .dst = dst,
                 .op = op,
-                .lhs = lhs.operand,
-                .rhs = rhs.operand,
+                .lhs = .{ .operand = lhs.operand },
+                .rhs = .{ .operand = rhs.operand },
             } } };
             try irBuilder.emit(instruction, alloc);
             return TypedOperand{ .operand = dst, .type = .int };
@@ -552,9 +552,9 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                             const data = irBuilder.nextTemp();
                             try irBuilder.emit(.{ .lir = .{ .binop = .{
                                 .dst = data,
-                                .lhs = buf.operand,
+                                .lhs = .{ .operand = buf.operand },
                                 .op = .add,
-                                .rhs = eight,
+                                .rhs = .{ .operand = eight },
                             } } }, alloc);
                             try irBuilder.emit(.{ .lir = .{ .write = .{
                                 .fd = fd.operand,
@@ -646,8 +646,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             try irBuilder.emit(.{ .lir = .{ .select = .{
                 .dst = dst,
                 .condition = condition.operand,
-                .if_value = if_value.operand,
-                .else_value = else_value.operand,
+                .if_value = .{ .operand = if_value.operand },
+                .else_value = .{ .operand = else_value.operand },
             } } }, alloc);
 
             return .{
@@ -893,9 +893,9 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
             const index_next = irBuilder_.nextTemp();
             try irBuilder_.emit(Instruction{ .lir = .{ .binop = .{
                 .dst = index_next,
+                .lhs = .{ .operand = index.operand },
                 .op = .add,
-                .lhs = index.operand,
-                .rhs = one,
+                .rhs = .{ .operand = one },
             } } }, alloc_);
             carries[0].next = TypedOperand{
                 .operand = index_next,
@@ -1265,7 +1265,8 @@ test "while loop" {
     var irBuilder = try IrBuilder.init(alloc);
     defer irBuilder.deinit(alloc);
     errdefer irBuilder.program.deinit(alloc);
-    var program = try walkAstIntoBuilder(tree, &irBuilder, alloc);
+    try walkAstIntoBuilder(tree, &irBuilder, alloc);
+    var program = irBuilder.program;
     defer program.deinit(alloc);
 
     try std.testing.expectEqual(@as(usize, 4), program.main.blocks.items.len);
@@ -1286,7 +1287,7 @@ test "while loop" {
         Instruction{ .lir = .{ .store_local = .{ .local = LocalInfo{
             .id = 0,
             .name = "x",
-            .type = null,
+            .type = .any,
         }, .src = .{ .temp = .{ .id = 0, .function_id = 0 } } } } },
         entry[1],
     );

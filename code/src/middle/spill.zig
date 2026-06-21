@@ -273,7 +273,7 @@ test "spill reg function" {
     });
     var function = Function{
         .name = "test",
-        .idx = 0,
+        .id = 0,
         .blocks = blocks,
         .entry_block = 0,
         .params = &.{},
@@ -293,7 +293,7 @@ test "spill reg function" {
     // t1 <- mem_slot
     // t2 <- op t1, B
     // mem_slot <- t2
-    var next_temp: u8 = 2;
+    var next_temp: TempId = 2;
     try spillRegInFunction(&function, 0, A, 0, &next_temp, alloc);
 
     const new_instructions = function.blocks.items[0].instructions.items;

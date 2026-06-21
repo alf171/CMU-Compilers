@@ -74,7 +74,6 @@ fn hasSideEffects(instruction: Instruction) bool {
                 .list_store,
                 .function_call,
                 .function_return,
-                .store_local,
                 .write,
                 => true,
                 else => false,

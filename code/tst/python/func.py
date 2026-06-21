@@ -1,6 +1,9 @@
-def foobar(x: int, y: int) -> tuple[int, int]:
-    return x * 2, y * 2
+def f(c: bool) -> int:
+  if c:
+      x = 1
+  else:
+      x = 2
+  return x
 
-x, y = foobar(1, 2)
-print(x)
+y = f(True)
 print(y)

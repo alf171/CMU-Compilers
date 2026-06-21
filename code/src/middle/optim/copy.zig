@@ -3,63 +3,83 @@ const ArrayList = std.array_list.Managed;
 
 const BlockId = @import("common").ir.BlockId;
 const BasicBlock = @import("common").ir.BasicBlock;
+const Function = @import("common").ir.Function;
 const Program = @import("common").program.Program;
 const Operand = @import("common").alloc.Operand;
+const ConstValue = @import("common").ir.ConstValue;
+const LiteralElement = @import("common").ir.LiteralElement;
 const Instruction = @import("common").mir.Instruction;
 
 const HashMap = std.AutoHashMap;
 
 pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
-    for (program.main.blocks.items) |block| {
+    try runFunction(&program.main, alloc);
+    for (program.functions.items) |*function| {
+        try runFunction(function, alloc);
+    }
+}
+
+pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
+    for (function.blocks.items) |block| {
         // copy prop will only work within a basic block
-        var copyMap = HashMap(Operand, Operand).init(alloc);
+        var copyMap = HashMap(Operand, LiteralElement).init(alloc);
         defer copyMap.deinit();
 
         for (block.instructions.items) |*instruction| {
-            rewriteUses(instruction, &copyMap);
+            try rewriteUses(instruction, &copyMap);
 
             if (instruction.* == .lir) {
-                if (instruction.lir == .move) {
-                    const dst = instruction.lir.move.dst;
-                    const src = resolve(instruction.lir.move.src, &copyMap);
-
-                    if (!dst.equal(src)) {
-                        try copyMap.put(dst, src);
-                    }
+                switch (instruction.lir) {
+                    .move => |mov| {
+                        const dst = mov.dst;
+                        const src = try resolve(.{ .operand = mov.src }, &copyMap);
+                        switch (src) {
+                            .constant => try copyMap.put(dst, src),
+                            .operand => |op| {
+                                if (!dst.equal(op)) {
+                                    try copyMap.put(dst, src);
+                                }
+                            },
+                        }
+                    },
+                    .constant => |c| {
+                        try copyMap.put(c.dst, .{ .constant = c.value });
+                    },
+                    else => {},
                 }
             }
         }
     }
 }
 
-fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) void {
+fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, LiteralElement)) !void {
     switch (instruction.*) {
         .lir => |*l| {
             switch (l.*) {
                 .binop => |*bop| {
-                    bop.lhs = resolve(bop.lhs, copyMap);
-                    bop.rhs = resolve(bop.rhs, copyMap);
+                    bop.lhs = try resolve(bop.lhs, copyMap);
+                    bop.rhs = try resolve(bop.rhs, copyMap);
                 },
                 .compare => |*c| {
-                    c.lhs = resolve(c.lhs, copyMap);
-                    c.rhs = resolve(c.rhs, copyMap);
+                    c.lhs = try resolveOperand(c.lhs, copyMap);
+                    c.rhs = try resolveOperand(c.rhs, copyMap);
                 },
                 .move => |*m| {
-                    m.src = resolve(m.src, copyMap);
+                    m.src = try resolveOperand(m.src, copyMap);
                 },
                 .unaryop => |*uo| {
-                    uo.src = resolve(uo.src, copyMap);
+                    uo.src = try resolveOperand(uo.src, copyMap);
                 },
                 .branch => |*b| {
-                    b.condition = resolve(b.condition, copyMap);
+                    b.condition = try resolveOperand(b.condition, copyMap);
                 },
                 .store_local => |*sl| {
-                    sl.src = resolve(sl.src, copyMap);
+                    sl.src = try resolveOperand(sl.src, copyMap);
                 },
                 .tuple_literal => |*tl| {
                     for (tl.elements) |*elem| {
                         switch (elem.*) {
-                            .operand => |*op| op.* = resolve(op.*, copyMap),
+                            .operand => |*op| op.* = try resolveOperand(op.*, copyMap),
                             .constant => {},
                         }
                     }
@@ -67,49 +87,64 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, Operand)) v
                 .list_literal => |*ll| {
                     for (ll.elements) |*elem| {
                         switch (elem.*) {
-                            .operand => |*op| op.* = resolve(op.*, copyMap),
+                            .operand => |*op| op.* = try resolveOperand(op.*, copyMap),
                             .constant => {},
                         }
                     }
                 },
                 .tuple_load => |*tl| {
-                    tl.tuple.operand = resolve(tl.tuple.operand, copyMap);
-                    tl.index = resolve(tl.index, copyMap);
+                    tl.tuple.operand = try resolveOperand(tl.tuple.operand, copyMap);
+                    tl.index = try resolveOperand(tl.index, copyMap);
                 },
                 .list_load => |*ll| {
-                    ll.list.operand = resolve(ll.list.operand, copyMap);
-                    ll.index = resolve(ll.index, copyMap);
+                    ll.list.operand = try resolveOperand(ll.list.operand, copyMap);
+                    ll.index = try resolveOperand(ll.index, copyMap);
                 },
                 .tuple_store => |*ts| {
-                    ts.tuple.operand = resolve(ts.tuple.operand, copyMap);
-                    ts.index = resolve(ts.index, copyMap);
-                    ts.src = resolve(ts.src, copyMap);
+                    ts.tuple.operand = try resolveOperand(ts.tuple.operand, copyMap);
+                    ts.index = try resolveOperand(ts.index, copyMap);
+                    ts.src = try resolveOperand(ts.src, copyMap);
                 },
                 .list_store => |*ls| {
-                    ls.list.operand = resolve(ls.list.operand, copyMap);
-                    ls.index = resolve(ls.index, copyMap);
-                    ls.src = resolve(ls.src, copyMap);
+                    ls.list.operand = try resolveOperand(ls.list.operand, copyMap);
+                    ls.index = try resolveOperand(ls.index, copyMap);
+                    ls.src = try resolveOperand(ls.src, copyMap);
                 },
                 .select => |*s| {
-                    s.condition = resolve(s.condition, copyMap);
-                    s.if_value = resolve(s.if_value, copyMap);
-                    s.else_value = resolve(s.else_value, copyMap);
+                    s.condition = try resolveOperand(s.condition, copyMap);
+                    s.if_value = try resolve(s.if_value, copyMap);
+                    s.else_value = try resolve(s.else_value, copyMap);
                 },
                 else => {},
             }
         },
         .print => |*pi| {
-            pi.src.operand = resolve(pi.src.operand, copyMap);
+            pi.src.operand = try resolveOperand(pi.src.operand, copyMap);
         },
         else => {},
     }
 }
 
 // this does not protect against cycles
-fn resolve(op: Operand, copyMap: *HashMap(Operand, Operand)) Operand {
+fn resolveOperand(op: Operand, copyMap: *HashMap(Operand, LiteralElement)) !Operand {
     var cur = op;
     while (copyMap.get(cur)) |next| {
-        cur = next;
+        switch (next) {
+            .operand => |cur_op| cur = cur_op,
+            .constant => return op,
+        }
+    }
+    return cur;
+}
+
+fn resolve(init: LiteralElement, copyMap: *HashMap(Operand, LiteralElement)) !LiteralElement {
+    var cur: LiteralElement = init;
+    std.debug.assert(cur != .constant);
+    while (copyMap.get(cur.operand)) |next| {
+        switch (next) {
+            .operand => |cur_op| cur = .{ .operand = cur_op },
+            .constant => |cur_const| return .{ .constant = cur_const },
+        }
     }
     return cur;
 }

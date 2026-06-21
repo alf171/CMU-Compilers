@@ -13,13 +13,14 @@ def matmul(
             for n in range(len(_M[0])):
                 acc = acc + (_M[m][n] * _N[n][k])
             _P[m][k] = acc
-    print(_P[0][0])
-    print(_P[1][1])
-    print(_P[2][2])
-    print(_P[3][3])
-    print(_P[4][4])
+    # print(_P[0][0])
+    # print(_P[1][1])
+    # print(_P[2][2])
+    # print(_P[3][3])
+    # print(_P[4][4])
     return
 
-matmul(
-    M, N, P
-)
+for i in range(0, 1000000):
+    matmul(
+        M, N, P
+    )

@@ -56,8 +56,12 @@ fn lowerBlocks(
                         },
                         .binop => |binop| {
                             try line.defines.ops.put(binop.dst, {});
-                            try line.uses.ops.put(binop.lhs, {});
-                            try line.uses.ops.put(binop.rhs, {});
+                            if (binop.lhs == .operand) {
+                                try line.uses.ops.put(binop.lhs.operand, {});
+                            }
+                            if (binop.rhs == .operand) {
+                                try line.uses.ops.put(binop.rhs.operand, {});
+                            }
                         },
                         .store_local => |sl| {
                             try locals.put(sl.local.id, sl.src);
@@ -145,8 +149,12 @@ fn lowerBlocks(
                         .select => |s| {
                             try line.defines.ops.put(s.dst, {});
                             try line.uses.ops.put(s.condition, {});
-                            try line.uses.ops.put(s.if_value, {});
-                            try line.uses.ops.put(s.else_value, {});
+                            if (s.if_value == .operand) {
+                                try line.uses.ops.put(s.if_value.operand, {});
+                            }
+                            if (s.else_value == .operand) {
+                                try line.uses.ops.put(s.else_value.operand, {});
+                            }
                         },
                         else => |e| {
                             std.debug.print("{s} isn't implemented\n", .{@tagName(e)});

@@ -40,9 +40,9 @@ fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc:
                             };
                             instruction.* = Instruction{ .lir = .{ .binop = .{
                                 .dst = tl.dst,
-                                .lhs = lhs.start,
+                                .lhs = .{ .operand = lhs.start },
                                 .op = .add,
-                                .rhs = tl.index,
+                                .rhs = .{ .operand = tl.index },
                             } } };
                             try new_instructions.append(alloc, instruction.*);
                         },
@@ -53,9 +53,9 @@ fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc:
                             };
                             instruction.* = Instruction{ .lir = .{ .binop = .{
                                 .dst = tl.dst,
-                                .lhs = lhs.start,
+                                .lhs = .{ .operand = lhs.start },
                                 .op = .add,
-                                .rhs = tl.index,
+                                .rhs = .{ .operand = tl.index },
                             } } };
                             try new_instructions.append(alloc, instruction.*);
                         },
@@ -71,9 +71,9 @@ fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc:
                     };
                     try new_instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
                         .dst = l.dst,
-                        .lhs = range.end,
+                        .lhs = .{ .operand = range.end },
                         .op = .sub,
-                        .rhs = range.start,
+                        .rhs = .{ .operand = range.start },
                     } } });
                 },
                 else => {

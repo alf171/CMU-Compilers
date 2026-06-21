@@ -92,7 +92,7 @@ test "cycle" {
     const alloc = std.testing.allocator;
     var function = Function{
         .name = "test",
-        .idx = 0,
+        .id = 0,
         .blocks = .empty,
         .params = &.{},
         .entry_block = 0,

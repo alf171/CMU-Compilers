@@ -11,11 +11,14 @@ const Function = common.ir.Function;
 const getElementType = common.types.getElementType;
 const color = @import("middle").color;
 const regFor = @import("reg.zig").regFor;
+const valueToReg = @import("reg.zig").valueToReg;
 const paramRegFor = @import("reg.zig").paramRegFor;
+const valueAsImm = @import("reg.zig").valueAsImm;
 const FirstParamRegister = @import("reg.zig").first_param_reg;
 const CalleeSafeRegisters = @import("reg.zig").callee_safe_regs;
 const CalleReturnRegister = @import("reg.zig").callee_return_reg;
 const ScratchReg = @import("reg.zig").scratch_reg;
+const ScratchReg2 = @import("reg.zig").scratch_reg_2;
 
 pub fn emit(program: *const Program, colors: *const color.ColoredGraph, alloc: std.mem.Allocator) ![]u8 {
     var out = ArrayList(u8).empty;
@@ -123,17 +126,37 @@ fn emitFunction(
                         },
                         .binop => |binop| {
                             const dst = try regFor(binop.dst, colors);
-                            const lhs = try regFor(binop.lhs, colors);
-                            const rhs = try regFor(binop.rhs, colors);
+                            const lhs = try valueToReg(binop.lhs, out, ScratchReg, colors, alloc);
 
                             switch (binop.op) {
-                                .add => try out.print(alloc, "\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
-                                .mul => try out.print(alloc, "\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
-                                .sub => try out.print(alloc, "\tsub {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
-                                .div => try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
+                                // can use imm
+                                .add => {
+                                    const rhs_reg = if (valueAsImm(binop.rhs)) |rhs_imm|
+                                        try std.fmt.allocPrint(alloc, "#{d}", .{rhs_imm})
+                                    else
+                                        try regFor(binop.rhs.operand, colors);
+                                    try out.print(alloc, "\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
+                                },
+                                .sub => {
+                                    const rhs_reg = if (valueAsImm(binop.rhs)) |rhs_imm|
+                                        try std.fmt.allocPrint(alloc, "#{d}", .{rhs_imm})
+                                    else
+                                        try regFor(binop.rhs.operand, colors);
+                                    try out.print(alloc, "\tsub {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
+                                },
+                                // cant use imm
+                                .mul => {
+                                    const rhs_reg = try valueToReg(binop.rhs, out, ScratchReg2, colors, alloc);
+                                    try out.print(alloc, "\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
+                                },
+                                .div => {
+                                    const rhs_reg = try valueToReg(binop.rhs, out, ScratchReg2, colors, alloc);
+                                    try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
+                                },
                                 .mod => {
-                                    try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ ScratchReg, lhs, rhs });
-                                    try out.print(alloc, "\tmsub {s}, {s}, {s}, {s}\n", .{ dst, ScratchReg, rhs, lhs });
+                                    const rhs_reg = try valueToReg(binop.rhs, out, ScratchReg2, colors, alloc);
+                                    try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ ScratchReg, lhs, rhs_reg });
+                                    try out.print(alloc, "\tmsub {s}, {s}, {s}, {s}\n", .{ dst, ScratchReg, rhs_reg, lhs });
                                 },
                                 else => |op| {
                                     std.debug.print("op is not supported {s}\n", .{@tagName(op)});
@@ -314,8 +337,9 @@ fn emitFunction(
                         },
                         .select => |s| {
                             const dst = try regFor(s.dst, colors);
-                            const if_reg = try regFor(s.if_value, colors);
-                            const else_reg = try regFor(s.else_value, colors);
+                            const if_reg = try valueToReg(s.if_value, out, ScratchReg, colors, alloc);
+                            const else_reg = try valueToReg(s.else_value, out, ScratchReg2, colors, alloc);
+
                             const condition = try regFor(s.condition, colors);
                             try out.print(alloc, "\tcmp {s}, #0\n", .{condition});
                             try out.print(alloc, "\tcsel {s}, {s}, {s}, ne\n", .{ dst, if_reg, else_reg });

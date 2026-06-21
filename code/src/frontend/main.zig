@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @import("python.zig").c;
-const walkAst = @import("walk.zig").walkAst;
+const walkAstIntoBuilder = @import("walk.zig").walkAstIntoBuilder;
+const IrBuilder = @import("builder.zig").IrBuilder;
 
 pub fn main(init: std.process.Init) !void {
     c.Py_Initialize();
@@ -18,9 +19,10 @@ pub fn main(init: std.process.Init) !void {
     const tree = c.PyObject_CallFunction(parse_fn, "s", code);
     std.debug.assert(tree != null);
 
-    var program = try walkAst(tree, alloc);
-    defer program.deinit(alloc);
-    try program.print();
+    var irBuilder = try IrBuilder.init(alloc);
+    irBuilder.deinit(alloc);
+    try walkAstIntoBuilder(tree, &irBuilder, alloc);
+    defer irBuilder.program.deinit(alloc);
 }
 
 test "x = 1 + 2" {
@@ -35,8 +37,12 @@ test "x = 1 + 2" {
     const tree = c.PyObject_CallFunction(parse_fn, "s", code);
     std.debug.assert(tree != null);
 
-    var program = try walkAst(tree, alloc);
+    var irBuilder = try IrBuilder.init(alloc);
+    defer irBuilder.deinit(alloc);
+    try walkAstIntoBuilder(tree, &irBuilder, alloc);
+    var program = irBuilder.program;
     defer program.deinit(alloc);
+
     try std.testing.expectEqual(program.main.blocks.items.len, 1);
     // block0:
     try std.testing.expectEqual(program.main.blocks.items[0].id, 0);
@@ -96,8 +102,12 @@ test "x = true != false" {
     const tree = c.PyObject_CallFunction(parse_fn, "s", code);
     std.debug.assert(tree != null);
 
-    var program = try walkAst(tree, alloc);
+    var irBuilder = try IrBuilder.init(alloc);
+    defer irBuilder.deinit(alloc);
+    try walkAstIntoBuilder(tree, &irBuilder, alloc);
+    var program = irBuilder.program;
     defer program.deinit(alloc);
+
     try std.testing.expectEqual(program.main.blocks.items.len, 1);
     // block0:
     try std.testing.expectEqual(program.main.blocks.items[0].id, 0);

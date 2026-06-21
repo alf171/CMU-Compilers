@@ -29,8 +29,8 @@ pub const Instruction = union(enum) {
     binop: struct {
         dst: Operand,
         op: BinOp,
-        lhs: Operand,
-        rhs: Operand,
+        lhs: LiteralElement,
+        rhs: LiteralElement,
     },
     move: struct {
         dst: Operand,
@@ -113,8 +113,8 @@ pub const Instruction = union(enum) {
     select: struct {
         dst: Operand,
         condition: Operand,
-        if_value: Operand,
-        else_value: Operand,
+        if_value: LiteralElement,
+        else_value: LiteralElement,
     },
     unkown,
 
@@ -286,8 +286,12 @@ pub const Instruction = union(enum) {
                 if (sl.src.equal(old)) sl.src = new;
             },
             .binop => |*bop| {
-                if (bop.lhs.equal(old)) bop.lhs = new;
-                if (bop.rhs.equal(old)) bop.rhs = new;
+                if (bop.lhs == .operand and bop.lhs.operand.equal(old)) {
+                    bop.lhs.operand = new;
+                }
+                if (bop.rhs == .operand and bop.rhs.operand.equal(old)) {
+                    bop.rhs.operand = new;
+                }
             },
             .move => |*mov| {
                 if (mov.src.equal(old)) mov.src = new;
@@ -342,8 +346,12 @@ pub const Instruction = union(enum) {
             .constant => {},
             .select => |*s| {
                 if (s.condition.equal(old)) s.condition = new;
-                if (s.if_value.equal(old)) s.if_value = new;
-                if (s.else_value.equal(old)) s.else_value = new;
+                if (s.if_value == .operand and s.if_value.operand.equal(old)) {
+                    s.if_value.operand = new;
+                }
+                if (s.else_value == .operand and s.else_value.operand.equal(old)) {
+                    s.else_value.operand = new;
+                }
             },
             else => |e| {
                 debugPrint("uses cant handle {s}\n", .{@tagName(e)});
@@ -432,8 +440,12 @@ pub const Instruction = union(enum) {
                 try res.append(alloc, .{ .local = ll.local.id });
             },
             .binop => |bop| {
-                try res.append(alloc, .{ .operand = bop.lhs });
-                try res.append(alloc, .{ .operand = bop.rhs });
+                if (bop.lhs == .operand) {
+                    try res.append(alloc, .{ .operand = bop.lhs.operand });
+                }
+                if (bop.rhs == .operand) {
+                    try res.append(alloc, .{ .operand = bop.rhs.operand });
+                }
             },
             .move => |m| {
                 try res.append(alloc, .{ .operand = m.src });
@@ -494,8 +506,12 @@ pub const Instruction = union(enum) {
             },
             .select => |s| {
                 try res.append(alloc, .{ .operand = s.condition });
-                try res.append(alloc, .{ .operand = s.if_value });
-                try res.append(alloc, .{ .operand = s.else_value });
+                if (s.if_value == .operand) {
+                    try res.append(alloc, .{ .operand = s.if_value.operand });
+                }
+                if (s.else_value == .operand) {
+                    try res.append(alloc, .{ .operand = s.else_value.operand });
+                }
             },
             .function_return => |fc| {
                 if (fc.value) |op| {
