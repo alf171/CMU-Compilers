@@ -115,7 +115,7 @@ pub fn walkLoop(
     }
 
     const condition_expr = switch (condition) {
-        .expr => |cond| (try walkExpr(cond, irBuilder, alloc)).operand,
+        .expr => |cond| (try walkExpr(cond, irBuilder, null, alloc)).operand,
         .compare => |comp| blk: {
             const dst = irBuilder.nextTemp();
             const lhs = irBuilder.local_values.get(comp.local) orelse return error.LocalNotFound;

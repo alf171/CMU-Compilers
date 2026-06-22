@@ -4,7 +4,10 @@ const std = @import("std");
 // things like range dont know their size at comptime
 pub const TypeInfo = union(enum) {
     void,
-    int,
+    int: union(enum) {
+        i64,
+        i32,
+    },
     float,
     bool,
     char,
@@ -18,11 +21,11 @@ pub const TypeInfo = union(enum) {
     any,
 };
 
+/// expects a list input type
 pub fn getElementType(typeInfo: TypeInfo) !TypeInfo {
     return switch (typeInfo) {
         .list => |list_type| list_type.element.*,
-        // ouch
-        .any, .tuple => .int,
+        .tuple => .any,
         else => error.ExpectedListType,
     };
 }
@@ -43,7 +46,10 @@ pub fn ownedPointer(t: TypeInfo, alloc: std.mem.Allocator) !*TypeInfo {
 pub fn sizeOfType(t: TypeInfo) !usize {
     return switch (t) {
         .bool, .char => 1,
-        .int => 8,
+        .int => |i| switch (i) {
+            .i64 => 8,
+            .i32 => 4,
+        },
         .list => 8,
         .tuple => 8,
         else => error.NotImpl,

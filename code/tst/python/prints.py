@@ -1,6 +1,5 @@
-
 a = "foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz"
-b: int = 123
+b: i32 = 123
 c: bool = False
 d: str = "FALSE" if c else "TRUE"
 # e: float = 1.25

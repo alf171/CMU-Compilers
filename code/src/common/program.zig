@@ -20,7 +20,7 @@ pub const Program = struct {
                 .blocks = blocks,
                 .entry_block = 0,
                 .params = &.{},
-                .return_type = .int,
+                .return_type = .{ .int = .i64 },
                 .next_temp = 0,
             },
             .functions = .empty,

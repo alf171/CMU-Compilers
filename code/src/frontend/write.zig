@@ -35,6 +35,13 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
                             } } });
                         },
+                        // .tuple => {
+                        //     try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
+                        //         .dst = null,
+                        //         .function_name = "print_string",
+                        //         .args = try alloc.dupe(TypedOperand, &.{p.src}),
+                        //     } } });
+                        // },
                         .bool => {
                             try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
                                 .dst = null,

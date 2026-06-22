@@ -72,7 +72,7 @@ pub fn walkStmt(raw_stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloc
         .AnnotatedAssign => try walkAnnotatedAssignment(raw_stmt, irBuilder, alloc),
         .Expr => {
             const value = c.PyObject_GetAttrString(raw_stmt, "value");
-            _ = try walkExpr(value, irBuilder, alloc);
+            _ = try walkExpr(value, irBuilder, null, alloc);
         },
         .If => try walkIf(raw_stmt, irBuilder, alloc),
         .While => try walkWhile(raw_stmt, irBuilder, alloc),
@@ -96,7 +96,7 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
     std.debug.assert(lhs != null);
 
     const rhs = c.PyObject_GetAttrString(stmt, "value");
-    const rhs_value = try walkExpr(rhs, irBuilder, alloc);
+    const rhs_value = try walkExpr(rhs, irBuilder, null, alloc);
 
     const expr = getExprKind(lhs);
     switch (expr) {
@@ -121,10 +121,10 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
         .Subscript => {
             const slice_obj = c.PyObject_GetAttrString(lhs, "slice");
             std.debug.assert(slice_obj != null);
-            const slice = try walkExpr(slice_obj, irBuilder, alloc);
+            const slice = try walkExpr(slice_obj, irBuilder, null, alloc);
             const value_obj = c.PyObject_GetAttrString(lhs, "value");
             std.debug.assert(value_obj != null);
-            const container = try walkExpr(value_obj, irBuilder, alloc);
+            const container = try walkExpr(value_obj, irBuilder, null, alloc);
 
             switch (container.type) {
                 .tuple => {
@@ -184,7 +184,7 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
                     .local = .{
                         .id = local,
                         .name = try alloc.dupe(u8, std.mem.span(id)),
-                        .type = .int,
+                        .type = elem_type,
                     },
                     .src = elem_dst,
                 } } }, alloc);
@@ -206,24 +206,24 @@ fn walkAnnotatedAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.me
     const target_id_obj = c.PyObject_GetAttrString(target, "id");
     const target_id = c.PyUnicode_AsUTF8(target_id_obj);
 
-    const rhs = c.PyObject_GetAttrString(stmt, "value");
-    const rhs_value = try walkExpr(rhs, irBuilder, alloc);
     const annotation = c.PyObject_GetAttrString(stmt, "annotation");
+    const annotation_type = try parseTypeAnnotation(annotation, alloc);
+    const rhs = c.PyObject_GetAttrString(stmt, "value");
+    const rhs_value = try walkExpr(rhs, irBuilder, annotation_type, alloc);
 
-    const type_ = try parseTypeAnnotation(annotation, alloc);
-    const local = try irBuilder.getOrCreateLocal(std.mem.span(target_id), type_, alloc);
+    const local = try irBuilder.getOrCreateLocal(std.mem.span(target_id), annotation_type, alloc);
     try irBuilder.local_values.put(local, rhs_value);
     try irBuilder.emit(Instruction{ .lir = .{ .store_local = .{
         .local = .{
             .id = local,
             .name = try alloc.dupe(u8, std.mem.span(target_id)),
-            .type = type_,
+            .type = annotation_type,
         },
         .src = rhs_value.operand,
     } } }, alloc);
 }
 
-pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !TypedOperand {
+pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo, alloc: std.mem.Allocator) !TypedOperand {
     switch (getExprKind(stmt)) {
         .BinOp => {
             const left = c.PyObject_GetAttrString(stmt, "left");
@@ -231,14 +231,13 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
 
             const op = try getBinOp(stmt);
             // order here will impact temp numbering
-            const lhs = try walkExpr(left, irBuilder, alloc);
-            const rhs = try walkExpr(right, irBuilder, alloc);
+            const lhs = try walkExpr(left, irBuilder, null, alloc);
+            const rhs = try walkExpr(right, irBuilder, null, alloc);
             if (lhs.type != .int and rhs.type != .int) {
                 return error.UnsupportedBinOp;
             }
 
             const dst = irBuilder.nextTemp();
-
             const instruction = Instruction{ .lir = .{ .binop = .{
                 .dst = dst,
                 .op = op,
@@ -246,11 +245,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 .rhs = .{ .operand = rhs.operand },
             } } };
             try irBuilder.emit(instruction, alloc);
-            return TypedOperand{ .operand = dst, .type = .int };
+            return TypedOperand{ .operand = dst, .type = .{ .int = .i64 } };
         },
         .UnaryOp => {
             const operand_obj = c.PyObject_GetAttrString(stmt, "operand");
-            const src = try walkExpr(operand_obj, irBuilder, alloc);
+            const src = try walkExpr(operand_obj, irBuilder, null, alloc);
             const dst = irBuilder.nextTemp();
             const op = try getUnaryOp(stmt);
             try irBuilder.emit(Instruction{ .lir = .{ .unaryop = .{
@@ -258,7 +257,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 .op = op,
                 .src = src.operand,
             } } }, alloc);
-            return TypedOperand{ .operand = dst, .type = .int };
+            return TypedOperand{ .operand = dst, .type = .{ .int = .i64 } };
         },
         .Constant => {
             const value_obj = c.PyObject_GetAttrString(stmt, "value");
@@ -268,7 +267,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 const value = ConstValue{ .int = c.PyLong_AsLong(value_obj) };
                 const dst = irBuilder.nextTemp();
                 try irBuilder.emit(Instruction{ .lir = .{ .constant = .{ .dst = dst, .value = value } } }, alloc);
-                return TypedOperand{ .operand = dst, .type = .int };
+                return TypedOperand{ .operand = dst, .type = .{ .int = .i64 } };
             } else if (std.mem.eql(u8, value_type, "bool")) {
                 const value = ConstValue{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
                 const dst = irBuilder.nextTemp();
@@ -291,13 +290,19 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 try elements.append(alloc, .{ .constant = .{
                     .char = 0,
                 } });
+                try element_types.append(alloc, .char);
 
-                const _type = TypeInfo{ .tuple = .{
-                    .elements = try element_types.toOwnedSlice(alloc),
-                } };
+                const _type = TypeInfo{
+                    .list = .{
+                        // .elements = try element_types.toOwnedSlice(alloc),
+                        .element = try ownedPointer(.char, alloc),
+                        .size = elements.items.len,
+                    },
+                };
 
                 const typed_dst = TypedOperand{ .operand = dst, .type = _type };
-                try irBuilder.emit(Instruction{ .lir = .{ .tuple_literal = .{
+                // TODO: migrate to tuple once tuple[type] is passed through stack more gracefully
+                try irBuilder.emit(Instruction{ .lir = .{ .list_literal = .{
                     .dst = typed_dst,
                     .elements = try elements.toOwnedSlice(alloc),
                 } } }, alloc);
@@ -315,6 +320,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             for (0..@intCast(len)) |i| {
                 const elem = c.PyList_GetItem(elements, @as(isize, @intCast(i)));
                 std.debug.assert(elem != null);
+                const expected_elem_type: ?TypeInfo = if (expectedType) |t| try getElementType(t) else null;
                 // [conditional] use constant instead of an operand if we can
                 switch (getExprKind(elem)) {
                     .Constant => {
@@ -324,7 +330,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                         if (std.mem.eql(u8, value_type, "int")) {
                             const constant_value = ConstValue{ .int = c.PyLong_AsLong(value) };
                             try result.append(alloc, .{ .constant = constant_value });
-                            if (i == 0) elem_type = .int;
+                            if (i == 0) elem_type = expected_elem_type orelse .{ .int = .i64 };
                             continue;
                         } else if (std.mem.eql(u8, value_type, "bool")) {
                             const constant_value = ConstValue{ .bool = value == c.Py_True() };
@@ -336,7 +342,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                         }
                     },
                     else => {
-                        const expr = try walkExpr(elem, irBuilder, alloc);
+                        const expr = try walkExpr(elem, irBuilder, expected_elem_type, alloc);
                         try result.append(alloc, .{ .operand = expr.operand });
                         // HACK: do this elsewhere
                         if (i == 0) elem_type = expr.type;
@@ -370,7 +376,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             for (0..len) |i| {
                 const elem_obj = c.PyList_GetItem(elts_obj, @intCast(i));
                 std.debug.assert(elem_obj != null);
-                const elem_op = try walkExpr(elem_obj, irBuilder, alloc);
+                const elem_op = try walkExpr(elem_obj, irBuilder, null, alloc);
                 elements[i] = LiteralElement{
                     .operand = elem_op.operand,
                 };
@@ -398,13 +404,13 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             std.debug.assert(value_obj != null);
 
             const slice = c.PyObject_GetAttrString(stmt, "slice");
-            const index = try walkExpr(slice, irBuilder, alloc);
+            const index = try walkExpr(slice, irBuilder, null, alloc);
 
-            if (index.type != .int) {
+            if (index.type != .int and index.type != .any) {
                 return error.ArrayIndexMustBeInt;
             }
 
-            const value = try walkExpr(value_obj, irBuilder, alloc);
+            const value = try walkExpr(value_obj, irBuilder, null, alloc);
             switch (value.type) {
                 .list => |list| {
                     const elem_type = list.element.*;
@@ -460,8 +466,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             const right_obj = c.PyList_GetItem(comparators, 0);
             std.debug.assert(right_obj != null);
 
-            const lhs = try walkExpr(left_obj, irBuilder, alloc);
-            const rhs = try walkExpr(right_obj, irBuilder, alloc);
+            const lhs = try walkExpr(left_obj, irBuilder, null, alloc);
+            const rhs = try walkExpr(right_obj, irBuilder, null, alloc);
             const dst = irBuilder.nextTemp();
             const op = try getCompareOp(stmt);
 
@@ -495,7 +501,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 for (0..@intCast(c.PyList_Size(args))) |i| {
                     const arg_obj = c.PyList_GetItem(args, @intCast(i));
                     std.debug.assert(arg_obj != null);
-                    const arg = try walkExpr(arg_obj, irBuilder, alloc);
+                    const arg = try walkExpr(arg_obj, irBuilder, null, alloc);
                     try arguments.append(alloc, arg);
                 }
                 const function_return_type = try irBuilder.getFunctionReturnType(std.mem.span(name));
@@ -524,7 +530,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     std.debug.assert(c.PyList_Size(args) == 1);
                     const arg0 = c.PyList_GetItem(args, 0);
                     std.debug.assert(arg0 != null);
-                    const src = try walkExpr(arg0, irBuilder, alloc);
+                    const src = try walkExpr(arg0, irBuilder, null, alloc);
 
                     try irBuilder.emit(Instruction{ .print = .{
                         .src = src,
@@ -535,15 +541,16 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     std.debug.assert(c.PyList_Size(args) == 3);
                     const arg0 = c.PyList_GetItem(args, 0);
                     std.debug.assert(arg0 != null);
-                    const fd = try walkExpr(arg0, irBuilder, alloc);
+                    const fd = try walkExpr(arg0, irBuilder, null, alloc);
                     const arg1 = c.PyList_GetItem(args, 1);
                     std.debug.assert(arg1 != null);
-                    const buf = try walkExpr(arg1, irBuilder, alloc);
+                    const buf = try walkExpr(arg1, irBuilder, null, alloc);
                     const arg2 = c.PyList_GetItem(args, 2);
                     std.debug.assert(arg2 != null);
-                    const len = try walkExpr(arg2, irBuilder, alloc);
+                    const len = try walkExpr(arg2, irBuilder, null, alloc);
                     switch (buf.type) {
                         .list => {
+                            // gross but we need to increment past the book keeping size value
                             const eight = irBuilder.nextTemp();
                             try irBuilder.emit(.{ .lir = .{ .constant = .{
                                 .dst = eight,
@@ -580,13 +587,13 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     std.debug.assert(c.PyList_Size(args) == 1);
                     const arg0 = c.PyList_GetItem(args, 0);
                     std.debug.assert(arg0 != null);
-                    const value = try walkExpr(arg0, irBuilder, alloc);
+                    const value = try walkExpr(arg0, irBuilder, null, alloc);
                     const dst = irBuilder.nextTemp();
                     try irBuilder.emit(Instruction{ .len = .{
                         .dst = dst,
                         .value = value,
                     } }, alloc);
-                    return .{ .operand = dst, .type = .int };
+                    return .{ .operand = dst, .type = .{ .int = .i64 } };
                 },
                 // Call(func=Name(id='range', ctx=Load()), args=[Constant(value=0), Constant(value=10)])
                 .Range => {
@@ -600,17 +607,17 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
 
                             const endItem = c.PyList_GetItem(args, 0);
                             std.debug.assert(endItem != null);
-                            const end = try walkExpr(endItem, irBuilder, alloc);
+                            const end = try walkExpr(endItem, irBuilder, null, alloc);
 
-                            break :blk RangeBounds{ .start = TypedOperand{ .type = .int, .operand = start }, .end = end };
+                            break :blk RangeBounds{ .start = TypedOperand{ .type = .{ .int = .i64 }, .operand = start }, .end = end };
                         },
                         2 => blk: {
                             const startItem = c.PyList_GetItem(args, 0);
                             std.debug.assert(startItem != null);
-                            const start = try walkExpr(startItem, irBuilder, alloc);
+                            const start = try walkExpr(startItem, irBuilder, null, alloc);
                             const endItem = c.PyList_GetItem(args, 1);
                             std.debug.assert(endItem != null);
-                            const end = try walkExpr(endItem, irBuilder, alloc);
+                            const end = try walkExpr(endItem, irBuilder, null, alloc);
                             break :blk RangeBounds{ .start = start, .end = end };
                         },
                         else => return error.InvalidBounds,
@@ -638,9 +645,9 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
             std.debug.assert(body_obj != null);
             std.debug.assert(orelse_obj != null);
 
-            const condition = try walkExpr(test_obj, irBuilder, alloc);
-            const if_value = try walkExpr(body_obj, irBuilder, alloc);
-            const else_value = try walkExpr(orelse_obj, irBuilder, alloc);
+            const condition = try walkExpr(test_obj, irBuilder, null, alloc);
+            const if_value = try walkExpr(body_obj, irBuilder, null, alloc);
+            const else_value = try walkExpr(orelse_obj, irBuilder, null, alloc);
 
             const dst = irBuilder.nextTemp();
             try irBuilder.emit(.{ .lir = .{ .select = .{
@@ -677,7 +684,7 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     const else_block = try irBuilder.newBlock(alloc);
     const merge_block = try irBuilder.newBlock(alloc);
 
-    const condition = try walkExpr(test_, irBuilder, alloc);
+    const condition = try walkExpr(test_, irBuilder, null, alloc);
     try irBuilder.emit(Instruction{ .lir = .{ .branch = .{
         .condition = condition.operand,
         .then_block = then_block,
@@ -827,7 +834,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
     const iter = c.PyObject_GetAttrString(stmt, "iter");
     std.debug.assert(iter != null);
 
-    const expr = try walkExpr(iter, irBuilder, alloc);
+    const expr = try walkExpr(iter, irBuilder, null, alloc);
     std.debug.assert(expr.type == .list or expr.type == .tuple or expr.type == .any);
 
     const index0 = irBuilder.nextTemp();
@@ -899,7 +906,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
             } } }, alloc_);
             carries[0].next = TypedOperand{
                 .operand = index_next,
-                .type = .int,
+                .type = .{ .int = .i64 },
             };
         }
     };
@@ -909,7 +916,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
     defer carries.deinit(alloc);
     try carries.append(alloc, LoopCarry{ .initial = .{
         .operand = index0,
-        .type = .int,
+        .type = .{ .int = .i64 },
     }, .current = undefined, .next = null, .inputs = undefined });
 
     const len_temp = irBuilder.nextTemp();
@@ -942,7 +949,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
         LoopCondition{ .operand_compare = .{
             .carry_index = 0,
             .cmp = .lt,
-            .rhs = .{ .operand = len_temp, .type = .int },
+            .rhs = .{ .operand = len_temp, .type = .{ .int = .i64 } },
         } },
         LoopBody{ .for_loop = .{
             .stmt_list = body,
@@ -994,7 +1001,6 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     var blocks = ArrayList(BasicBlock).empty;
     try blocks.append(alloc, BasicBlock.init(0));
 
-    // TODO: this looks very wrong...
     try irBuilder.program.functions.append(alloc, Function{
         .name = try alloc.dupe(u8, std.mem.span(func_name)),
         .id = irBuilder.nextFunctionIdx(),
@@ -1054,7 +1060,7 @@ fn walkReturn(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     const return_operand = if (value == c.Py_None())
         null
     else
-        (try walkExpr(value, irBuilder, alloc)).operand;
+        (try walkExpr(value, irBuilder, null, alloc)).operand;
 
     try irBuilder.emit(Instruction{ .lir = .{ .function_return = .{
         .value = return_operand,
@@ -1153,13 +1159,15 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
         std.debug.assert(annotation_id != null);
 
         if (std.mem.eql(u8, std.mem.span(annotation_id), "int")) {
-            return .int;
+            return .{ .int = .i64 };
+        } else if (std.mem.eql(u8, std.mem.span(annotation_id), "i32")) {
+            return .{ .int = .i32 };
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "bool")) {
             return .bool;
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "float")) {
             return .float;
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "str")) {
-            return .{ .list = .{ .element = &.char, .size = null } };
+            return .{ .list = .{ .element = try ownedPointer(.char, alloc), .size = null } };
         }
         return error.TypeNotImplemented;
     }

@@ -57,7 +57,7 @@ fn emitFunction(
         16,
     );
     try createFunctionHeader(out, function.name, frame_stack_size, alloc);
-    var next_array_slot: usize = 0;
+    var next_array_location: usize = 0;
     for (function.blocks.items) |block| {
         try out.print(alloc, "_{s}_L{d}:\n", .{ function.name, block.id });
         for (block.instructions.items) |instruction| {
@@ -81,12 +81,12 @@ fn emitFunction(
                         // str: src, dst (register -> memory)
                         .store_local => |sl| {
                             const src = try regFor(sl.src, colors);
-                            try emitStackStore(out, src, localOffset(sl.local.id), alloc);
+                            try emitStackStore(out, src, localOffset(sl.local.id), ScratchReg, alloc);
                         },
                         // ldr: dst, src (memory -> register)
                         .load_local => |ll| {
                             const dst = try regFor(ll.dst, colors);
-                            try emitStackLoad(out, dst, localOffset(ll.local.id), alloc);
+                            try emitStackLoad(out, dst, localOffset(ll.local.id), ScratchReg, alloc);
                         },
                         .move => |m| {
                             switch (m.dst) {
@@ -102,7 +102,7 @@ fn emitFunction(
                                         // reg <- mem
                                         .mem => |slot| {
                                             const offset = spillOffset(local_stack_size, slot);
-                                            try emitStackLoad(out, dst, offset, alloc);
+                                            try emitStackLoad(out, dst, offset, ScratchReg, alloc);
                                         },
                                         else => return error.NotImpl,
                                     }
@@ -113,7 +113,7 @@ fn emitFunction(
                                         .temp => {
                                             const offset = spillOffset(local_stack_size, slot);
                                             const src = try regFor(m.src, colors);
-                                            try emitStackStore(out, src, offset, alloc);
+                                            try emitStackStore(out, src, offset, ScratchReg, alloc);
                                         },
                                         .mem => {
                                             return error.MemoryToMemoryMoveDetected;
@@ -178,12 +178,25 @@ fn emitFunction(
                         // x29 - 24 array[1]
                         // x29 - 32 array[0]  <- array_base
                         .tuple_literal => |tl| {
-                            const base_slot = next_array_slot;
-                            next_array_slot += tl.elements.len;
-
                             const dst = try regFor(tl.dst.operand, colors);
 
+                            const tuple_type = switch (tl.dst.type) {
+                                .tuple => |tuple| tuple.elements,
+                                else => return error.WrongType,
+                            };
+
+                            // get our overall size
+                            var tuple_size: usize = 0;
+                            for (tuple_type) |cur_type| {
+                                tuple_size += try sizeOfType(cur_type);
+                            }
+                            const tuple_slots = std.mem.alignForward(usize, tuple_size, 8) / 8;
+                            const base_slot = next_array_location;
+                            next_array_location += tuple_slots;
+
                             // array[i] = x29 - end + adjust(i)
+                            const base_offset = arrayOffset(local_count, base_slot + tuple_slots - 1);
+                            var cur_offset: usize = 0;
                             for (tl.elements, 0..) |elem, i| {
                                 const src = switch (elem) {
                                     .operand => try regFor(elem.operand, colors),
@@ -192,13 +205,23 @@ fn emitFunction(
                                         break :blk ScratchReg;
                                     },
                                 };
-                                const slot = base_slot + (tl.elements.len - 1 - i);
-                                const offset = arrayOffset(local_count, slot);
-                                // HACK: assume everything is 8bytes wide
-                                try out.print(alloc, "\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
+
+                                const offset = base_offset - cur_offset;
+
+                                const elem_type = switch (tl.dst.type) {
+                                    .tuple => |tuple| tuple.elements[i],
+                                    else => return error.WrongType,
+                                };
+
+                                switch (elem_type) {
+                                    .int => try emitStackStore(out, src, offset, ScratchReg2, alloc),
+                                    .bool, .char => try emitStackStoreByte(out, src, offset, ScratchReg2, alloc),
+                                    else => return error.NotImpl,
+                                }
+                                cur_offset += try sizeOfType(elem_type);
                             }
                             // array_base = x29 - end
-                            try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, arrayOffset(local_count, base_slot + tl.elements.len - 1) });
+                            try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, base_offset });
                         },
                         // heap: [ size ] [elem 0] [...]
                         .list_literal => |ll| {
@@ -224,8 +247,19 @@ fn emitFunction(
                                 const offset = i * elem_size + 8;
                                 switch (elem_type) {
                                     // pointers & ints are size 8
-                                    .int, .list, .tuple => {
+                                    .list, .tuple => {
                                         try out.print(alloc, "\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
+                                    },
+                                    .int => |int| {
+                                        switch (int) {
+                                            .i64 => {
+                                                try out.print(alloc, "\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
+                                            },
+                                            .i32 => {
+                                                std.debug.assert(src[0] == 'x');
+                                                try out.print(alloc, "\tstr w{s}, [{s}, #{d}]\n", .{ src[1..], CalleReturnRegister, offset });
+                                            },
+                                        }
                                     },
                                     .bool, .char => {
                                         try out.print(alloc, "\tstrb w{s}, [{s}, #{d}]\n", .{ src[1..], CalleReturnRegister, offset });
@@ -261,10 +295,25 @@ fn emitFunction(
                             const elem_type = try getElementType(ll.list.type);
                             switch (elem_type) {
                                 // index = (index + 1) << 3
-                                .int, .list, .tuple => {
+                                .list, .tuple => {
                                     try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
                                     try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
                                     try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
+                                },
+                                .int => |i| {
+                                    // TODO: modularize math being done here else where maybe?
+                                    switch (i) {
+                                        .i64 => {
+                                            try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
+                                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                                            try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
+                                        },
+                                        .i32 => {
+                                            try out.print(alloc, "\tlsl {s}, {s}, #2\n", .{ ScratchReg, index });
+                                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                                            try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
+                                        },
+                                    }
                                 },
                                 .bool, .char => {
                                     try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, index });
@@ -277,13 +326,34 @@ fn emitFunction(
                             const elem_type = try getElementType(ls.list.type);
                             switch (elem_type) {
                                 // index = (index + 1) << 3
-                                .int, .list, .tuple => {
+                                .list, .tuple => {
                                     const dst = try regFor(ls.list.operand, colors);
                                     const src = try regFor(ls.src, colors);
                                     const index = try regFor(ls.index, colors);
                                     try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
                                     try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
                                     try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
+                                },
+                                .int => |i| {
+                                    // TODO: modularize this logic
+                                    switch (i) {
+                                        .i64 => {
+                                            const dst = try regFor(ls.list.operand, colors);
+                                            const src = try regFor(ls.src, colors);
+                                            const index = try regFor(ls.index, colors);
+                                            try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
+                                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                                            try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
+                                        },
+                                        .i32 => {
+                                            const dst = try regFor(ls.list.operand, colors);
+                                            const src = try regFor(ls.src, colors);
+                                            const index = try regFor(ls.index, colors);
+                                            try out.print(alloc, "\tlsl {s}, {s}, #2\n", .{ ScratchReg, index });
+                                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                                            try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
+                                        },
+                                    }
                                 },
                                 .bool, .char => {
                                     return error.TypesNotImpl;
@@ -357,6 +427,9 @@ fn emitFunction(
                         .list => {
                             try out.print(alloc, "\tldr {s}, [{s}]\n", .{ dst, src });
                         },
+                        .tuple => |tuple| {
+                            try emitMov(out, dst, @intCast(tuple.elements.len), alloc);
+                        },
                         else => |e| {
                             std.debug.print("len called on {s} unexpectedly\n", .{@tagName(e)});
                             return error.InvalidLenCall;
@@ -416,13 +489,30 @@ fn emitStackLoad(
     out: *ArrayList(u8),
     dst: []const u8,
     offset: usize,
+    scratch: []const u8,
     alloc: std.mem.Allocator,
 ) !void {
     if (offset <= 256) {
         try out.print(alloc, "\tldr {s}, [x29, #-{d}]\n", .{ dst, offset });
     } else {
-        try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ ScratchReg, offset });
-        try out.print(alloc, "\tldr {s}, [{s}]\n", .{ dst, ScratchReg });
+        try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ scratch, offset });
+        try out.print(alloc, "\tldr {s}, [{s}]\n", .{ dst, scratch });
+    }
+}
+
+fn emitStackLoadByte(
+    out: *ArrayList(u8),
+    dst: []const u8,
+    offset: usize,
+    scratch: []const u8,
+    alloc: std.mem.Allocator,
+) !void {
+    std.debug.assert(dst[0] == 'x');
+    if (offset <= 256) {
+        try out.print(alloc, "\tldrb w{s}, [x29, #-{d}]\n", .{ dst[1..], offset });
+    } else {
+        try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ scratch, offset });
+        try out.print(alloc, "\tldrb w{s}, [{s}]\n", .{ dst[1..], scratch });
     }
 }
 
@@ -430,13 +520,29 @@ fn emitStackStore(
     out: *ArrayList(u8),
     src: []const u8,
     offset: usize,
+    scratch: []const u8,
     alloc: std.mem.Allocator,
 ) !void {
     if (offset <= 256) {
         try out.print(alloc, "\tstr {s}, [x29, #-{d}]\n", .{ src, offset });
     } else {
-        try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ ScratchReg, offset });
-        try out.print(alloc, "\tstr {s}, [{s}]\n", .{ src, ScratchReg });
+        try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ scratch, offset });
+        try out.print(alloc, "\tstr {s}, [{s}]\n", .{ src, scratch });
+    }
+}
+
+fn emitStackStoreByte(
+    out: *ArrayList(u8),
+    src: []const u8,
+    offset: usize,
+    scratch: []const u8,
+    alloc: std.mem.Allocator,
+) !void {
+    if (offset <= 256) {
+        try out.print(alloc, "\tstrb w{s}, [x29, #-{d}]\n", .{ src[1..], offset });
+    } else {
+        try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ scratch, offset });
+        try out.print(alloc, "\tstrb w{s}, [{s}]\n", .{ src[1..], scratch });
     }
 }
 
