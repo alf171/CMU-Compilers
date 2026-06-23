@@ -1,0 +1,15 @@
+[4mrunning program:[0m
+
+
+items: list[int] = [1, 2, 3]
+items[2] = 0
+
+print(items[0])
+print(items[1])
+print(items[2])
+
+[4mactual output:[0m
+1
+2
+0
+[!!memory report!!]: allocs=4 frees=4 allocated_bytes=62 freed_bytes=62

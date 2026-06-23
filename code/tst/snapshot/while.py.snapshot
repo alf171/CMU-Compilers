@@ -1,0 +1,16 @@
+[4mrunning program:[0m
+
+x: int = 0
+
+while x < 3:
+  x = x + 1
+  print(x)
+
+print(x)
+
+[4mactual output:[0m
+1
+2
+3
+3
+[!!memory report!!]: allocs=4 frees=4 allocated_bytes=40 freed_bytes=40

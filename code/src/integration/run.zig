@@ -5,8 +5,10 @@ const walkAstWithRuntime = @import("frontend").run.walkAstWithRuntime;
 const range = @import("frontend").range;
 const write = @import("frontend").write;
 const middle = @import("middle");
+const backend = @import("backend");
+const metrics = @import("metrics.zig");
 const loop = middle.loop;
-const lower = middle.lower;
+const reg_alloc = middle.reg_alloc;
 const live = middle.live;
 const igraph = middle.igraph;
 const color = middle.color;
@@ -14,7 +16,8 @@ const phi = middle.phi;
 const parallel_copies = middle.parallel_copies;
 const copy = middle.copy;
 const dead = middle.dead;
-const emit = @import("backend").emit;
+const emit = backend.emit;
+const AllocatableRegs = backend.AllocatableRegs;
 
 const underline_code = "\x1b[4m";
 const reset_code = "\x1b[0m";
@@ -74,14 +77,14 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    var alloc_program = try lower.lowerAlloc(ir_program, alloc);
+    var alloc_program = try reg_alloc.build(ir_program, AllocatableRegs.len, alloc);
     try live.calculateLiveOut(&alloc_program, alloc);
 
     // run optimzation passes
     if (should_optim) {
         try dead.run(&ir_program, &alloc_program, alloc);
         alloc_program.deinit(alloc);
-        alloc_program = try lower.lowerAlloc(ir_program, alloc);
+        alloc_program = try reg_alloc.build(ir_program, AllocatableRegs.len, alloc);
         try live.calculateLiveOut(&alloc_program, alloc);
     }
 
@@ -109,37 +112,9 @@ pub fn main(init: std.process.Init) !void {
     const asm_text = try emit(&ir_program, &colored, alloc);
     defer alloc.free(asm_text);
 
-    // TODO: break metrics up into their own module
     if (should_dump_stats) {
-        var lines = std.mem.splitScalar(u8, asm_text, '\n');
-        var line_count: usize = 0;
-        var mov_count: usize = 0;
-        var memory_load_count: usize = 0;
-        var memory_store_count: usize = 0;
-        var branches: usize = 0;
-        var calls: usize = 0;
-        while (lines.next()) |line| {
-            const trim = std.mem.trim(u8, line, "\t");
-
-            if (trim.len == 0) continue;
-
-            if (trim[0] == '.' or trim[0] == '_') continue;
-
-            line_count += 1;
-            if (std.mem.startsWith(u8, trim, "mov ")) mov_count += 1;
-            if (std.mem.startsWith(u8, trim, "ldr ")) memory_load_count += 1;
-            if (std.mem.startsWith(u8, trim, "str ")) memory_store_count += 1;
-            if (std.mem.startsWith(u8, trim, "ret ") or std.mem.startsWith(u8, trim, "b ")) branches += 1;
-            if (std.mem.startsWith(u8, trim, "bl ")) calls += 1;
-        }
-        std.debug.print("\n{s}performance report:{s}\n", .{ underline_code, reset_code });
-        std.debug.print("number of asm lines: {d}\n", .{line_count});
-        std.debug.print("mov count: {d}\n", .{mov_count});
-        std.debug.print("memory load count: {d}\n", .{memory_load_count});
-        std.debug.print("memory store count: {d}\n", .{memory_store_count});
-        std.debug.print("branch count: {d}\n", .{branches});
-        std.debug.print("call count: {d}\n", .{calls});
-        std.debug.print("spill count: {d}\n", .{result.spill_rounds});
+        const stats = metrics.get(asm_text, result.spill_rounds);
+        stats.print();
     }
 
     try file_writer.interface.writeAll(asm_text);
@@ -174,7 +149,7 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
-fn runCommand(alloc: std.mem.Allocator, io: std.Io, argv: []const []const u8) !std.process.RunResult {
+pub fn runCommand(alloc: std.mem.Allocator, io: std.Io, argv: []const []const u8) !std.process.RunResult {
     const result = try std.process.run(alloc, io, .{
         .argv = argv,
         .stdout_limit = .limited(1 << 20),

@@ -12,7 +12,7 @@ const ownedPointer = @import("common").types.ownedPointer;
 const TypeInfo = types.TypeInfo;
 const Operand = @import("common").alloc.Operand;
 const TypedOperand = @import("common").alloc.TypedOperand;
-const LiteralElement = @import("common").ir.LiteralElement;
+const ValueRef = @import("common").ir.ValueRef;
 const Param = @import("common").alloc.Param;
 const LocalInfo = @import("common").ir.LocalInfo;
 const LocalId = @import("common").ir.LocalId;
@@ -278,7 +278,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 std.debug.assert(raw != null);
                 const bytes = std.mem.span(raw);
                 const dst = irBuilder.nextTemp();
-                var elements: ArrayList(LiteralElement) = .empty;
+                var elements: ArrayList(ValueRef) = .empty;
                 var element_types: ArrayList(TypeInfo) = .empty;
                 for (bytes) |char| {
                     try elements.append(alloc, .{ .constant = .{
@@ -315,7 +315,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             const elements = c.PyObject_GetAttrString(stmt, "elts");
             std.debug.assert(elements != null);
             const len = c.PyList_Size(elements);
-            var result = ArrayList(LiteralElement).empty;
+            var result = ArrayList(ValueRef).empty;
             var elem_type: ?TypeInfo = null;
             for (0..@intCast(len)) |i| {
                 const elem = c.PyList_GetItem(elements, @as(isize, @intCast(i)));
@@ -371,13 +371,13 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             const elts_obj = c.PyObject_GetAttrString(stmt, "elts");
             std.debug.assert(elts_obj != null);
             const len: usize = @intCast(c.PyList_Size(elts_obj));
-            var elements = try alloc.alloc(LiteralElement, len);
+            var elements = try alloc.alloc(ValueRef, len);
             var element_types = try alloc.alloc(TypeInfo, len);
             for (0..len) |i| {
                 const elem_obj = c.PyList_GetItem(elts_obj, @intCast(i));
                 std.debug.assert(elem_obj != null);
                 const elem_op = try walkExpr(elem_obj, irBuilder, null, alloc);
-                elements[i] = LiteralElement{
+                elements[i] = ValueRef{
                     .operand = elem_op.operand,
                 };
                 element_types[i] = elem_op.type;

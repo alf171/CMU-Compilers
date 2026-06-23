@@ -1,0 +1,8 @@
+[4mrunning program:[0m
+
+x = range(3, 5)
+print(len(x))
+
+[4mactual output:[0m
+2
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

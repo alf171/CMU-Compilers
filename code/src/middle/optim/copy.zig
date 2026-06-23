@@ -7,7 +7,7 @@ const Function = @import("common").ir.Function;
 const Program = @import("common").program.Program;
 const Operand = @import("common").alloc.Operand;
 const ConstValue = @import("common").ir.ConstValue;
-const LiteralElement = @import("common").ir.LiteralElement;
+const ValueRef = @import("common").ir.ValueRef;
 const Instruction = @import("common").mir.Instruction;
 
 const HashMap = std.AutoHashMap;
@@ -22,7 +22,7 @@ pub fn run(program: *Program, alloc: std.mem.Allocator) !void {
 pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
     for (function.blocks.items) |block| {
         // copy prop will only work within a basic block
-        var copyMap = HashMap(Operand, LiteralElement).init(alloc);
+        var copyMap = HashMap(Operand, ValueRef).init(alloc);
         defer copyMap.deinit();
 
         for (block.instructions.items) |*instruction| {
@@ -52,7 +52,7 @@ pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
     }
 }
 
-fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, LiteralElement)) !void {
+fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) !void {
     switch (instruction.*) {
         .lir => |*l| {
             switch (l.*) {
@@ -126,7 +126,7 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, LiteralElem
 }
 
 // this does not protect against cycles
-fn resolveOperand(op: Operand, copyMap: *HashMap(Operand, LiteralElement)) !Operand {
+fn resolveOperand(op: Operand, copyMap: *HashMap(Operand, ValueRef)) !Operand {
     var cur = op;
     while (copyMap.get(cur)) |next| {
         switch (next) {
@@ -137,8 +137,8 @@ fn resolveOperand(op: Operand, copyMap: *HashMap(Operand, LiteralElement)) !Oper
     return cur;
 }
 
-fn resolve(init: LiteralElement, copyMap: *HashMap(Operand, LiteralElement)) !LiteralElement {
-    var cur: LiteralElement = init;
+fn resolve(init: ValueRef, copyMap: *HashMap(Operand, ValueRef)) !ValueRef {
+    var cur: ValueRef = init;
     std.debug.assert(cur != .constant);
     while (copyMap.get(cur.operand)) |next| {
         switch (next) {
@@ -169,7 +169,7 @@ test "basic block copy prop" {
     // print(t2)
     try instructions.append(alloc, Instruction{ .print = .{ .src = .{
         .operand = .{ .temp = .{ .id = 2, .function_id = 0 } },
-        .type = .int,
+        .type = .{ .int = .i64 },
     } } });
 
     try run(&program, alloc);
@@ -190,7 +190,7 @@ test "basic block copy prop" {
     try std.testing.expectEqualDeep(new_instructions[2], Instruction{ .print = .{
         .src = .{
             .operand = .{ .temp = .{ .id = 0, .function_id = 0 } },
-            .type = .int,
+            .type = .{ .int = .i64 },
         },
     } });
 }

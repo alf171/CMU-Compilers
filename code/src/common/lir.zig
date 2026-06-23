@@ -4,7 +4,7 @@ const debugPrint = @import("std").debug.print;
 const LocalInfo = @import("ir.zig").LocalInfo;
 const Operand = @import("alloc.zig").Operand;
 const ConstValue = @import("ir.zig").ConstValue;
-const LiteralElement = @import("ir.zig").LiteralElement;
+const ValueRef = @import("ir.zig").ValueRef;
 const BinOp = @import("ir.zig").BinOp;
 const BlockId = @import("ir.zig").BlockId;
 const CmpOp = @import("ir.zig").CmpOp;
@@ -29,8 +29,8 @@ pub const Instruction = union(enum) {
     binop: struct {
         dst: Operand,
         op: BinOp,
-        lhs: LiteralElement,
-        rhs: LiteralElement,
+        lhs: ValueRef,
+        rhs: ValueRef,
     },
     move: struct {
         dst: Operand,
@@ -58,7 +58,7 @@ pub const Instruction = union(enum) {
     // stack based fixed size array
     tuple_literal: struct {
         dst: TypedOperand,
-        elements: []LiteralElement,
+        elements: []ValueRef,
     },
     // dst <- array[index]
     tuple_load: struct {
@@ -76,7 +76,7 @@ pub const Instruction = union(enum) {
     // heap based variable size
     list_literal: struct {
         dst: TypedOperand,
-        elements: []LiteralElement,
+        elements: []ValueRef,
     },
     // dst <- list[index]
     list_load: struct {
@@ -113,8 +113,8 @@ pub const Instruction = union(enum) {
     select: struct {
         dst: Operand,
         condition: Operand,
-        if_value: LiteralElement,
-        else_value: LiteralElement,
+        if_value: ValueRef,
+        else_value: ValueRef,
     },
     unkown,
 

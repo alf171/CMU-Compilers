@@ -1,0 +1,13 @@
+[4mrunning program:[0m
+
+a: int = 5
+b: int = 10
+print(a < b)
+print(a == b)
+print(a != b)
+
+[4mactual output:[0m
+True
+False
+True
+[!!memory report!!]: allocs=6 frees=6 allocated_bytes=87 freed_bytes=87

@@ -1,3 +1,5 @@
+[4mrunning program:[0m
+
 # (M, N) @ (N, K) => (M, K)
 M: list[list[i32]] = [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15], [16, 17, 18, 19, 20], [21, 22, 23, 24, 25]]
 N: list[list[i32]] = [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15], [16, 17, 18, 19, 20], [21, 22, 23, 24, 25]]
@@ -23,3 +25,11 @@ def matmul(
 matmul(
     M, N, P
 )
+
+[4mactual output:[0m
+215
+530
+895
+1310
+1775
+[!!memory report!!]: allocs=23 frees=23 allocated_bytes=614 freed_bytes=614

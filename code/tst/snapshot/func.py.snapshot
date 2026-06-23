@@ -1,0 +1,15 @@
+[4mrunning program:[0m
+
+def f(c: bool) -> int:
+  if c:
+      x = 1
+  else:
+      x = 2
+  return x
+
+y = f(True)
+print(y)
+
+[4mactual output:[0m
+1
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

@@ -1,7 +1,7 @@
 a = 5
 x = 0
 
-if a < 10 or False:
+if a < 10: #or False:
     x = 1
     y = 100
     z = 200

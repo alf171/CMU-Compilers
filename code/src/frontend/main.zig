@@ -74,8 +74,10 @@ test "x = 1 + 2" {
         .binop => |instruction| {
             try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp.id);
             try std.testing.expectEqual(.add, instruction.op);
-            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.temp.id);
-            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.temp.id);
+            try std.testing.expectEqual(.operand, std.meta.activeTag(instruction.lhs));
+            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.operand.temp.id);
+            try std.testing.expectEqual(.operand, std.meta.activeTag(instruction.rhs));
+            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.operand.temp.id);
         },
         else => return error.ExpectedBinop,
     }

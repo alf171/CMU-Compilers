@@ -31,7 +31,16 @@ pub fn build(b: *std.Build) void {
     const integration_test = b.addExecutable(.{
         .name = "integration_test",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/integration/test.zig"),
+            .root_source_file = b.path("src/integration/run.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    const snapshot_test = b.addExecutable(.{
+        .name = "snapshot_test",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/integration/snap.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -81,10 +90,16 @@ pub fn build(b: *std.Build) void {
     integration_test.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
     integration_test.root_module.linkSystemLibrary("python3.13", .{});
 
+    // integration test
     const run_integration_tests = b.addRunArtifact(integration_test);
     const integration_test_step = b.step("integration-test", "run integration test");
     integration_test_step.dependOn(&run_integration_tests.step);
     if (b.args) |args| run_integration_tests.addArgs(args);
+
+    // snapshot test using integration
+    const run_snapshot_tests = b.addRunArtifact(snapshot_test);
+    const snapshot_test_step = b.step("snapshot-test", "run snapshot test");
+    snapshot_test_step.dependOn(&run_snapshot_tests.step);
 
     b.installArtifact(frontend);
 

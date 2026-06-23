@@ -1,0 +1,12 @@
+[4mrunning program:[0m
+
+def factorial(n: int) -> int:
+    if (n == 0):
+        return 1
+    return n * factorial(n - 1)
+
+print(factorial(15))
+
+[4mactual output:[0m
+1307674368000
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

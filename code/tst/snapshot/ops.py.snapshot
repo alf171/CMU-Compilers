@@ -1,0 +1,22 @@
+[4mrunning program:[0m
+
+x = 11
+y = 5
+# add
+print(x + y)
+# sub
+print(x - y)
+# mul
+print(x * y)
+# div
+print(x / y)
+# mod
+print(x % y)
+
+[4mactual output:[0m
+16
+6
+55
+2
+1
+[!!memory report!!]: allocs=5 frees=5 allocated_bytes=50 freed_bytes=50

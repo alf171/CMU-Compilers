@@ -1,0 +1,19 @@
+[4mrunning program:[0m
+
+a = 5
+x = 0
+
+if a < 10: #or False:
+    x = 1
+    y = 100
+    z = 200
+    print(y + z)
+else:
+    x = 2
+
+print(x)
+
+[4mactual output:[0m
+300
+1
+[!!memory report!!]: allocs=2 frees=2 allocated_bytes=20 freed_bytes=20

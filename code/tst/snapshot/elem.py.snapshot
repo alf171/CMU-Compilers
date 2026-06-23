@@ -1,0 +1,11 @@
+[4mrunning program:[0m
+
+x: int = 2
+y: int = 3
+z: int = x + y
+# we should be able to fold into print(x + y)
+print(z)
+
+[4mactual output:[0m
+5
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

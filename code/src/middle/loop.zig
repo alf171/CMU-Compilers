@@ -5,7 +5,6 @@ const color = @import("color.zig");
 const spill = @import("spill.zig");
 const live = @import("live.zig");
 const coalesce = @import("coalesce.zig");
-const lower = @import("lower.zig");
 
 const Allocator = std.mem.Allocator;
 const AllocProgram = @import("common").alloc.AllocProgram;
@@ -56,7 +55,6 @@ pub fn run(ir_program: *IrProgram, init_program: *AllocProgram, should_coalesce:
     };
 }
 
-test "run all tests in this project" {
+test "test" {
     std.testing.refAllDecls(@This());
-    std.testing.refAllDecls(lower);
 }

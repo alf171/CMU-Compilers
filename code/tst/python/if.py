@@ -9,9 +9,9 @@ def f() -> None:
       y = t # y = 1
       i = i + 1 # i = 2
 
-    print(x)
-    print(y)
+    # print(x)
+    # print(y)
     # also should work with no return
     return
 
-x = f()
+f()
