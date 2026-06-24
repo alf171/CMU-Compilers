@@ -28,6 +28,7 @@ pub fn run(
         var file_writer: std.Io.File.Writer = .init(file, io, &file_buf);
         try file_writer.interface.writeAll(result.stderr);
         try file_writer.interface.flush();
+        std.debug.print(" [[REGENERATED]]\n", .{});
         return;
     }
 
@@ -67,8 +68,18 @@ pub fn run(
 }
 
 pub fn main(init: std.process.Init) !void {
+    const arena = init.arena;
+    const args = try init.minimal.args.toSlice(arena.allocator());
+    std.debug.assert(args.len == 1 or args.len == 2);
     const io = init.io;
     const alloc = init.gpa;
+
+    var should_regen_snapshot = false;
+    if (args.len == 2) {
+        const arg = args[1];
+        if (std.mem.eql(u8, arg, "--regen")) should_regen_snapshot = true;
+    }
+
     const dir = try std.Io.Dir.cwd().openDir(io, "tst/python", .{ .iterate = true });
     defer dir.close(io);
 
@@ -80,6 +91,6 @@ pub fn main(init: std.process.Init) !void {
 
         const path = try std.fs.path.join(alloc, &.{ "tst/python", entry.path });
         defer alloc.free(path);
-        run(path, false, alloc, io) catch {};
+        run(path, should_regen_snapshot, alloc, io) catch {};
     }
 }

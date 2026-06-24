@@ -100,6 +100,7 @@ pub fn build(b: *std.Build) void {
     const run_snapshot_tests = b.addRunArtifact(snapshot_test);
     const snapshot_test_step = b.step("snapshot-test", "run snapshot test");
     snapshot_test_step.dependOn(&run_snapshot_tests.step);
+    if (b.args) |args| run_snapshot_tests.addArgs(args);
 
     b.installArtifact(frontend);
 
