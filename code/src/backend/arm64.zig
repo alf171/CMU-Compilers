@@ -4,7 +4,6 @@ const ArrayList = std.ArrayList;
 const common = @import("common");
 const Program = common.program.Program;
 const TypeInfo = common.types.TypeInfo;
-const sizeOfType = common.types.sizeOfType;
 const Block = common.ir.BasicBlock;
 const ConstValue = common.ir.ConstValue;
 const Function = common.ir.Function;
@@ -188,7 +187,7 @@ fn emitFunction(
                             // get our overall size
                             var tuple_size: usize = 0;
                             for (tuple_type) |cur_type| {
-                                tuple_size += try sizeOfType(cur_type);
+                                tuple_size += try cur_type.sizeOfType();
                             }
                             const tuple_slots = std.mem.alignForward(usize, tuple_size, 8) / 8;
                             const base_slot = next_array_location;
@@ -218,7 +217,7 @@ fn emitFunction(
                                     .bool, .char => try emitStackStoreByte(out, src, offset, ScratchReg2, alloc),
                                     else => return error.NotImpl,
                                 }
-                                cur_offset += try sizeOfType(elem_type);
+                                cur_offset += try elem_type.sizeOfType();
                             }
                             // array_base = x29 - end
                             try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, base_offset });
@@ -227,7 +226,7 @@ fn emitFunction(
                         .list_literal => |ll| {
                             const dst = try regFor(ll.dst.operand, colors);
                             const elem_type = try getElementType(ll.dst.type);
-                            const elem_size = try sizeOfType(elem_type);
+                            const elem_size = try elem_type.sizeOfType();
                             const byte_count = ll.elements.len * elem_size + 8;
                             const len = ll.elements.len;
                             try out.print(alloc, "\tmov {s}, #{d}\n", .{ FirstParamRegister, byte_count });

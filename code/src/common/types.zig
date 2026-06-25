@@ -19,6 +19,19 @@ pub const TypeInfo = union(enum) {
         elements: []const TypeInfo,
     },
     any,
+
+    pub fn sizeOfType(t: TypeInfo) !usize {
+        return switch (t) {
+            .bool, .char => 1,
+            .int => |i| switch (i) {
+                .i64 => 8,
+                .i32 => 4,
+            },
+            .list => 8,
+            .tuple => 8,
+            else => error.NotImpl,
+        };
+    }
 };
 
 /// expects a list input type
@@ -41,17 +54,4 @@ pub fn ownedPointer(t: TypeInfo, alloc: std.mem.Allocator) !*TypeInfo {
     const ptr = try alloc.create(TypeInfo);
     ptr.* = t;
     return ptr;
-}
-
-pub fn sizeOfType(t: TypeInfo) !usize {
-    return switch (t) {
-        .bool, .char => 1,
-        .int => |i| switch (i) {
-            .i64 => 8,
-            .i32 => 4,
-        },
-        .list => 8,
-        .tuple => 8,
-        else => error.NotImpl,
-    };
 }
