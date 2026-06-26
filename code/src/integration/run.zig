@@ -3,6 +3,7 @@ const std = @import("std");
 const c = @import("frontend").python.c;
 const walkAstWithRuntime = @import("frontend").run.walkAstWithRuntime;
 const range = @import("frontend").range;
+const list = @import("frontend").list;
 const write = @import("frontend").write;
 const middle = @import("middle");
 const backend = @import("backend");
@@ -18,6 +19,7 @@ const copy = middle.copy;
 const dead = middle.dead;
 const emit = backend.emit;
 const AllocatableRegs = backend.AllocatableRegs;
+const RegisterMask = backend.RegisterMask;
 
 const underline_code = "\x1b[4m";
 const reset_code = "\x1b[0m";
@@ -66,6 +68,7 @@ pub fn main(init: std.process.Init) !void {
 
     // range elimination?
     try range.rewrite(&ir_program, alloc);
+    try list.rewrite(&ir_program, alloc);
     try write.rewrite(&ir_program, alloc);
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
@@ -90,7 +93,7 @@ pub fn main(init: std.process.Init) !void {
 
     defer alloc_program.deinit(alloc);
 
-    var graph = try igraph.createIgraph(alloc_program.lines, alloc);
+    var graph = try igraph.createIgraph(alloc_program.lines, RegisterMask, alloc);
     defer graph.deinit();
 
     const file = try std.Io.Dir.createFileAbsolute(io, output_file, .{});
@@ -99,7 +102,7 @@ pub fn main(init: std.process.Init) !void {
 
     defer file.close(io);
 
-    const result = try loop.run(&ir_program, &alloc_program, should_optim, alloc, null);
+    const result = try loop.run(&ir_program, &alloc_program, should_optim, RegisterMask, alloc, null);
     var colored = result.graph;
     defer colored.deinit();
 

@@ -53,8 +53,8 @@ test "x = 1 + 2" {
     switch (instructions[0].lir) {
         .constant => |instruction| {
             try std.testing.expectEqual(@as(u32, 0), instruction.dst.temp.id);
-            try std.testing.expect(instruction.value == .int);
-            try std.testing.expectEqual(@as(i64, 1), instruction.value.int);
+            try std.testing.expect(instruction.value == .i64);
+            try std.testing.expectEqual(@as(i64, 1), instruction.value.i64);
         },
         else => return error.ExpectedConstant,
     }
@@ -63,8 +63,8 @@ test "x = 1 + 2" {
     switch (instructions[1].lir) {
         .constant => |instruction| {
             try std.testing.expectEqual(@as(u32, 1), instruction.dst.temp.id);
-            try std.testing.expect(instruction.value == .int);
-            try std.testing.expectEqual(@as(i64, 2), instruction.value.int);
+            try std.testing.expect(instruction.value == .i64);
+            try std.testing.expectEqual(@as(i64, 2), instruction.value.i64);
         },
         else => return error.ExpectedConstant,
     }
@@ -75,9 +75,9 @@ test "x = 1 + 2" {
             try std.testing.expectEqual(@as(u32, 2), instruction.dst.temp.id);
             try std.testing.expectEqual(.add, instruction.op);
             try std.testing.expectEqual(.operand, std.meta.activeTag(instruction.lhs));
-            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.operand.temp.id);
+            try std.testing.expectEqual(@as(u32, 0), instruction.lhs.operand.operand.temp.id);
             try std.testing.expectEqual(.operand, std.meta.activeTag(instruction.rhs));
-            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.operand.temp.id);
+            try std.testing.expectEqual(@as(u32, 1), instruction.rhs.operand.operand.temp.id);
         },
         else => return error.ExpectedBinop,
     }

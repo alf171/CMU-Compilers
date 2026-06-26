@@ -18,8 +18,8 @@ pub const RunResult = struct {
 
 /// feedback loop of program (lines of IR) -> inteference graph -> colored graph
 /// if we spill, create a new IR lines and repeat
-pub fn run(ir_program: *IrProgram, init_program: *AllocProgram, should_coalesce: bool, alloc: Allocator, stdout: ?*Writer) !RunResult {
-    var graph = try igraph.createIgraph(init_program.lines, alloc);
+pub fn run(ir_program: *IrProgram, init_program: *AllocProgram, should_coalesce: bool, register_mask: u32, alloc: Allocator, stdout: ?*Writer) !RunResult {
+    var graph = try igraph.createIgraph(init_program.lines, register_mask, alloc);
     if (should_coalesce) {
         try coalesce.run(&graph, init_program.register_count, alloc, stdout);
     }
@@ -41,7 +41,7 @@ pub fn run(ir_program: *IrProgram, init_program: *AllocProgram, should_coalesce:
         program.deinit(alloc);
         program.* = new_program;
         // try program.print(stdout);
-        graph = try igraph.createIgraph(program.lines, alloc);
+        graph = try igraph.createIgraph(program.lines, register_mask, alloc);
         if (should_coalesce) {
             try coalesce.run(&graph, program.register_count, alloc, stdout);
         }

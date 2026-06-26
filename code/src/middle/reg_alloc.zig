@@ -55,6 +55,9 @@ fn appendBlocks(
                             try locals.put(sl.local.id, sl.src);
                         },
                         .load_local, .move => line.move = true,
+                        // all of these invoke a function therefore the clobber caller
+                        // safe registers
+                        .function_call, .write => line.clobber_caller_saved = true,
                         else => {},
                     }
                 },

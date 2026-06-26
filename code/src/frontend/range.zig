@@ -40,9 +40,15 @@ fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc:
                             };
                             instruction.* = Instruction{ .lir = .{ .binop = .{
                                 .dst = tl.dst,
-                                .lhs = .{ .operand = lhs.start },
+                                .lhs = .{ .operand = .{
+                                    .operand = lhs.start,
+                                    .type = .{ .int = .i64 },
+                                } },
                                 .op = .add,
-                                .rhs = .{ .operand = tl.index },
+                                .rhs = .{ .operand = .{
+                                    .operand = tl.index,
+                                    .type = .{ .int = .i64 },
+                                } },
                             } } };
                             try new_instructions.append(alloc, instruction.*);
                         },
@@ -53,9 +59,15 @@ fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc:
                             };
                             instruction.* = Instruction{ .lir = .{ .binop = .{
                                 .dst = tl.dst,
-                                .lhs = .{ .operand = lhs.start },
+                                .lhs = .{ .operand = .{
+                                    .operand = lhs.start,
+                                    .type = .{ .int = .i64 },
+                                } },
                                 .op = .add,
-                                .rhs = .{ .operand = tl.index },
+                                .rhs = .{ .operand = .{
+                                    .operand = tl.index,
+                                    .type = .{ .int = .i64 },
+                                } },
                             } } };
                             try new_instructions.append(alloc, instruction.*);
                         },
@@ -71,9 +83,15 @@ fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc:
                     };
                     try new_instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
                         .dst = l.dst,
-                        .lhs = .{ .operand = range.end },
+                        .lhs = .{ .operand = .{
+                            .operand = range.end,
+                            .type = .{ .int = .i64 },
+                        } },
                         .op = .sub,
-                        .rhs = .{ .operand = range.start },
+                        .rhs = .{ .operand = .{
+                            .operand = range.start,
+                            .type = .{ .int = .i64 },
+                        } },
                     } } });
                 },
                 else => {

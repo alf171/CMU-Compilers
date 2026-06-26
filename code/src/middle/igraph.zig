@@ -17,9 +17,15 @@ pub const Node = struct {
     spill: bool = false,
     static_degree: DegreeCount = 0,
     cur_degree: DegreeCount = 0,
+    /// encode which colors aren't allowed. ultimately, we should have a precoloring stage to avoid this hack
+    forbidden_colors: u32 = 0,
 
     pub fn init(val: Operand, allocator: Allocator) Node {
-        return Node{ .val = val, .neighbors = std.AutoHashMap(Operand, void).init(allocator), .moves = std.AutoHashMap(Operand, void).init(allocator) };
+        return Node{
+            .val = val,
+            .neighbors = std.AutoHashMap(Operand, void).init(allocator),
+            .moves = std.AutoHashMap(Operand, void).init(allocator),
+        };
     }
 
     pub fn deinit(self: *@This()) void {
@@ -112,6 +118,7 @@ pub const IGraph = struct {
             const degree: u8 = @intCast(dst_node.neighbors.count());
             dst_node.cur_degree = degree;
             dst_node.static_degree = degree;
+            dst_node.forbidden_colors |= src_node.forbidden_colors;
         }
 
         {
@@ -154,15 +161,16 @@ pub const IGraph = struct {
     }
 };
 
-pub fn createIgraph(lines: ArrayList(Line), allocator: Allocator) !IGraph {
+pub fn createIgraph(lines: ArrayList(Line), register_mask: u32, allocator: Allocator) !IGraph {
     var igraph = IGraph.init(allocator);
     for (lines.items) |line| {
-        try placeNodes(&igraph, line, allocator);
+        try placeNodes(&igraph, line, register_mask, allocator);
     }
     return igraph;
 }
 
-fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
+fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Allocator) !void {
+    // place all defines
     {
         var it = line.defines.ops.keyIterator();
         while (it.next()) |op| {
@@ -171,6 +179,7 @@ fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
             }
         }
     }
+    // place all uses
     {
         var it = line.uses.ops.keyIterator();
         while (it.next()) |op| {
@@ -179,7 +188,21 @@ fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
             }
         }
     }
+    // temporary clobbering logic
+    {
+        if (line.clobber_caller_saved) {
+            var it = line.live_out.ops.keyIterator();
+            while (it.next()) |op| {
+                if (!op.shouldColor()) continue;
+                // x <- f(y) scenario, x can be a caller-safe register in this scenario
+                if (line.defines.ops.contains(op.*)) continue;
 
+                try defineNodeIfDoesntExist(igraph, op.*, allocator);
+                igraph.nodes.getPtr(op.*).?.forbidden_colors |= register_mask;
+            }
+        }
+    }
+    // build interference edges
     {
         var it = line.defines.ops.keyIterator();
         while (it.next()) |define_op| {
@@ -201,14 +224,13 @@ fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
             }
         }
     }
-
-    // things used together need an edge between them
+    // things used together should interfer also
     {
         var use_it = line.uses.ops.keyIterator();
         while (use_it.next()) |first_key| {
             var use_it_2 = line.uses.ops.keyIterator();
             while (use_it_2.next()) |second_key| {
-                if (first_key.* == .mem or second_key.* == .mem or first_key.* == .spec_reg or second_key.* == .spec_reg) {
+                if (first_key.* == .mem or second_key.* == .mem or first_key.* == .reg or second_key.* == .reg) {
                     continue;
                 }
                 if (!Operand.equal(first_key.*, second_key.*)) {
@@ -220,7 +242,6 @@ fn placeNodes(igraph: *IGraph, line: Line, allocator: Allocator) !void {
             }
         }
     }
-
     // keep track of moves
     {
         if (line.move) {

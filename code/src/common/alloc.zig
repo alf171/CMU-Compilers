@@ -1,6 +1,6 @@
 /// def/use/live_out view for register allocation
 const std = @import("std");
-const SpecialRegs = @import("ir.zig").SpecialRegs;
+const PhysicalReg = @import("ir.zig").PhysicalReg;
 const BlockId = @import("ir.zig").BlockId;
 const TempId = @import("ir.zig").TempId;
 const TypeInfo = @import("types.zig").TypeInfo;
@@ -128,7 +128,7 @@ pub const MemoryId = u8;
 
 pub const Operand = union(enum) {
     temp: ScopedTemp,
-    spec_reg: SpecialRegs,
+    reg: PhysicalReg,
     mem: MemoryId,
 
     pub fn equal(self: @This(), other: @This()) bool {
@@ -137,8 +137,8 @@ pub const Operand = union(enum) {
                 .temp => |t2| t1.equal(t2),
                 else => false,
             },
-            .spec_reg => |t1| switch (other) {
-                .spec_reg => |t2| return t1 == t2,
+            .reg => |r1| switch (other) {
+                .reg => |r2| return r1.id == r2.id,
                 else => false,
             },
             .mem => |t1| switch (other) {
@@ -154,8 +154,8 @@ pub const Operand = union(enum) {
 
     pub fn toString(op: @This(), allocator: std.mem.Allocator) ![]u8 {
         return switch (op) {
-            .temp => |t| std.fmt.allocPrint(allocator, "%t{d}", .{t.id + 1}),
-            .spec_reg => |s| std.fmt.allocPrint(allocator, "%{s}", .{@tagName(s)}),
+            .temp => |t| std.fmt.allocPrint(allocator, "temp{d}", .{t.id + 1}),
+            .reg => |r| std.fmt.allocPrint(allocator, "reg{d}", .{r.id}),
             .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t + 1}),
         };
     }
@@ -163,7 +163,7 @@ pub const Operand = union(enum) {
     pub fn print(self: @This()) void {
         switch (self) {
             .temp => |t| std.debug.print("temp{d}", .{t.id}),
-            .spec_reg => |reg| std.debug.print("%{s}", .{@tagName(reg)}),
+            .reg => |r| std.debug.print("reg{d}", .{r.id}),
             .mem => |id| std.debug.print("mem{d}", .{id}),
         }
     }
@@ -196,6 +196,9 @@ pub const AllocLine = struct {
     defines: Operands,
     live_out: Operands,
     move: bool,
+    // marks if an operation triggers a br; this indicates that caller saved
+    // register will get cloberred and thus we must color differently
+    clobber_caller_saved: bool,
 
     pub fn deinit(self: *@This()) void {
         self.uses.free();

@@ -10,6 +10,7 @@ const LocalId = @import("ir.zig").LocalId;
 const CmpOp = @import("ir.zig").CmpOp;
 const UnaryOp = @import("ir.zig").UnaryOp;
 const SeenValue = @import("ir.zig").SeenValue;
+const ValueRef = @import("ir.zig").ValueRef;
 const TypedOperand = @import("alloc.zig").TypedOperand;
 const LirInstruction = @import("lir.zig").Instruction;
 
@@ -42,6 +43,11 @@ pub const Instruction = union(enum) {
     },
     parallel_copy: struct {
         copies: []Copy,
+    },
+    // heap based variable size
+    list_literal: struct {
+        dst: TypedOperand,
+        elements: []ValueRef,
     },
     // deglate to LIR impl
     lir: LirInstruction,
@@ -92,6 +98,15 @@ pub const Instruction = union(enum) {
                 }
                 debugPrint(")\n", .{});
             },
+            .list_literal => |al| {
+                al.dst.operand.print();
+                debugPrint(" <- [", .{});
+                for (al.elements, 0..) |elem, i| {
+                    if (i != 0) debugPrint(", ", .{});
+                    elem.print();
+                }
+                debugPrint("]\n", .{});
+            },
             // delegate to lir
             .lir => |l| try l.printFn(),
             else => |term| {
@@ -109,6 +124,16 @@ pub const Instruction = union(enum) {
             },
             .len => |*l| {
                 if (l.value.operand.equal(old)) l.value.operand = new;
+            },
+            .list_literal => |*ll| {
+                for (ll.elements) |*elem| {
+                    switch (elem.*) {
+                        .operand => |*op| {
+                            if (op.operand.equal(old)) op.*.operand = new;
+                        },
+                        .constant => {},
+                    }
+                }
             },
             // delegate to lir
             .lir => |*l| {
@@ -129,6 +154,9 @@ pub const Instruction = union(enum) {
             .len => |*l| {
                 if (l.dst.equal(old)) l.dst = new;
             },
+            .list_literal => |*ll| {
+                if (ll.dst.operand.equal(old)) ll.dst.operand = new;
+            },
             .lir => |*l| {
                 try l.replaceDefines(old, new);
             },
@@ -144,6 +172,7 @@ pub const Instruction = union(enum) {
             .phi => |pi| .{ .operand = pi.dst.operand },
             .range => |r| .{ .operand = r.dst.operand },
             .len => |l| .{ .operand = l.dst },
+            .list_literal => |ll| .{ .operand = ll.dst.operand },
             .print => null,
             .lir => |l| try l.getDefines(),
             else => |e| {
@@ -172,6 +201,14 @@ pub const Instruction = union(enum) {
             },
             .len => |l| {
                 try res.append(alloc, .{ .operand = l.value.operand });
+            },
+            .list_literal => |ll| {
+                for (ll.elements) |elem| {
+                    switch (elem) {
+                        .operand => |op| try res.append(alloc, .{ .operand = op.operand }),
+                        .constant => {},
+                    }
+                }
             },
             .lir => |l| {
                 var seen = try l.getUses(alloc);

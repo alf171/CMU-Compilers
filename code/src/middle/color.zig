@@ -19,6 +19,7 @@ pub const Node = struct {
     val: Operand,
     neighbors: Set(Operand),
     moves: Set(Operand),
+    forbidden_colors: u32 = 0,
 
     pub fn init(val: Operand, allocator: Allocator) Node {
         return Node{ .val = val, .neighbors = Set(Operand).init(allocator), .moves = Set(Operand).init(allocator) };
@@ -54,7 +55,12 @@ pub const ColoredGraph = struct {
 
             // hacky way to have different nodes
             // TODO: consider sharing memory between igraph and ColoredGraph to avoid cloning memory
-            const moved_node = Node{ .moves = moves, .neighbors = neighbors, .val = node_ptr.val };
+            const moved_node = Node{
+                .moves = moves,
+                .neighbors = neighbors,
+                .val = node_ptr.val,
+                .forbidden_colors = node_ptr.forbidden_colors,
+            };
             try cg.nodes.put(key, ColoredNode{
                 .node = moved_node,
                 .register = null,
@@ -126,8 +132,8 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
         while (it.next()) |ptr| {
             const node = ptr.value_ptr;
 
-            // skip already seen nodes, special registers, and spilled registers
-            if (node.selected or node.val == .spec_reg or node.val == .mem) {
+            // skip already seen nodes, pre allocated registers, and spilled registers
+            if (node.selected or node.val == .reg or node.val == .mem) {
                 continue;
             }
 
@@ -229,7 +235,7 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
 
 /// build our select stack. move things between simplify and spill as needed
 fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_list.Managed(Operand), simplify: *Set(Operand), spill: *Set(Operand), k: u8) !void {
-    std.debug.assert(node.val != .spec_reg);
+    std.debug.assert(node.val != .reg);
     std.debug.assert(!node.selected);
     try select.append(node.val);
     const item = input.nodes.getPtr(node.val).?;
@@ -243,7 +249,7 @@ fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_l
             return error.CantFindNode;
         };
 
-        if (n.selected or n.val == .spec_reg or n.val == .mem) {
+        if (n.selected or n.val == .reg or n.val == .mem) {
             continue;
         }
 
@@ -289,9 +295,15 @@ fn takeAny(s: *std.AutoHashMap(Operand, void)) !Operand {
 }
 
 // take a node. determininstically find lowest reg available
+// skip registers based on callee_save_mask
 fn scanForRegister(cnode: *ColoredNode, g: *ColoredGraph, k: u8) !?u8 {
     std.debug.assert(cnode.register == null);
     scan: for (0..k) |scan_reg| {
+        // bit mask skip logic
+        if (cnode.node.forbidden_colors & (@as(u32, 1) << @intCast(scan_reg)) != 0) {
+            continue :scan;
+        }
+        // selection logic
         var it = cnode.node.neighbors.keyIterator();
         while (it.next()) |key| {
             const nbor = g.nodes.get(key.*) orelse {

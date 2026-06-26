@@ -9,15 +9,17 @@ const ConstValue = common.ir.ConstValue;
 const Function = common.ir.Function;
 const getElementType = common.types.getElementType;
 const color = @import("middle").color;
-const regFor = @import("reg.zig").regFor;
-const valueToReg = @import("reg.zig").valueToReg;
-const paramRegFor = @import("reg.zig").paramRegFor;
-const valueAsImm = @import("reg.zig").valueAsImm;
-const FirstParamRegister = @import("reg.zig").first_param_reg;
-const CalleeSafeRegisters = @import("reg.zig").callee_safe_regs;
-const CalleReturnRegister = @import("reg.zig").callee_return_reg;
-const ScratchReg = @import("reg.zig").scratch_reg;
-const ScratchReg2 = @import("reg.zig").scratch_reg_2;
+const regFor = @import("common.zig").regFor;
+const condForCmp = @import("arm_reg.zig").condForCmp;
+const valueToReg = @import("arm_reg.zig").valueToReg;
+const paramRegFor = @import("arm_reg.zig").paramRegFor;
+const valueAsImm = @import("common.zig").valueAsImm;
+const FirstParamRegister = @import("arm_reg.zig").first_param_reg;
+const AllocatableRegister = @import("arm_reg.zig").allocatable_regs;
+const CalleeSafeRegs = @import("arm_reg.zig").callee_safe_regs;
+const CalleeReturnRegister = @import("arm_reg.zig").callee_return_reg;
+const ScratchReg = @import("arm_reg.zig").scratch_reg;
+const ScratchReg2 = @import("arm_reg.zig").scratch_reg_2;
 
 pub fn emit(program: *const Program, colors: *const color.ColoredGraph, alloc: std.mem.Allocator) ![]u8 {
     var out = ArrayList(u8).empty;
@@ -65,9 +67,9 @@ fn emitFunction(
                 .lir => |l| {
                     switch (l) {
                         .constant => |c| {
-                            const dst = try regFor(c.dst, colors);
+                            const dst = try regFor(c.dst, colors, &AllocatableRegister);
                             switch (c.value) {
-                                .int => |value| try emitMov(out, dst, value, alloc),
+                                .i64, .i32 => |value| try emitMov(out, dst, value, alloc),
                                 .bool => |value| {
                                     try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, @intFromBool(value) });
                                 },
@@ -79,22 +81,22 @@ fn emitFunction(
                         },
                         // str: src, dst (register -> memory)
                         .store_local => |sl| {
-                            const src = try regFor(sl.src, colors);
+                            const src = try regFor(sl.src, colors, &AllocatableRegister);
                             try emitStackStore(out, src, localOffset(sl.local.id), ScratchReg, alloc);
                         },
                         // ldr: dst, src (memory -> register)
                         .load_local => |ll| {
-                            const dst = try regFor(ll.dst, colors);
+                            const dst = try regFor(ll.dst, colors, &AllocatableRegister);
                             try emitStackLoad(out, dst, localOffset(ll.local.id), ScratchReg, alloc);
                         },
                         .move => |m| {
                             switch (m.dst) {
                                 .temp => {
-                                    const dst = try regFor(m.dst, colors);
+                                    const dst = try regFor(m.dst, colors, &AllocatableRegister);
                                     switch (m.src) {
                                         // reg <- reg
                                         .temp => {
-                                            const src = try regFor(m.src, colors);
+                                            const src = try regFor(m.src, colors, &AllocatableRegister);
                                             if (std.mem.eql(u8, dst, src)) continue;
                                             try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                                         },
@@ -111,7 +113,7 @@ fn emitFunction(
                                         // mem <- reg
                                         .temp => {
                                             const offset = spillOffset(local_stack_size, slot);
-                                            const src = try regFor(m.src, colors);
+                                            const src = try regFor(m.src, colors, &AllocatableRegister);
                                             try emitStackStore(out, src, offset, ScratchReg, alloc);
                                         },
                                         .mem => {
@@ -124,7 +126,7 @@ fn emitFunction(
                             }
                         },
                         .binop => |binop| {
-                            const dst = try regFor(binop.dst, colors);
+                            const dst = try regFor(binop.dst, colors, &AllocatableRegister);
                             const lhs = try valueToReg(binop.lhs, out, ScratchReg, colors, alloc);
 
                             switch (binop.op) {
@@ -133,14 +135,14 @@ fn emitFunction(
                                     const rhs_reg = if (valueAsImm(binop.rhs)) |rhs_imm|
                                         try std.fmt.allocPrint(alloc, "#{d}", .{rhs_imm})
                                     else
-                                        try regFor(binop.rhs.operand, colors);
+                                        try regFor(binop.rhs.operand.operand, colors, &AllocatableRegister);
                                     try out.print(alloc, "\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
                                 },
                                 .sub => {
                                     const rhs_reg = if (valueAsImm(binop.rhs)) |rhs_imm|
                                         try std.fmt.allocPrint(alloc, "#{d}", .{rhs_imm})
                                     else
-                                        try regFor(binop.rhs.operand, colors);
+                                        try regFor(binop.rhs.operand.operand, colors, &AllocatableRegister);
                                     try out.print(alloc, "\tsub {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
                                 },
                                 // cant use imm
@@ -164,7 +166,7 @@ fn emitFunction(
                             }
                         },
                         .branch => |b| {
-                            const cond = try regFor(b.condition, colors);
+                            const cond = try regFor(b.condition, colors, &AllocatableRegister);
                             try out.print(alloc, "\tcmp {s}, #0\n", .{cond});
                             try out.print(alloc, "\tb.ne _{s}_L{d}\n", .{ function.name, b.then_block });
                             try out.print(alloc, "\tb _{s}_L{d}\n", .{ function.name, b.else_block });
@@ -177,7 +179,7 @@ fn emitFunction(
                         // x29 - 24 array[1]
                         // x29 - 32 array[0]  <- array_base
                         .tuple_literal => |tl| {
-                            const dst = try regFor(tl.dst.operand, colors);
+                            const dst = try regFor(tl.dst.operand, colors, &AllocatableRegister);
 
                             const tuple_type = switch (tl.dst.type) {
                                 .tuple => |tuple| tuple.elements,
@@ -198,7 +200,7 @@ fn emitFunction(
                             var cur_offset: usize = 0;
                             for (tl.elements, 0..) |elem, i| {
                                 const src = switch (elem) {
-                                    .operand => try regFor(elem.operand, colors),
+                                    .operand => try regFor(elem.operand.operand, colors, &AllocatableRegister),
                                     .constant => |c| blk: {
                                         try emitConstantToReg(out, ScratchReg, c, alloc);
                                         break :blk ScratchReg;
@@ -222,56 +224,10 @@ fn emitFunction(
                             // array_base = x29 - end
                             try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, base_offset });
                         },
-                        // heap: [ size ] [elem 0] [...]
-                        .list_literal => |ll| {
-                            const dst = try regFor(ll.dst.operand, colors);
-                            const elem_type = try getElementType(ll.dst.type);
-                            const elem_size = try elem_type.sizeOfType();
-                            const byte_count = ll.elements.len * elem_size + 8;
-                            const len = ll.elements.len;
-                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ FirstParamRegister, byte_count });
-                            try out.appendSlice(alloc, "\tbl _arena_malloc\n");
-
-                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg, len });
-                            try out.print(alloc, "\tstr {s}, [{s}]\n", .{ ScratchReg, CalleReturnRegister });
-
-                            for (ll.elements, 0..len) |element, i| {
-                                const src = switch (element) {
-                                    .operand => try regFor(element.operand, colors),
-                                    .constant => |c| blk: {
-                                        try emitConstantToReg(out, ScratchReg, c, alloc);
-                                        break :blk ScratchReg;
-                                    },
-                                };
-                                const offset = i * elem_size + 8;
-                                switch (elem_type) {
-                                    // pointers & ints are size 8
-                                    .list, .tuple => {
-                                        try out.print(alloc, "\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
-                                    },
-                                    .int => |int| {
-                                        switch (int) {
-                                            .i64 => {
-                                                try out.print(alloc, "\tstr {s}, [{s}, #{d}]\n", .{ src, CalleReturnRegister, offset });
-                                            },
-                                            .i32 => {
-                                                std.debug.assert(src[0] == 'x');
-                                                try out.print(alloc, "\tstr w{s}, [{s}, #{d}]\n", .{ src[1..], CalleReturnRegister, offset });
-                                            },
-                                        }
-                                    },
-                                    .bool, .char => {
-                                        try out.print(alloc, "\tstrb w{s}, [{s}, #{d}]\n", .{ src[1..], CalleReturnRegister, offset });
-                                    },
-                                    else => return error.TypeNotImpl,
-                                }
-                            }
-                            try out.print(alloc, "\tmov {s}, x0\n", .{dst});
-                        },
                         .tuple_load => |tl| {
-                            const dst = try regFor(tl.dst, colors);
-                            const index = try regFor(tl.index, colors);
-                            const tuple = try regFor(tl.tuple.operand, colors);
+                            const dst = try regFor(tl.dst, colors, &AllocatableRegister);
+                            const index = try regFor(tl.index, colors, &AllocatableRegister);
+                            const tuple = try regFor(tl.tuple.operand, colors, &AllocatableRegister);
 
                             const elem_type = try getElementType(tl.tuple.type);
                             switch (elem_type) {
@@ -287,9 +243,9 @@ fn emitFunction(
                             }
                         },
                         .list_load => |ll| {
-                            const dst = try regFor(ll.dst, colors);
-                            const index = try regFor(ll.index, colors);
-                            const array = try regFor(ll.list.operand, colors);
+                            const dst = try regFor(ll.dst, colors, &AllocatableRegister);
+                            const index = try regFor(ll.index, colors, &AllocatableRegister);
+                            const array = try regFor(ll.list.operand, colors, &AllocatableRegister);
 
                             const elem_type = try getElementType(ll.list.type);
                             switch (elem_type) {
@@ -310,7 +266,7 @@ fn emitFunction(
                                         .i32 => {
                                             try out.print(alloc, "\tlsl {s}, {s}, #2\n", .{ ScratchReg, index });
                                             try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                                            try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
+                                            try out.print(alloc, "\tldrsw {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
                                         },
                                     }
                                 },
@@ -326,9 +282,10 @@ fn emitFunction(
                             switch (elem_type) {
                                 // index = (index + 1) << 3
                                 .list, .tuple => {
-                                    const dst = try regFor(ls.list.operand, colors);
-                                    const src = try regFor(ls.src, colors);
-                                    const index = try regFor(ls.index, colors);
+                                    const dst = try regFor(ls.list.operand, colors, &AllocatableRegister);
+                                    std.debug.assert(ls.src == .operand);
+                                    const src = try regFor(ls.src.operand.operand, colors, &AllocatableRegister);
+                                    const index = try regFor(ls.index, colors, &AllocatableRegister);
                                     try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
                                     try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
                                     try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
@@ -337,79 +294,143 @@ fn emitFunction(
                                     // TODO: modularize this logic
                                     switch (i) {
                                         .i64 => {
-                                            const dst = try regFor(ls.list.operand, colors);
-                                            const src = try regFor(ls.src, colors);
-                                            const index = try regFor(ls.index, colors);
+                                            const dst = try regFor(ls.list.operand, colors, &AllocatableRegister);
+                                            const index = try regFor(ls.index, colors, &AllocatableRegister);
                                             try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
                                             try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                                            try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
+                                            switch (ls.src) {
+                                                .operand => |op| {
+                                                    const src = try regFor(op.operand, colors, &AllocatableRegister);
+                                                    try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
+                                                },
+                                                .constant => |c| {
+                                                    switch (c) {
+                                                        // .i32 => {},
+                                                        .i64 => |i_const| {
+                                                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, i_const });
+                                                            try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ ScratchReg2, dst, ScratchReg });
+                                                        },
+                                                        else => return error.NotImpl,
+                                                    }
+                                                },
+                                            }
                                         },
                                         .i32 => {
-                                            const dst = try regFor(ls.list.operand, colors);
-                                            const src = try regFor(ls.src, colors);
-                                            const index = try regFor(ls.index, colors);
+                                            const dst = try regFor(ls.list.operand, colors, &AllocatableRegister);
+                                            const index = try regFor(ls.index, colors, &AllocatableRegister);
                                             try out.print(alloc, "\tlsl {s}, {s}, #2\n", .{ ScratchReg, index });
                                             try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                                            try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
+                                            switch (ls.src) {
+                                                .operand => |op| {
+                                                    const src = try regFor(op.operand, colors, &AllocatableRegister);
+                                                    try out.print(alloc, "\tstr w{s}, [{s}, {s}]\n", .{ src[1..], dst, ScratchReg });
+                                                },
+                                                .constant => |c| {
+                                                    switch (c) {
+                                                        .i64 => |v| {
+                                                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, v });
+                                                            try out.print(alloc, "\tstr w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
+                                                        },
+                                                        .i32 => |v| {
+                                                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, v });
+                                                            try out.print(alloc, "\tstr w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
+                                                        },
+                                                        else => return error.NotImpl,
+                                                    }
+                                                },
+                                            }
                                         },
                                     }
                                 },
                                 .bool, .char => {
-                                    return error.TypesNotImpl;
+                                    const index = try regFor(ls.index, colors, &AllocatableRegister);
+                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, index });
+                                    const dst = try regFor(ls.list.operand, colors, &AllocatableRegister);
+                                    switch (ls.src) {
+                                        .operand => |op| {
+                                            const src = try regFor(op.operand, colors, &AllocatableRegister);
+                                            try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ src[1..], dst, ScratchReg });
+                                        },
+                                        .constant => |c| {
+                                            switch (c) {
+                                                .i32 => |v| {
+                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, v });
+                                                    try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
+                                                },
+                                                .i64 => |v| {
+                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, v });
+                                                    try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
+                                                },
+                                                .char => |char| {
+                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, char });
+                                                    try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
+                                                },
+                                                else => |e| {
+                                                    std.debug.print("type not impl {s}\n", .{@tagName(e)});
+                                                    return error.NotImpl;
+                                                },
+                                            }
+                                        },
+                                    }
                                 },
                                 else => {
                                     return error.UnexpectedType;
                                 },
                             }
                         },
+                        .list_len_set => |lls| {
+                            const src = try regFor(lls.list.operand, colors, &AllocatableRegister);
+                            const len = try regFor(lls.len, colors, &AllocatableRegister);
+                            try out.print(alloc, "\tstr {s}, [{s}]\n", .{ len, src });
+                        },
                         .function_call => |fc| {
                             for (fc.args, 0..) |arg, i| {
                                 const dst = try paramRegFor(i);
-                                const src = try regFor(arg.operand, colors);
+                                const src = try regFor(arg.operand, colors, &AllocatableRegister);
                                 try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                             }
 
                             try out.print(alloc, "\tbl _{s}\n", .{fc.function_name});
 
                             if (fc.dst) |dst_op| {
-                                const dst = try regFor(dst_op, colors);
+                                const dst = try regFor(dst_op, colors, &AllocatableRegister);
                                 try out.print(alloc, "\tmov {s}, x0\n", .{dst});
                             }
                         },
                         .function_param => |fp| {
-                            const dst = try regFor(fp.dst.operand, colors);
+                            const dst = try regFor(fp.dst.operand, colors, &AllocatableRegister);
                             const src = try paramRegFor(fp.index);
                             try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                         },
                         .function_return => |fr| {
                             if (fr.value) |src_op| {
-                                const src = try regFor(src_op, colors);
+                                const src = try regFor(src_op, colors, &AllocatableRegister);
                                 try out.print(alloc, "\tmov x0, {s}\n", .{src});
                             }
                             try out.print(alloc, "\tb _{s}_epilogue\n", .{function.name});
                         },
                         .compare => |c| {
-                            const lhs = try regFor(c.lhs, colors);
-                            const rhs = try regFor(c.rhs, colors);
-                            const dst = try regFor(c.dst, colors);
+                            const lhs = try regFor(c.lhs, colors, &AllocatableRegister);
+                            const rhs = try regFor(c.rhs, colors, &AllocatableRegister);
+                            const dst = try regFor(c.dst, colors, &AllocatableRegister);
                             try out.print(alloc, "\tcmp {s}, {s}\n", .{ lhs, rhs });
                             try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
                         },
                         .write => |w| {
-                            const fd = try regFor(w.fd, colors);
-                            const buf = try regFor(w.buf.operand, colors);
-                            const len = try regFor(w.len, colors);
+                            const fd = try regFor(w.fd, colors, &AllocatableRegister);
+                            const buf = try regFor(w.buf.operand, colors, &AllocatableRegister);
+                            const len = try regFor(w.len, colors, &AllocatableRegister);
                             try out.print(alloc, "\t mov x0, {s}\n", .{fd});
                             try out.print(alloc, "\t mov x1, {s}\n", .{buf});
                             try out.print(alloc, "\t mov x2, {s}\n", .{len});
                             try out.print(alloc, "\tbl _write \n", .{});
                         },
                         .select => |s| {
-                            const dst = try regFor(s.dst, colors);
+                            const dst = try regFor(s.dst, colors, &AllocatableRegister);
                             const if_reg = try valueToReg(s.if_value, out, ScratchReg, colors, alloc);
                             const else_reg = try valueToReg(s.else_value, out, ScratchReg2, colors, alloc);
 
-                            const condition = try regFor(s.condition, colors);
+                            const condition = try regFor(s.condition, colors, &AllocatableRegister);
                             try out.print(alloc, "\tcmp {s}, #0\n", .{condition});
                             try out.print(alloc, "\tcsel {s}, {s}, {s}, ne\n", .{ dst, if_reg, else_reg });
                         },
@@ -420,8 +441,8 @@ fn emitFunction(
                     }
                 },
                 .len => |l| {
-                    const dst = try regFor(l.dst, colors);
-                    const src = try regFor(l.value.operand, colors);
+                    const dst = try regFor(l.dst, colors, &AllocatableRegister);
+                    const src = try regFor(l.value.operand, colors, &AllocatableRegister);
                     switch (l.value.type) {
                         .list => {
                             try out.print(alloc, "\tldr {s}, [{s}]\n", .{ dst, src });
@@ -460,26 +481,26 @@ fn createFunctionHeader(out: *ArrayList(u8), name: []const u8, local_stack_size:
     if (local_stack_size > 0) {
         try out.print(alloc, "\tsub sp, sp, #{d}\n", .{local_stack_size});
     }
-    try saveCallleSafeReg(out, alloc);
+    try saveCalleeSafeReg(out, alloc);
 }
 
-fn saveCallleSafeReg(out: *ArrayList(u8), alloc: std.mem.Allocator) !void {
-    std.debug.assert(CalleeSafeRegisters.len % 2 == 0);
+fn saveCalleeSafeReg(out: *ArrayList(u8), alloc: std.mem.Allocator) !void {
+    std.debug.assert(CalleeSafeRegs.len % 2 == 0);
     var i: usize = 0;
-    while (i < CalleeSafeRegisters.len) : (i += 2) {
-        const reg1 = CalleeSafeRegisters[i];
-        const reg2 = CalleeSafeRegisters[i + 1];
+    while (i < CalleeSafeRegs.len) : (i += 2) {
+        const reg1 = CalleeSafeRegs[i];
+        const reg2 = CalleeSafeRegs[i + 1];
         try out.print(alloc, "\tstp {s}, {s}, [sp, #-16]!\n", .{ reg1, reg2 });
     }
 }
 
-fn restoreCallleSafeReg(out: *ArrayList(u8), alloc: std.mem.Allocator) !void {
-    std.debug.assert(CalleeSafeRegisters.len % 2 == 0);
-    var i: usize = CalleeSafeRegisters.len;
+fn restoreCallleeSafeReg(out: *ArrayList(u8), alloc: std.mem.Allocator) !void {
+    std.debug.assert(CalleeSafeRegs.len % 2 == 0);
+    var i: usize = CalleeSafeRegs.len;
     while (i > 0) {
         i -= 2;
-        const reg1 = CalleeSafeRegisters[i];
-        const reg2 = CalleeSafeRegisters[i + 1];
+        const reg1 = CalleeSafeRegs[i];
+        const reg2 = CalleeSafeRegs[i + 1];
         try out.print(alloc, "\tldp {s}, {s}, [sp], #16\n", .{ reg1, reg2 });
     }
 }
@@ -552,7 +573,7 @@ fn createFunctionFooter(out: *ArrayList(u8), name: []const u8, local_stack_size:
         try out.appendSlice(alloc, "\tmov w0, #0\n");
     }
 
-    try restoreCallleSafeReg(out, alloc);
+    try restoreCallleeSafeReg(out, alloc);
     if (local_stack_size > 0) {
         try out.print(alloc, "\tadd sp, sp, #{d}\n", .{local_stack_size});
     }
@@ -617,17 +638,6 @@ fn arrayOffset(local_count: usize, array_slot_index: usize) usize {
     return (local_count + array_slot_index + 1) * 8;
 }
 
-fn condForCmp(op: common.ir.CmpOp) []const u8 {
-    return switch (op) {
-        .eq => "eq",
-        .neq => "ne",
-        .lt => "lt",
-        .lte => "le",
-        .gt => "gt",
-        .gte => "ge",
-    };
-}
-
 fn spillOffset(local_stack_size: usize, slot: usize) usize {
     return local_stack_size + (slot + 1) * 8;
 }
@@ -639,7 +649,7 @@ fn emitConstantToReg(
     alloc: std.mem.Allocator,
 ) !void {
     switch (value) {
-        .int => |i| try emitMov(out, dst, i, alloc),
+        .i64, .i32 => |i| try emitMov(out, dst, i, alloc),
         .char => |c| try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, c }),
         .bool => |b| try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, @intFromBool(b) }),
         .float => return error.NotImpl,

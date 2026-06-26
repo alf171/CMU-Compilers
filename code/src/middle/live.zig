@@ -74,6 +74,7 @@ test "out of bounds returns empty" {
         .defines = Operands.init(alloc),
         .live_out = Operands.init(alloc),
         .move = false,
+        .clobber_caller_saved = false,
         .instruction_index = 0,
     };
     defer line.deinit();
@@ -109,6 +110,7 @@ test "simple example" {
         .defines = defines,
         .live_out = live_out,
         .move = false,
+        .clobber_caller_saved = false,
         .instruction_index = 1,
     };
 

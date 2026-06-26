@@ -106,6 +106,7 @@ test "basic block elim" {
         .instruction_index = 0,
         .live_out = Operands.init(alloc),
         .move = false,
+        .clobber_caller_saved = false,
         .uses = Operands.init(alloc),
     });
     defer alloc_program.deinit(alloc);

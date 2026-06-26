@@ -155,14 +155,28 @@ fn spillLine(
             .function_id = function_idx,
         } }, {});
         const temp_line_number: usize = @intCast(new_program.lines.items.len + 1);
-        const p1 = Line{ .uses = try line.uses.clone(alloc), .live_out = Operands.init(alloc), .defines = temp, .instruction_index = temp_line_number, .move = line.move };
+        const p1 = Line{
+            .uses = try line.uses.clone(alloc),
+            .live_out = Operands.init(alloc),
+            .defines = temp,
+            .instruction_index = temp_line_number,
+            .move = line.move,
+            .clobber_caller_saved = line.clobber_caller_saved,
+        };
         try new_program.lines.append(alloc, p1);
         // p2: M[] <- temp_new
         var mem = Operands.init(alloc);
         try mem.ops.put(Operand{ .mem = memory_pointer }, {});
         const new_uses = try temp.clone(alloc);
         const new_line_number: usize = @intCast(new_program.lines.items.len + 1);
-        const new_line = Line{ .uses = new_uses, .live_out = Operands.init(alloc), .defines = mem, .instruction_index = new_line_number, .move = false };
+        const new_line = Line{
+            .uses = new_uses,
+            .live_out = Operands.init(alloc),
+            .defines = mem,
+            .instruction_index = new_line_number,
+            .move = false,
+            .clobber_caller_saved = false,
+        };
         try new_program.lines.append(alloc, new_line);
         next_temp.* += 1;
         return;
@@ -179,7 +193,14 @@ fn spillLine(
             var mem = Operands.init(alloc);
             try mem.ops.put(Operand{ .mem = memory_pointer }, {});
             const new_line_number: usize = @intCast(new_program.lines.items.len + 1);
-            const new_line = Line{ .live_out = Operands.init(alloc), .defines = temp, .instruction_index = new_line_number, .move = line.move, .uses = mem };
+            const new_line = Line{
+                .live_out = Operands.init(alloc),
+                .defines = temp,
+                .instruction_index = new_line_number,
+                .move = line.move,
+                .clobber_caller_saved = line.clobber_caller_saved,
+                .uses = mem,
+            };
             try new_program.lines.append(alloc, new_line);
             // p2: replace reg_{spill} with temp_i
             // std.debug.print("trying to remove {any} from line.uses: {any}", .{ reg, line.uses.ops.items });
@@ -190,7 +211,14 @@ fn spillLine(
             } }, {});
             const mut_defines = try line.defines.clone(alloc);
             const mut_line_count: usize = @intCast(new_program.lines.items.len + 1);
-            const rewritten_line = Line{ .uses = mut_uses, .defines = mut_defines, .live_out = Operands.init(alloc), .move = line.move, .instruction_index = mut_line_count };
+            const rewritten_line = Line{
+                .uses = mut_uses,
+                .defines = mut_defines,
+                .live_out = Operands.init(alloc),
+                .move = line.move,
+                .clobber_caller_saved = line.clobber_caller_saved,
+                .instruction_index = mut_line_count,
+            };
             try new_program.lines.append(alloc, rewritten_line);
 
             next_temp.* += 1;
@@ -200,7 +228,14 @@ fn spillLine(
     // case 3: spill reg is in the live_out only
     if (line.live_out.ops.contains(reg)) {
         const new_line_number: usize = @intCast(new_program.lines.items.len + 1);
-        const new_line = Line{ .live_out = Operands.init(alloc), .defines = try line.defines.clone(alloc), .instruction_index = new_line_number, .move = line.move, .uses = try line.uses.clone(alloc) };
+        const new_line = Line{
+            .live_out = Operands.init(alloc),
+            .defines = try line.defines.clone(alloc),
+            .instruction_index = new_line_number,
+            .move = line.move,
+            .clobber_caller_saved = line.clobber_caller_saved,
+            .uses = try line.uses.clone(alloc),
+        };
         try new_program.lines.append(alloc, new_line);
         return;
     }
@@ -208,7 +243,14 @@ fn spillLine(
     // default: just copy untouched line
     // line number needs to be recalculated at least!
     const new_line_number: usize = @intCast(new_program.lines.items.len + 1);
-    const new_line = Line{ .uses = try line.uses.clone(alloc), .defines = try line.defines.clone(alloc), .live_out = Operands.init(alloc), .move = line.move, .instruction_index = new_line_number };
+    const new_line = Line{
+        .uses = try line.uses.clone(alloc),
+        .defines = try line.defines.clone(alloc),
+        .live_out = Operands.init(alloc),
+        .move = line.move,
+        .clobber_caller_saved = line.clobber_caller_saved,
+        .instruction_index = new_line_number,
+    };
     try new_program.lines.append(alloc, new_line);
 }
 
@@ -229,6 +271,7 @@ test "spillReg basic spill of defined reg" {
         .live_out = live_out_ops,
         .instruction_index = 0,
         .move = false,
+        .clobber_caller_saved = false,
     };
 
     var lines = ArrayList(Line).empty;
@@ -267,9 +310,9 @@ test "spill reg function" {
     const B = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
     try instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
         .dst = A,
-        .lhs = .{ .operand = A },
+        .lhs = .{ .operand = .{ .operand = A, .type = .any } },
         .op = .add,
-        .rhs = .{ .operand = B },
+        .rhs = .{ .operand = .{ .operand = B, .type = .any } },
     } } });
     try blocks.append(alloc, BasicBlock{
         .id = 0,
@@ -309,9 +352,9 @@ test "spill reg function" {
     } } }, new_instructions[0]);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .binop = .{
         .dst = .{ .temp = .{ .id = 3, .function_id = 0 } },
-        .lhs = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } } },
+        .lhs = .{ .operand = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any } },
         .op = .add,
-        .rhs = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } } },
+        .rhs = .{ .operand = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any } },
     } } }, new_instructions[1]);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .move = .{
         .dst = Operand{ .mem = 0 },
