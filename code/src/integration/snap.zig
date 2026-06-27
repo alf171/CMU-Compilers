@@ -2,13 +2,14 @@ const std = @import("std");
 const runCommand = @import("run.zig").runCommand;
 
 pub fn run(
+    compiler_path: []const u8,
     file_name: []const u8,
     update: bool,
     alloc: std.mem.Allocator,
     io: std.Io,
 ) !void {
     std.debug.print("running {s}", .{file_name});
-    const result = try runCommand(alloc, io, &.{ "zig", "build", "integration-test", "--", file_name, "/tmp/out.s", "--run" });
+    const result = try runCommand(alloc, io, &.{ compiler_path, file_name, "/tmp/out.s", "--run" });
     defer alloc.free(result.stdout);
     defer alloc.free(result.stderr);
 
@@ -70,15 +71,16 @@ pub fn run(
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena;
     const args = try init.minimal.args.toSlice(arena.allocator());
-    std.debug.assert(args.len == 1 or args.len == 2);
+    std.debug.assert(args.len == 2 or args.len == 3);
     const io = init.io;
     const alloc = init.gpa;
 
     var should_regen_snapshot = false;
-    if (args.len == 2) {
-        const arg = args[1];
+    if (args.len == 3) {
+        const arg = args[2];
         if (std.mem.eql(u8, arg, "--regen")) should_regen_snapshot = true;
     }
+    const compiler_path = args[1];
 
     const dir = try std.Io.Dir.cwd().openDir(io, "tst/python", .{ .iterate = true });
     defer dir.close(io);
@@ -91,6 +93,6 @@ pub fn main(init: std.process.Init) !void {
 
         const path = try std.fs.path.join(alloc, &.{ "tst/python", entry.path });
         defer alloc.free(path);
-        run(path, should_regen_snapshot, alloc, io) catch {};
+        run(compiler_path, path, should_regen_snapshot, alloc, io) catch {};
     }
 }

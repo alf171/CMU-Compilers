@@ -98,6 +98,7 @@ pub fn build(b: *std.Build) void {
 
     // snapshot test using integration
     const run_snapshot_tests = b.addRunArtifact(snapshot_test);
+    run_snapshot_tests.addArtifactArg(integration_test);
     const snapshot_test_step = b.step("snapshot-test", "run snapshot test");
     snapshot_test_step.dependOn(&run_snapshot_tests.step);
     if (b.args) |args| run_snapshot_tests.addArgs(args);
