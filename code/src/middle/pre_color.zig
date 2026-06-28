@@ -32,6 +32,7 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                 .lir => |lir| switch (lir) {
                     .function_call => |fc| {
                         var copies = try alloc.alloc(Copy, fc.args.len);
+                        // place new args to ensure proper coloring / interference
                         var args = try alloc.alloc(TypedOperand, fc.args.len);
                         for (fc.args, 0..) |arg, i| {
                             const reg = Operand{ .reg = .{ .id = @intCast(i) } };
@@ -48,7 +49,6 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                             .copies = copies,
                         } });
                         // jumps to function
-                        // try new_instructions.append(alloc, instruction.*);
                         try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
                             .dst = fc.dst,
                             .function_name = fc.function_name,

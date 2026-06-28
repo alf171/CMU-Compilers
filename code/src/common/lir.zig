@@ -98,13 +98,6 @@ pub const Instruction = union(enum) {
     function_return: struct {
         value: ?Operand,
     },
-    // sys call [START]
-    write: struct {
-        fd: Operand,
-        buf: TypedOperand,
-        len: Operand,
-    },
-    // sys call [END]
     select: struct {
         dst: Operand,
         condition: Operand,
@@ -242,15 +235,6 @@ pub const Instruction = union(enum) {
                     value.print();
                 }
                 debugPrint("\n", .{});
-            },
-            .write => |w| {
-                debugPrint("write(", .{});
-                w.fd.print();
-                debugPrint(", ", .{});
-                w.buf.operand.print();
-                debugPrint(", ", .{});
-                w.len.print();
-                debugPrint(")\n", .{});
             },
             .select => |s| {
                 s.dst.print();
@@ -424,7 +408,6 @@ pub const Instruction = union(enum) {
             .select => |s| .{ .operand = s.dst },
             .function_call => |fc| if (fc.dst) |op| .{ .operand = op } else null,
             .function_return => null,
-            .write => null,
             .branch => null,
             .jump => null,
             else => |e| {
@@ -511,11 +494,6 @@ pub const Instruction = union(enum) {
                 for (fc.args) |arg| {
                     try res.append(alloc, .{ .operand = arg.operand });
                 }
-            },
-            .write => |w| {
-                try res.append(alloc, .{ .operand = w.fd });
-                try res.append(alloc, .{ .operand = w.buf.operand });
-                try res.append(alloc, .{ .operand = w.len });
             },
             .select => |s| {
                 try res.append(alloc, .{ .operand = s.condition });

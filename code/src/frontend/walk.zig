@@ -537,6 +537,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                     } }, alloc);
                     return src;
                 },
+                // TODO: consider moving this logic into write.zig -- also rename to print.zig?
                 .Write => {
                     std.debug.assert(c.PyList_Size(args) == 3);
                     const arg0 = c.PyList_GetItem(args, 0);
@@ -566,18 +567,30 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                                     .type = .{ .int = .i64 },
                                 } },
                             } } }, alloc);
-                            try irBuilder.emit(.{ .lir = .{ .write = .{
-                                .fd = fd.operand,
-                                .buf = .{ .operand = data, .type = buf.type },
-                                .len = len.operand,
-                            } } }, alloc);
+                            try irBuilder.emit(.{
+                                .lir = .{
+                                    .function_call = .{
+                                        .dst = null,
+                                        .args = try alloc.dupe(TypedOperand, &.{
+                                            fd,
+                                            .{ .operand = data, .type = buf.type },
+                                            len,
+                                        }),
+                                        .function_name = "write",
+                                    },
+                                },
+                            }, alloc);
                         },
                         .tuple => {
-                            try irBuilder.emit(.{ .lir = .{ .write = .{
-                                .fd = fd.operand,
-                                .buf = buf,
-                                .len = len.operand,
-                            } } }, alloc);
+                            try irBuilder.emit(.{
+                                .lir = .{
+                                    .function_call = .{
+                                        .dst = null,
+                                        .args = try alloc.dupe(TypedOperand, &.{ fd, buf, len }),
+                                        .function_name = "write",
+                                    },
+                                },
+                            }, alloc);
                         },
                         else => |e| {
                             std.debug.print("cant write type {s}\n", .{@tagName(e)});

@@ -49,15 +49,16 @@ fn appendBlocks(
             };
             // set move flag and store locals for later use
             switch (instruction) {
+                // HACK: leaking MIR instruction
+                .write => line.clobber_caller_saved = true,
                 .lir => |lir| {
                     switch (lir) {
                         .store_local => |sl| {
                             try locals.put(sl.local.id, sl.src);
                         },
                         .load_local, .move => line.move = true,
-                        // all of these invoke a function therefore the clobber caller
-                        // safe registers
-                        .function_call, .write => line.clobber_caller_saved = true,
+                        // invoke a function therefore the clobber caller save registers
+                        .function_call => line.clobber_caller_saved = true,
                         else => {},
                     }
                 },

@@ -49,6 +49,14 @@ pub const Instruction = union(enum) {
         name: []const u8,
         index: usize,
     },
+    // sys call [START]
+    write: struct {
+        fd: Operand,
+        buf: TypedOperand,
+        len: Operand,
+    },
+    // sys call [END]
+
     // heap based variable size
     list_literal: struct {
         dst: TypedOperand,
@@ -115,6 +123,15 @@ pub const Instruction = union(enum) {
             .function_param => |fp| {
                 fp.dst.operand.print();
                 debugPrint(" <- param {d}\n", .{fp.index});
+            },
+            .write => |w| {
+                debugPrint("write(", .{});
+                w.fd.print();
+                debugPrint(", ", .{});
+                w.buf.operand.print();
+                debugPrint(", ", .{});
+                w.len.print();
+                debugPrint(")\n", .{});
             },
             // delegate to lir
             .lir => |l| try l.printFn(),
@@ -187,6 +204,7 @@ pub const Instruction = union(enum) {
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .print => null,
             .function_param => |fp| .{ .operand = fp.dst.operand },
+            .write => null,
             .lir => |l| try l.getDefines(),
             else => |e| {
                 debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});
@@ -224,6 +242,11 @@ pub const Instruction = union(enum) {
                 }
             },
             .function_param => {},
+            .write => |w| {
+                try res.append(alloc, .{ .operand = w.fd });
+                try res.append(alloc, .{ .operand = w.buf.operand });
+                try res.append(alloc, .{ .operand = w.len });
+            },
             .lir => |l| {
                 var seen = try l.getUses(alloc);
                 defer seen.deinit(alloc);

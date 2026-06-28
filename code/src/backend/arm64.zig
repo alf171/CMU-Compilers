@@ -429,15 +429,6 @@ fn emitFunction(
                             try out.print(alloc, "\tcmp {s}, {s}\n", .{ lhs, rhs });
                             try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
                         },
-                        .write => {
-                            // const fd = try regFor(w.fd, colors, &AllocatableRegister);
-                            // const buf = try regFor(w.buf.operand, colors, &AllocatableRegister);
-                            // const len = try regFor(w.len, colors, &AllocatableRegister);
-                            // try out.print(alloc, "\t mov x0, {s}\n", .{fd});
-                            // try out.print(alloc, "\t mov x1, {s}\n", .{buf});
-                            // try out.print(alloc, "\t mov x2, {s}\n", .{len});
-                            // try out.print(alloc, "\tbl _write \n", .{});
-                        },
                         .select => |s| {
                             const dst = try regFor(s.dst, colors, &AllocatableRegister);
                             const if_reg = try valueToReg(s.if_value, out, ScratchReg, colors, alloc);

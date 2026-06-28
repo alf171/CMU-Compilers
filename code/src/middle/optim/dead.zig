@@ -74,11 +74,11 @@ fn hasSideEffects(instruction: Instruction) bool {
                 .list_store,
                 .function_call,
                 .function_return,
-                .write,
                 => true,
                 else => false,
             };
         },
+        .write,
         .print,
         .phi,
         => true,
