@@ -98,11 +98,6 @@ pub const Instruction = union(enum) {
     function_return: struct {
         value: ?Operand,
     },
-    function_param: struct {
-        dst: TypedOperand,
-        name: []const u8,
-        index: usize,
-    },
     // sys call [START]
     write: struct {
         fd: Operand,
@@ -247,10 +242,6 @@ pub const Instruction = union(enum) {
                     value.print();
                 }
                 debugPrint("\n", .{});
-            },
-            .function_param => |fp| {
-                fp.dst.operand.print();
-                debugPrint(" <- param {d}\n", .{fp.index});
             },
             .write => |w| {
                 debugPrint("write(", .{});
@@ -402,9 +393,6 @@ pub const Instruction = union(enum) {
             .select => |*s| {
                 if (s.dst.equal(old)) s.dst = new;
             },
-            .function_param => |*fp| {
-                if (fp.dst.operand.equal(old)) fp.dst.operand = new;
-            },
             .function_call => |*fc| {
                 if (fc.dst) |*op| {
                     if (op.equal(old)) {
@@ -435,7 +423,6 @@ pub const Instruction = union(enum) {
             .list_store, .list_len_set => null,
             .select => |s| .{ .operand = s.dst },
             .function_call => |fc| if (fc.dst) |op| .{ .operand = op } else null,
-            .function_param => |fp| .{ .operand = fp.dst.operand },
             .function_return => null,
             .write => null,
             .branch => null,
@@ -551,7 +538,6 @@ pub const Instruction = union(enum) {
                 }
             },
             .constant => {},
-            .function_param => {},
             .jump => {},
             else => |e| {
                 std.debug.print("getUses doesn't handle {s}\n", .{@tagName(e)});

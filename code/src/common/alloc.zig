@@ -170,7 +170,7 @@ pub const Operand = union(enum) {
 
     pub fn shouldColor(self: @This()) bool {
         return switch (self) {
-            .temp => true,
+            .temp, .reg => true,
             else => false,
         };
     }

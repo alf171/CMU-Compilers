@@ -19,7 +19,7 @@ def matmul(
     print(_P[4][4])
     return
 
-# for i in range(0, 1000000):
+# for i in range(0, 10000000):
 matmul(
     M, N, P
 )

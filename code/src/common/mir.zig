@@ -44,6 +44,11 @@ pub const Instruction = union(enum) {
     parallel_copy: struct {
         copies: []Copy,
     },
+    function_param: struct {
+        dst: TypedOperand,
+        name: []const u8,
+        index: usize,
+    },
     // heap based variable size
     list_literal: struct {
         dst: TypedOperand,
@@ -107,6 +112,10 @@ pub const Instruction = union(enum) {
                 }
                 debugPrint("]\n", .{});
             },
+            .function_param => |fp| {
+                fp.dst.operand.print();
+                debugPrint(" <- param {d}\n", .{fp.index});
+            },
             // delegate to lir
             .lir => |l| try l.printFn(),
             else => |term| {
@@ -157,6 +166,9 @@ pub const Instruction = union(enum) {
             .list_literal => |*ll| {
                 if (ll.dst.operand.equal(old)) ll.dst.operand = new;
             },
+            .function_param => |*fp| {
+                if (fp.dst.operand.equal(old)) fp.dst.operand = new;
+            },
             .lir => |*l| {
                 try l.replaceDefines(old, new);
             },
@@ -174,6 +186,7 @@ pub const Instruction = union(enum) {
             .len => |l| .{ .operand = l.dst },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .print => null,
+            .function_param => |fp| .{ .operand = fp.dst.operand },
             .lir => |l| try l.getDefines(),
             else => |e| {
                 debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});
@@ -210,6 +223,7 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
+            .function_param => {},
             .lir => |l| {
                 var seen = try l.getUses(alloc);
                 defer seen.deinit(alloc);

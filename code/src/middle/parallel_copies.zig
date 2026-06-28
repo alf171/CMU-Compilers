@@ -18,10 +18,10 @@ pub fn lower(program: *FrontEndProgram, alloc: std.mem.Allocator) !void {
 }
 
 fn lowerFunction(function: *Function, alloc: std.mem.Allocator) !void {
-    // used operand <- temp
-    var used = HashMap(Operand, ?Operand).init(alloc);
-    defer used.deinit();
     for (function.blocks.items) |*block| {
+        // used operand <- temp
+        var used = HashMap(Operand, ?Operand).init(alloc);
+        defer used.deinit();
         // build used
         for (block.instructions.items) |instruction| {
             switch (instruction) {

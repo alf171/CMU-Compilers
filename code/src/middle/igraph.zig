@@ -64,6 +64,47 @@ pub const IGraph = struct {
         self.aliases.deinit();
     }
 
+    pub fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, allocator: Allocator) !void {
+        if (!graph.nodes.contains(val)) {
+            try graph.nodes.put(val, Node.init(val, allocator));
+        }
+    }
+
+    pub fn addInterference(self: *@This(), a: Operand, b: Operand, alloc: std.mem.Allocator) !void {
+        if (Operand.equal(a, b)) return;
+
+        switch (a) {
+            .mem => return,
+            .reg => |reg| switch (b) {
+                .reg, .mem => return,
+                .temp => {
+                    try defineNodeIfDoesntExist(self, b, alloc);
+                    std.debug.assert(self.nodes.contains(b));
+                    self.nodes.getPtr(b).?.forbidden_colors |= (@as(u32, 1) << @intCast(reg.id));
+                    return;
+                },
+            },
+            .temp => switch (b) {
+                .temp => {
+                    try defineNodeIfDoesntExist(self, a, alloc);
+                    try defineNodeIfDoesntExist(self, b, alloc);
+                    std.debug.assert(self.nodes.contains(a));
+                    std.debug.assert(self.nodes.contains(b));
+                    try self.nodes.getPtr(a).?.placeNode(b);
+                    try self.nodes.getPtr(b).?.placeNode(a);
+                    return;
+                },
+                .reg => |reg| {
+                    try defineNodeIfDoesntExist(self, a, alloc);
+                    std.debug.assert(self.nodes.contains(a));
+                    self.nodes.getPtr(a).?.forbidden_colors |= (@as(u32, 1) << @intCast(reg.id));
+                    return;
+                },
+                .mem => return,
+            },
+        }
+    }
+
     pub fn print(self: *@This(), allocator: Allocator, writer: Writer) !void {
         var it = self.nodes.iterator();
         while (it.next()) |node_ptr| {
@@ -175,7 +216,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
         var it = line.defines.ops.keyIterator();
         while (it.next()) |op| {
             if (op.shouldColor()) {
-                try defineNodeIfDoesntExist(igraph, op.*, allocator);
+                try igraph.defineNodeIfDoesntExist(op.*, allocator);
             }
         }
     }
@@ -184,7 +225,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
         var it = line.uses.ops.keyIterator();
         while (it.next()) |op| {
             if (op.shouldColor()) {
-                try defineNodeIfDoesntExist(igraph, op.*, allocator);
+                try igraph.defineNodeIfDoesntExist(op.*, allocator);
             }
         }
     }
@@ -197,7 +238,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
                 // x <- f(y) scenario, x can be a caller-safe register in this scenario
                 if (line.defines.ops.contains(op.*)) continue;
 
-                try defineNodeIfDoesntExist(igraph, op.*, allocator);
+                try igraph.defineNodeIfDoesntExist(op.*, allocator);
                 igraph.nodes.getPtr(op.*).?.forbidden_colors |= register_mask;
             }
         }
@@ -208,19 +249,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
         while (it.next()) |define_op| {
             var live_out_it = line.live_out.ops.keyIterator();
             while (live_out_it.next()) |live_out_op| {
-                // skip memory or special registers
-                if (!define_op.shouldColor() or !live_out_op.shouldColor()) {
-                    continue;
-                }
-                try defineNodeIfDoesntExist(igraph, define_op.*, allocator);
-                try defineNodeIfDoesntExist(igraph, live_out_op.*, allocator);
-                // build graph
-                if (!Operand.equal(define_op.*, live_out_op.*)) {
-                    std.debug.assert(igraph.nodes.contains(live_out_op.*));
-                    std.debug.assert(igraph.nodes.contains(define_op.*));
-                    try igraph.nodes.getPtr(define_op.*).?.placeNode(live_out_op.*);
-                    try igraph.nodes.getPtr(live_out_op.*).?.placeNode(define_op.*);
-                }
+                try igraph.addInterference(define_op.*, live_out_op.*, allocator);
             }
         }
     }
@@ -230,15 +259,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
         while (use_it.next()) |first_key| {
             var use_it_2 = line.uses.ops.keyIterator();
             while (use_it_2.next()) |second_key| {
-                if (first_key.* == .mem or second_key.* == .mem or first_key.* == .reg or second_key.* == .reg) {
-                    continue;
-                }
-                if (!Operand.equal(first_key.*, second_key.*)) {
-                    try defineNodeIfDoesntExist(igraph, first_key.*, allocator);
-                    try igraph.nodes.getPtr(first_key.*).?.placeNode(second_key.*);
-                    try defineNodeIfDoesntExist(igraph, second_key.*, allocator);
-                    try igraph.nodes.getPtr(second_key.*).?.placeNode(first_key.*);
-                }
+                try igraph.addInterference(first_key.*, second_key.*, allocator);
             }
         }
     }
@@ -250,22 +271,17 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
             const define = try line.defines.single();
             const uses = try line.uses.single();
 
-            if (define == .mem or uses == .mem) {
+            // skip memory and register things from coalescing.
+            if (define == .mem or uses == .mem or define == .reg or uses == .reg) {
                 return;
             }
 
             std.debug.assert(!define.equal(uses));
-            try defineNodeIfDoesntExist(igraph, define, allocator);
+            try igraph.defineNodeIfDoesntExist(define, allocator);
             try igraph.nodes.getPtr(define).?.moves.put(uses, {});
-            try defineNodeIfDoesntExist(igraph, uses, allocator);
+            try igraph.defineNodeIfDoesntExist(uses, allocator);
             try igraph.nodes.getPtr(uses).?.moves.put(define, {});
         }
-    }
-}
-
-fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, allocator: Allocator) !void {
-    if (!graph.nodes.contains(val)) {
-        try graph.nodes.put(val, Node.init(val, allocator));
     }
 }
 

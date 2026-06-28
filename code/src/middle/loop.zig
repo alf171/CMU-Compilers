@@ -18,16 +18,14 @@ pub const RunResult = struct {
 
 /// feedback loop of program (lines of IR) -> inteference graph -> colored graph
 /// if we spill, create a new IR lines and repeat
-pub fn run(ir_program: *IrProgram, init_program: *AllocProgram, should_coalesce: bool, register_mask: u32, alloc: Allocator, stdout: ?*Writer) !RunResult {
-    var graph = try igraph.createIgraph(init_program.lines, register_mask, alloc);
+pub fn run(ir_program: *IrProgram, graph: *igraph.IGraph, init_program: *AllocProgram, should_coalesce: bool, register_mask: u32, alloc: Allocator, stdout: ?*Writer) !RunResult {
     if (should_coalesce) {
-        try coalesce.run(&graph, init_program.register_count, alloc, stdout);
+        try coalesce.run(graph, init_program.register_count, alloc, stdout);
     }
-    var graph_attempt = try color.colorGraph(&graph, init_program.register_count, alloc);
+    var graph_attempt = try color.colorGraph(graph, init_program.register_count, alloc);
     var color_attemps: usize = 0;
 
     var program = init_program;
-    defer graph.deinit();
 
     while (graph_attempt == .spill_register) {
         // free previous graph
@@ -41,11 +39,11 @@ pub fn run(ir_program: *IrProgram, init_program: *AllocProgram, should_coalesce:
         program.deinit(alloc);
         program.* = new_program;
         // try program.print(stdout);
-        graph = try igraph.createIgraph(program.lines, register_mask, alloc);
+        graph.* = try igraph.createIgraph(program.lines, register_mask, alloc);
         if (should_coalesce) {
-            try coalesce.run(&graph, program.register_count, alloc, stdout);
+            try coalesce.run(graph, program.register_count, alloc, stdout);
         }
-        graph_attempt = try color.colorGraph(&graph, program.register_count, alloc);
+        graph_attempt = try color.colorGraph(graph, program.register_count, alloc);
     }
 
     // return graph_attempt.graph;

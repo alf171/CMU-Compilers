@@ -14,22 +14,17 @@ def matmul(
             for n in range(len(_M[0])):
                 acc = acc + (_M[m][n] * _N[n][k])
             _P[m][k] = acc
-    print(_P[0][0])
-    print(_P[1][1])
-    print(_P[2][2])
-    print(_P[3][3])
-    print(_P[4][4])
+    # print(_P[0][0])
+    # print(_P[1][1])
+    # print(_P[2][2])
+    # print(_P[3][3])
+    # print(_P[4][4])
     return
 
-# for i in range(0, 1000000):
+# for i in range(0, 10000000):
 matmul(
     M, N, P
 )
 
 [4mactual output:[0m
-215
-530
-895
-1310
-1775
-[!!memory report!!]: allocs=23 frees=23 allocated_bytes=614 freed_bytes=614
+[!!memory report!!]: allocs=18 frees=18 allocated_bytes=564 freed_bytes=564

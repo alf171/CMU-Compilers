@@ -1035,11 +1035,11 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
             .type = param.type,
         };
 
-        try irBuilder.emit(Instruction{ .lir = .{ .function_param = .{
+        try irBuilder.emit(Instruction{ .function_param = .{
             .dst = value,
             .name = try alloc.dupe(u8, param.name),
             .index = i,
-        } } }, alloc);
+        } }, alloc);
 
         const local = try irBuilder.getOrCreateLocal(param.name, param.type, alloc);
         try irBuilder.local_values.put(local, value);

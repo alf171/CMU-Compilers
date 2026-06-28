@@ -13,13 +13,15 @@ const reg_alloc = middle.reg_alloc;
 const live = middle.live;
 const igraph = middle.igraph;
 const color = middle.color;
+const precolor = middle.precolor;
 const phi = middle.phi;
 const parallel_copies = middle.parallel_copies;
 const copy = middle.copy;
 const dead = middle.dead;
 const emit = backend.emit;
 const AllocatableRegs = backend.AllocatableRegs;
-const RegisterMask = backend.RegisterMask;
+const FunctionParamRegs = backend.FunctionParamRegs;
+const CallClobberMask = backend.CallClobberMask;
 
 const underline_code = "\x1b[4m";
 const reset_code = "\x1b[0m";
@@ -72,6 +74,11 @@ pub fn main(init: std.process.Init) !void {
     try write.rewrite(&ir_program, alloc);
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
+
+    const abi = backend.Abi{
+        .function_param_regs = &FunctionParamRegs,
+    };
+    try precolor.apply(&ir_program, abi, alloc);
     try parallel_copies.lower(&ir_program, alloc);
 
     // dump ir after optim pass
@@ -93,7 +100,7 @@ pub fn main(init: std.process.Init) !void {
 
     defer alloc_program.deinit(alloc);
 
-    var graph = try igraph.createIgraph(alloc_program.lines, RegisterMask, alloc);
+    var graph = try igraph.createIgraph(alloc_program.lines, CallClobberMask, alloc);
     defer graph.deinit();
 
     const file = try std.Io.Dir.createFileAbsolute(io, output_file, .{});
@@ -102,7 +109,7 @@ pub fn main(init: std.process.Init) !void {
 
     defer file.close(io);
 
-    const result = try loop.run(&ir_program, &alloc_program, should_optim, RegisterMask, alloc, null);
+    const result = try loop.run(&ir_program, &graph, &alloc_program, should_optim, CallClobberMask, alloc, null);
     var colored = result.graph;
     defer colored.deinit();
 
@@ -112,7 +119,7 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    const asm_text = try emit(&ir_program, &colored, alloc);
+    const asm_text = try emit(&ir_program, &colored, abi, alloc);
     defer alloc.free(asm_text);
 
     if (should_dump_stats) {

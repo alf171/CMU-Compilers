@@ -12,23 +12,23 @@ const color = @import("middle").color;
 const regFor = @import("common.zig").regFor;
 const condForCmp = @import("arm_reg.zig").condForCmp;
 const valueToReg = @import("arm_reg.zig").valueToReg;
-const paramRegFor = @import("arm_reg.zig").paramRegFor;
+const Abi = @import("abi.zig").Abi;
 const valueAsImm = @import("common.zig").valueAsImm;
 const FirstParamRegister = @import("arm_reg.zig").first_param_reg;
 const AllocatableRegister = @import("arm_reg.zig").allocatable_regs;
-const CalleeSafeRegs = @import("arm_reg.zig").callee_safe_regs;
+const CalleeSafeRegs = @import("arm_reg.zig").callee_save_regs;
 const CalleeReturnRegister = @import("arm_reg.zig").callee_return_reg;
 const ScratchReg = @import("arm_reg.zig").scratch_reg;
 const ScratchReg2 = @import("arm_reg.zig").scratch_reg_2;
 
-pub fn emit(program: *const Program, colors: *const color.ColoredGraph, alloc: std.mem.Allocator) ![]u8 {
+pub fn emit(program: *const Program, colors: *const color.ColoredGraph, abi: Abi, alloc: std.mem.Allocator) ![]u8 {
     var out = ArrayList(u8).empty;
     errdefer out.deinit(alloc);
 
     try createProgramHeader(&out, alloc);
-    try emitFunction(&out, colors, &program.main, true, alloc);
+    try emitFunction(&out, colors, &program.main, abi, true, alloc);
     for (program.functions.items) |function| {
-        try emitFunction(&out, colors, &function, false, alloc);
+        try emitFunction(&out, colors, &function, abi, false, alloc);
     }
 
     try createFooter(&out, alloc);
@@ -40,6 +40,7 @@ fn emitFunction(
     out: *ArrayList(u8),
     colors: *const color.ColoredGraph,
     function: *const Function,
+    abi: Abi,
     is_main: bool,
     alloc: std.mem.Allocator,
 ) !void {
@@ -94,18 +95,22 @@ fn emitFunction(
                                 .temp => {
                                     const dst = try regFor(m.dst, colors, &AllocatableRegister);
                                     switch (m.src) {
-                                        // reg <- reg
+                                        // temp <- temp
                                         .temp => {
                                             const src = try regFor(m.src, colors, &AllocatableRegister);
                                             if (std.mem.eql(u8, dst, src)) continue;
                                             try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                                         },
-                                        // reg <- mem
+                                        // temp <- mem
                                         .mem => |slot| {
                                             const offset = spillOffset(local_stack_size, slot);
                                             try emitStackLoad(out, dst, offset, ScratchReg, alloc);
                                         },
-                                        else => return error.NotImpl,
+                                        // reg <- temp
+                                        .reg => |reg| {
+                                            const src = try abi.paramRegFor(reg.id);
+                                            try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
+                                        },
                                     }
                                 },
                                 .mem => |slot| {
@@ -122,7 +127,20 @@ fn emitFunction(
                                         else => return error.NotImpl,
                                     }
                                 },
-                                else => return error.NotImpl,
+                                .reg => |reg| {
+                                    switch (m.src) {
+                                        // reg <- temp
+                                        .temp => {
+                                            const src = try regFor(m.src, colors, &AllocatableRegister);
+                                            // nit dont allow self move
+                                            try out.print(alloc, "\tmov {s}, {s}\n", .{ try abi.paramRegFor(reg.id), src });
+                                        },
+                                        else => |e| {
+                                            std.debug.print("{s} not impl!\n", .{@tagName(e)});
+                                            return error.NotImpl;
+                                        },
+                                    }
+                                },
                             }
                         },
                         .binop => |binop| {
@@ -384,23 +402,18 @@ fn emitFunction(
                             try out.print(alloc, "\tstr {s}, [{s}]\n", .{ len, src });
                         },
                         .function_call => |fc| {
-                            for (fc.args, 0..) |arg, i| {
-                                const dst = try paramRegFor(i);
-                                const src = try regFor(arg.operand, colors, &AllocatableRegister);
-                                try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
-                            }
+                            // for (fc.args, 0..) |arg, i| {
+                            //     const dst = try abi.paramRegFor(i);
+                            //     const src = try regFor(arg.operand, colors, &AllocatableRegister);
+                            //     try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
+                            // }
 
                             try out.print(alloc, "\tbl _{s}\n", .{fc.function_name});
 
-                            if (fc.dst) |dst_op| {
-                                const dst = try regFor(dst_op, colors, &AllocatableRegister);
-                                try out.print(alloc, "\tmov {s}, x0\n", .{dst});
-                            }
-                        },
-                        .function_param => |fp| {
-                            const dst = try regFor(fp.dst.operand, colors, &AllocatableRegister);
-                            const src = try paramRegFor(fp.index);
-                            try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
+                            // if (fc.dst) |dst_op| {
+                            //     const dst = try regFor(dst_op, colors, &AllocatableRegister);
+                            //     try out.print(alloc, "\tmov {s}, x0\n", .{dst});
+                            // }
                         },
                         .function_return => |fr| {
                             if (fr.value) |src_op| {
@@ -416,14 +429,14 @@ fn emitFunction(
                             try out.print(alloc, "\tcmp {s}, {s}\n", .{ lhs, rhs });
                             try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
                         },
-                        .write => |w| {
-                            const fd = try regFor(w.fd, colors, &AllocatableRegister);
-                            const buf = try regFor(w.buf.operand, colors, &AllocatableRegister);
-                            const len = try regFor(w.len, colors, &AllocatableRegister);
-                            try out.print(alloc, "\t mov x0, {s}\n", .{fd});
-                            try out.print(alloc, "\t mov x1, {s}\n", .{buf});
-                            try out.print(alloc, "\t mov x2, {s}\n", .{len});
-                            try out.print(alloc, "\tbl _write \n", .{});
+                        .write => {
+                            // const fd = try regFor(w.fd, colors, &AllocatableRegister);
+                            // const buf = try regFor(w.buf.operand, colors, &AllocatableRegister);
+                            // const len = try regFor(w.len, colors, &AllocatableRegister);
+                            // try out.print(alloc, "\t mov x0, {s}\n", .{fd});
+                            // try out.print(alloc, "\t mov x1, {s}\n", .{buf});
+                            // try out.print(alloc, "\t mov x2, {s}\n", .{len});
+                            // try out.print(alloc, "\tbl _write \n", .{});
                         },
                         .select => |s| {
                             const dst = try regFor(s.dst, colors, &AllocatableRegister);

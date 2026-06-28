@@ -68,6 +68,7 @@ pub fn build(b: *std.Build) void {
     frontend.root_module.addImport("common", common);
     frontend_mod.addImport("common", common);
     middle_mod.addImport("common", common);
+    middle_mod.addImport("backend", backend_mod);
     backend.root_module.addImport("common", common);
     backend.root_module.addImport("middle", middle_mod);
     backend_mod.addImport("common", common);
