@@ -78,7 +78,15 @@ fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc:
                 },
                 .len => |l| {
                     const range = ranges.get(l.value.operand) orelse {
-                        try new_instructions.append(alloc, instruction.*);
+                        if (l.value.type != .tuple) {
+                            try new_instructions.append(alloc, instruction.*);
+                            continue;
+                        }
+                        // if we have a tuple len, we can also eliminate that
+                        try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
+                            .dst = l.dst,
+                            .value = .{ .i64 = @intCast(l.value.type.tuple.elements.len) },
+                        } } });
                         continue;
                     };
                     try new_instructions.append(alloc, Instruction{ .lir = .{ .binop = .{

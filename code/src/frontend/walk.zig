@@ -509,11 +509,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                     null
                 else
                     irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .lir = .{ .function_call = .{
+                try irBuilder.emit(.{ .function_call = .{
                     .function_name = std.mem.span(name),
                     .dst = maybe_dst,
                     .args = try arguments.toOwnedSlice(alloc),
-                } } }, alloc);
+                } }, alloc);
 
                 if (maybe_dst) |dst| {
                     return TypedOperand{
@@ -568,27 +568,23 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                                 } },
                             } } }, alloc);
                             try irBuilder.emit(.{
-                                .lir = .{
-                                    .function_call = .{
-                                        .dst = null,
-                                        .args = try alloc.dupe(TypedOperand, &.{
-                                            fd,
-                                            .{ .operand = data, .type = buf.type },
-                                            len,
-                                        }),
-                                        .function_name = "write",
-                                    },
+                                .function_call = .{
+                                    .dst = null,
+                                    .args = try alloc.dupe(TypedOperand, &.{
+                                        fd,
+                                        .{ .operand = data, .type = buf.type },
+                                        len,
+                                    }),
+                                    .function_name = "write",
                                 },
                             }, alloc);
                         },
                         .tuple => {
                             try irBuilder.emit(.{
-                                .lir = .{
-                                    .function_call = .{
-                                        .dst = null,
-                                        .args = try alloc.dupe(TypedOperand, &.{ fd, buf, len }),
-                                        .function_name = "write",
-                                    },
+                                .function_call = .{
+                                    .dst = null,
+                                    .args = try alloc.dupe(TypedOperand, &.{ fd, buf, len }),
+                                    .function_name = "write",
                                 },
                             }, alloc);
                         },
@@ -641,7 +637,10 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
 
                     const dst = irBuilder.nextTemp();
 
-                    const type_ = TypeInfo{ .tuple = .{ .elements = &.{} } };
+                    // HACK: with range(x, y), we don't have a size
+                    const type_ = TypeInfo{
+                        .tuple = .{ .elements = &.{} },
+                    };
                     const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
                     try irBuilder.emit(Instruction{ .range = .{
                         .dst = typed_dst,
@@ -1078,9 +1077,9 @@ fn walkReturn(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     else
         (try walkExpr(value, irBuilder, null, alloc)).operand;
 
-    try irBuilder.emit(Instruction{ .lir = .{ .function_return = .{
+    try irBuilder.emit(.{ .function_return = .{
         .value = return_operand,
-    } } }, alloc);
+    } }, alloc);
 }
 
 fn getBinOp(expr: *PyObject) !BinOp {

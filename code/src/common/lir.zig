@@ -90,14 +90,6 @@ pub const Instruction = union(enum) {
         list: TypedOperand,
         len: Operand,
     },
-    function_call: struct {
-        dst: ?Operand,
-        function_name: []const u8,
-        args: []TypedOperand,
-    },
-    function_return: struct {
-        value: ?Operand,
-    },
     select: struct {
         dst: Operand,
         condition: Operand,
@@ -217,25 +209,6 @@ pub const Instruction = union(enum) {
                 tl.index.print();
                 debugPrint(")\n", .{});
             },
-            .function_call => |fc| {
-                if (fc.dst) |dst| {
-                    dst.print();
-                    debugPrint(" <- ", .{});
-                }
-                debugPrint("{s}(", .{fc.function_name});
-                for (fc.args, 0..) |arg, i| {
-                    if (i != 0) debugPrint(", ", .{});
-                    arg.operand.print();
-                }
-                debugPrint(")\n", .{});
-            },
-            .function_return => |fr| {
-                debugPrint("return ", .{});
-                if (fr.value) |value| {
-                    value.print();
-                }
-                debugPrint("\n", .{});
-            },
             .select => |s| {
                 s.dst.print();
                 debugPrint(" <- ", .{});
@@ -319,11 +292,6 @@ pub const Instruction = union(enum) {
                 if (ts.index.equal(old)) ts.index = new;
                 if (ts.src.equal(old)) ts.src = new;
             },
-            .function_call => |*fc| {
-                for (fc.args) |*arg| {
-                    if (arg.operand.equal(old)) arg.operand = new;
-                }
-            },
             .constant => {},
             .select => |*s| {
                 if (s.condition.equal(old)) s.condition = new;
@@ -377,13 +345,6 @@ pub const Instruction = union(enum) {
             .select => |*s| {
                 if (s.dst.equal(old)) s.dst = new;
             },
-            .function_call => |*fc| {
-                if (fc.dst) |*op| {
-                    if (op.equal(old)) {
-                        fc.dst.? = new;
-                    }
-                }
-            },
             else => |e| {
                 debugPrint("defines cant handle {s}\n", .{@tagName(e)});
                 return error.OperandReplaceNotImpl;
@@ -406,8 +367,6 @@ pub const Instruction = union(enum) {
             .list_load => |ll| .{ .operand = ll.dst },
             .list_store, .list_len_set => null,
             .select => |s| .{ .operand = s.dst },
-            .function_call => |fc| if (fc.dst) |op| .{ .operand = op } else null,
-            .function_return => null,
             .branch => null,
             .jump => null,
             else => |e| {
@@ -490,11 +449,6 @@ pub const Instruction = union(enum) {
                 try res.append(alloc, .{ .operand = lls.list.operand });
                 try res.append(alloc, .{ .operand = lls.len });
             },
-            .function_call => |fc| {
-                for (fc.args) |arg| {
-                    try res.append(alloc, .{ .operand = arg.operand });
-                }
-            },
             .select => |s| {
                 try res.append(alloc, .{ .operand = s.condition });
                 switch (s.if_value) {
@@ -508,11 +462,6 @@ pub const Instruction = union(enum) {
                         try res.append(alloc, .{ .operand = else_op.operand });
                     },
                     else => {},
-                }
-            },
-            .function_return => |fc| {
-                if (fc.value) |op| {
-                    try res.append(alloc, .{ .operand = op });
                 }
             },
             .constant => {},

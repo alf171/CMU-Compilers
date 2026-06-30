@@ -33,11 +33,11 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     const args = try alloc.dupe(TypedOperand, &.{
                         .{ .operand = size_temp, .type = .{ .int = .i64 } },
                     });
-                    try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
+                    try new_instructions.append(alloc, .{ .function_call = .{
                         .dst = ll.dst.operand,
                         .function_name = "arena_malloc",
                         .args = args,
-                    } } });
+                    } });
                     // store list size
                     {
                         const size = function.nextTemp();

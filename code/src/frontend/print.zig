@@ -29,11 +29,11 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 try new_instructions.append(alloc, instruction.*);
                                 continue;
                             }
-                            try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
+                            try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
                                 .function_name = "print_string",
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
-                            } } });
+                            } });
                         },
                         // .tuple => {
                         //     try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
@@ -43,18 +43,18 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         //     } } });
                         // },
                         .bool => {
-                            try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
+                            try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
                                 .function_name = "print_bool",
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
-                            } } });
+                            } });
                         },
                         .int => {
-                            try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
+                            try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
                                 .function_name = "print_int",
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
-                            } } });
+                            } });
                         },
                         else => |e| {
                             std.debug.print("dont support print of type {s}\n", .{@tagName(e)});

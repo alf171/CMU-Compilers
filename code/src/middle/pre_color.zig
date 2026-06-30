@@ -29,40 +29,51 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                         .src = .{ .reg = .{ .id = id } },
                     } } });
                 },
-                .lir => |lir| switch (lir) {
-                    .function_call => |fc| {
-                        var copies = try alloc.alloc(Copy, fc.args.len);
-                        // place new args to ensure proper coloring / interference
-                        var args = try alloc.alloc(TypedOperand, fc.args.len);
-                        for (fc.args, 0..) |arg, i| {
-                            const reg = Operand{ .reg = .{ .id = @intCast(i) } };
-                            copies[i] = .{
-                                .dst = reg,
-                                .src = arg.operand,
-                            };
-                            args[i] = .{
-                                .operand = reg,
-                                .type = arg.type,
-                            };
-                        }
-                        try new_instructions.append(alloc, .{ .parallel_copy = .{
-                            .copies = copies,
-                        } });
-                        // jumps to function
-                        try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
-                            .dst = fc.dst,
-                            .function_name = fc.function_name,
-                            .args = args,
+                .function_return => |fr| {
+                    if (fr.value) |src_op| {
+                        const reg = Operand{ .reg = .{ .id = 0 } };
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                            .dst = reg,
+                            .src = src_op,
                         } } });
-                        // move into return register
-                        if (fc.dst) |dst| {
-                            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                                .dst = dst,
-                                .src = Operand{ .reg = .{ .id = 0 } },
-                            } } });
-                        }
-                    },
-                    else => try new_instructions.append(alloc, instruction.*),
+                        // emits branch with proper coloring
+                        try new_instructions.append(alloc, .{ .function_return = .{ .value = reg } });
+                    } else {
+                        // emits branch
+                        try new_instructions.append(alloc, instruction.*);
+                    }
+                },
+                .function_call => |fc| {
+                    var copies = try alloc.alloc(Copy, fc.args.len);
+                    // place new args to ensure proper coloring / interference
+                    var args = try alloc.alloc(TypedOperand, fc.args.len);
+                    for (fc.args, 0..) |arg, i| {
+                        const reg = Operand{ .reg = .{ .id = @intCast(i) } };
+                        copies[i] = .{
+                            .dst = reg,
+                            .src = arg.operand,
+                        };
+                        args[i] = .{
+                            .operand = reg,
+                            .type = arg.type,
+                        };
+                    }
+                    try new_instructions.append(alloc, .{ .parallel_copy = .{
+                        .copies = copies,
+                    } });
+                    // jumps to function
+                    try new_instructions.append(alloc, .{ .function_call = .{
+                        .dst = fc.dst,
+                        .function_name = fc.function_name,
+                        .args = args,
+                    } });
+                    // move into return register
+                    if (fc.dst) |dst| {
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                            .dst = dst,
+                            .src = Operand{ .reg = .{ .id = 0 } },
+                        } } });
+                    }
                 },
                 else => try new_instructions.append(alloc, instruction.*),
             }

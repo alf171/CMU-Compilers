@@ -49,14 +49,14 @@ pub const Instruction = union(enum) {
         name: []const u8,
         index: usize,
     },
-    // sys call [START]
-    write: struct {
-        fd: Operand,
-        buf: TypedOperand,
-        len: Operand,
+    function_call: struct {
+        dst: ?Operand,
+        function_name: []const u8,
+        args: []TypedOperand,
     },
-    // sys call [END]
-
+    function_return: struct {
+        value: ?Operand,
+    },
     // heap based variable size
     list_literal: struct {
         dst: TypedOperand,
@@ -124,14 +124,24 @@ pub const Instruction = union(enum) {
                 fp.dst.operand.print();
                 debugPrint(" <- param {d}\n", .{fp.index});
             },
-            .write => |w| {
-                debugPrint("write(", .{});
-                w.fd.print();
-                debugPrint(", ", .{});
-                w.buf.operand.print();
-                debugPrint(", ", .{});
-                w.len.print();
+            .function_call => |fc| {
+                if (fc.dst) |dst| {
+                    dst.print();
+                    debugPrint(" <- ", .{});
+                }
+                debugPrint("{s}(", .{fc.function_name});
+                for (fc.args, 0..) |arg, i| {
+                    if (i != 0) debugPrint(", ", .{});
+                    arg.operand.print();
+                }
                 debugPrint(")\n", .{});
+            },
+            .function_return => |fr| {
+                debugPrint("return ", .{});
+                if (fr.value) |value| {
+                    value.print();
+                }
+                debugPrint("\n", .{});
             },
             // delegate to lir
             .lir => |l| try l.printFn(),
@@ -161,6 +171,11 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
+            .function_call => |*fc| {
+                for (fc.args) |*arg| {
+                    if (arg.operand.equal(old)) arg.operand = new;
+                }
+            },
             // delegate to lir
             .lir => |*l| {
                 try l.replaceUses(old, new);
@@ -186,6 +201,13 @@ pub const Instruction = union(enum) {
             .function_param => |*fp| {
                 if (fp.dst.operand.equal(old)) fp.dst.operand = new;
             },
+            .function_call => |*fc| {
+                if (fc.dst) |*op| {
+                    if (op.equal(old)) {
+                        fc.dst.? = new;
+                    }
+                }
+            },
             .lir => |*l| {
                 try l.replaceDefines(old, new);
             },
@@ -204,7 +226,8 @@ pub const Instruction = union(enum) {
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .print => null,
             .function_param => |fp| .{ .operand = fp.dst.operand },
-            .write => null,
+            .function_call => |fc| if (fc.dst) |op| .{ .operand = op } else null,
+            .function_return => null,
             .lir => |l| try l.getDefines(),
             else => |e| {
                 debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});
@@ -242,10 +265,15 @@ pub const Instruction = union(enum) {
                 }
             },
             .function_param => {},
-            .write => |w| {
-                try res.append(alloc, .{ .operand = w.fd });
-                try res.append(alloc, .{ .operand = w.buf.operand });
-                try res.append(alloc, .{ .operand = w.len });
+            .function_call => |fc| {
+                for (fc.args) |arg| {
+                    try res.append(alloc, .{ .operand = arg.operand });
+                }
+            },
+            .function_return => |fc| {
+                if (fc.value) |op| {
+                    try res.append(alloc, .{ .operand = op });
+                }
             },
             .lir => |l| {
                 var seen = try l.getUses(alloc);

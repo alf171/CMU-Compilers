@@ -2,9 +2,9 @@ const std = @import("std");
 
 const c = @import("frontend").python.c;
 const walkAstWithRuntime = @import("frontend").run.walkAstWithRuntime;
-const range = @import("frontend").range;
+const tuple = @import("frontend").tuple;
 const list = @import("frontend").list;
-const write = @import("frontend").write;
+const print = @import("frontend").print;
 const middle = @import("middle");
 const backend = @import("backend");
 const metrics = @import("metrics.zig");
@@ -65,10 +65,10 @@ pub fn main(init: std.process.Init) !void {
         try copy.run(&ir_program, alloc);
     }
 
-    // range elimination?
-    try range.rewrite(&ir_program, alloc);
+    // rewrite layer
+    try tuple.rewrite(&ir_program, alloc);
     try list.rewrite(&ir_program, alloc);
-    try write.rewrite(&ir_program, alloc);
+    try print.rewrite(&ir_program, alloc);
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
 
