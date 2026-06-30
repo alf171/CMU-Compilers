@@ -4,14 +4,6 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 
 ## Run Commands
 
-`zig build -Doptimize=Debug run -- tst/medium.l1.in`
-- this runs register generates an igraph, spills the graph, and does coalescing on the IR
-- does nothing with colored graph currently
-
-`zig build frontend-run`
-- go from python code to AST
-- eventually, this will 
-
 `zig build integration-test -- tst/python/simple.py /tmp/out.s`
 - run python program and output asm
 `clang /tmp/out.s -o /tmp/out`
@@ -26,31 +18,48 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 `--dump-stats`
 - dump assmebly stats useful for comparing perf
 
+`zig build snapshot-test --`
+- run snapshot testing against all tests written
+`--regen`
+- regenerate all snapshot results based on current output
+
 ## Design Choices
-- leverage python subset of python syntax
+- leverage python
+  - subset of its syntax
 - modular
 - compiled not interpreted
-- arrays are fixed size!
-- type or enforced to some degree?
-  - maybe we do sort of ssa like constraints
+- arrays are currently fixed size on the heap
+  - tuples are fixed on the stack
+- function types are enforced
 
 ## Goals
 
 ### Compiler
 - [ ] [critical edge splitting](https://nickdesaulniers.github.io/blog/2023/01/27/critical-edge-splitting/)
-- [ ] div, unary ops like neg
-  - [ ] +=, -=, *=, /=
-- [ ] and/or support?
-- [ ] benchmarking?
-- [ ] scalar evolution?
-- [ ] llvm backend?
-- [ ] watch lectures for more ideas
+- [ ] more backends
+  - [ ] x86 (qemu or amd cpu)
+  - [ ] rdna3
+- [ ] classes or objs or structs (?)
+  - [ ] will be used eventually to write a minitorch
+- [ ] build `Lazy` into the type system
+  - [ ] leverage for tuple to become lazy[tuple[...]]
+  - [ ] `p0`: get for i in `range(0, 5) print(i)` to pass
+  - [ ] allow for more complex rewrites like `map(f, range(5))`
+  - [ ] call `.realize()` on lazy[x] to yield x (can leverage yield syntax)?
+  - [ ] `pN`: submit and await to bridge gap between coloring
 
 ### Linker
 - [ ] remove clang dep
 
-## Reading Materials
-- https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms
-- https://student.cs.uwaterloo.ca/~cs452/docs/ts7200/arm-architecture.pdf
-- https://stackoverflow.com/questions/63048341/what-is-the-difference-between-select-and-phi-in-llvm-ir
-- https://en.wikipedia.org/wiki/Tail_call
+### MiniTorch
+- a tiny ml framework leveraging language
+1. forward/backward pass
+2. common matrix operations like relu(), transpose(), matmul(), etc
+3. [Optional] read/write weights to a file
+4. build some models (ideas under)
+  - 1k param: linear classifier of sorts?
+  - 10k param: mnist
+  - 100k param: audio model
+  - 10-100M million param: lane follow maybe?
+  - 1B small LLM
+  - 10B strong local assistant

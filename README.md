@@ -15,7 +15,11 @@
 - [ ] type checking
 
 ## Compilers Specs
-- using phi functions. [interesting articles](https://mlir.llvm.org/docs/Rationale/Rationale/#block-arguments-vs-phi-nodes)
 - ir/coalescing
   - complexity O(nm) where n is nodes and m is their neighbors
   - look at size(nbor(n) U nbor(k)) < register count
+
+## Reading Materials
+- [phi function vs block args](https://mlir.llvm.org/docs/Rationale/Rationale/#block-arguments-vs-phi-nodes)
+- [phi vs select](https://stackoverflow.com/questions/63048341/what-is-the-difference-between-select-and-phi-in-llvm-ir)
+- [x86 abi](http://man6.org/lib/pdfjs/web/viewer.html?file=/blog/PdfFile/x86-64-psABI-1.0.pdf)
