@@ -93,6 +93,8 @@ pub fn main(init: std.process.Init) !void {
 
         const path = try std.fs.path.join(alloc, &.{ "tst/python", entry.path });
         defer alloc.free(path);
-        run(compiler_path, path, should_regen_snapshot, alloc, io) catch {};
+        run(compiler_path, path, should_regen_snapshot, alloc, io) catch {
+            std.debug.print(" [[ERROR]]\n", .{});
+        };
     }
 }

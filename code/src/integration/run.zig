@@ -18,10 +18,7 @@ const phi = middle.phi;
 const parallel_copies = middle.parallel_copies;
 const copy = middle.copy;
 const dead = middle.dead;
-const emit = backend.emit;
-const AllocatableRegs = backend.AllocatableRegs;
-const FunctionParamRegs = backend.FunctionParamRegs;
-const CallClobberMask = backend.CallClobberMask;
+const getPlatform = backend.getPlatform;
 
 const underline_code = "\x1b[4m";
 const reset_code = "\x1b[0m";
@@ -75,10 +72,8 @@ pub fn main(init: std.process.Init) !void {
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
 
-    const abi = backend.Abi{
-        .function_param_regs = &FunctionParamRegs,
-    };
-    try precolor.apply(&ir_program, abi, alloc);
+    const platform = try getPlatform(.ARM);
+    try precolor.apply(&ir_program, platform.abi, alloc);
     try parallel_copies.lower(&ir_program, alloc);
 
     // dump ir after optim pass
@@ -87,20 +82,20 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    var alloc_program = try reg_alloc.build(ir_program, AllocatableRegs.len, alloc);
+    var alloc_program = try reg_alloc.build(ir_program, @intCast(platform.abi.allocatable_regs.len), alloc);
     try live.calculateLiveOut(&alloc_program, alloc);
 
     // run optimzation passes
     if (should_optim) {
         try dead.run(&ir_program, &alloc_program, alloc);
         alloc_program.deinit(alloc);
-        alloc_program = try reg_alloc.build(ir_program, AllocatableRegs.len, alloc);
+        alloc_program = try reg_alloc.build(ir_program, @intCast(platform.abi.allocatable_regs.len), alloc);
         try live.calculateLiveOut(&alloc_program, alloc);
     }
 
     defer alloc_program.deinit(alloc);
 
-    var graph = try igraph.createIgraph(alloc_program.lines, CallClobberMask, alloc);
+    var graph = try igraph.createIgraph(alloc_program.lines, platform.abi.call_clobber_mask, alloc);
     defer graph.deinit();
 
     const file = try std.Io.Dir.createFileAbsolute(io, output_file, .{});
@@ -109,7 +104,7 @@ pub fn main(init: std.process.Init) !void {
 
     defer file.close(io);
 
-    const result = try loop.run(&ir_program, &graph, &alloc_program, should_optim, CallClobberMask, alloc, null);
+    const result = try loop.run(&ir_program, &graph, &alloc_program, should_optim, platform.abi.call_clobber_mask, alloc, null);
     var colored = result.graph;
     defer colored.deinit();
 
@@ -119,7 +114,7 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    const asm_text = try emit(&ir_program, &colored, abi, alloc);
+    const asm_text = try platform.emit(&ir_program, &colored, platform.abi, alloc);
     defer alloc.free(asm_text);
 
     if (should_dump_stats) {
