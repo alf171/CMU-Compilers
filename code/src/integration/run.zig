@@ -7,6 +7,8 @@ const list = @import("frontend").list;
 const print = @import("frontend").print;
 const middle = @import("middle");
 const backend = @import("backend");
+const getPlatform = backend.getPlatform;
+const Target = backend.Target;
 const metrics = @import("metrics.zig");
 const loop = middle.loop;
 const reg_alloc = middle.reg_alloc;
@@ -18,7 +20,6 @@ const phi = middle.phi;
 const parallel_copies = middle.parallel_copies;
 const copy = middle.copy;
 const dead = middle.dead;
-const getPlatform = backend.getPlatform;
 
 const underline_code = "\x1b[4m";
 const reset_code = "\x1b[0m";
@@ -43,11 +44,15 @@ pub fn main(init: std.process.Init) !void {
     var should_optim = false;
     var should_dump_ir = false;
     var should_dump_stats = false;
+    var target: Target = .ARM;
     for (args[3..]) |arg| {
         if (std.mem.eql(u8, arg, "--run")) should_run = true;
         if (std.mem.eql(u8, arg, "--optim")) should_optim = true;
         if (std.mem.eql(u8, arg, "--dump-ir")) should_dump_ir = true;
         if (std.mem.eql(u8, arg, "--dump-stats")) should_dump_stats = true;
+        // allow caller to decide their platform
+        if (std.mem.eql(u8, arg, "--platform=arm")) target = .ARM;
+        if (std.mem.eql(u8, arg, "--platform=x86")) target = .X86;
     }
 
     // walk user program
@@ -72,7 +77,7 @@ pub fn main(init: std.process.Init) !void {
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
 
-    const platform = try getPlatform(.ARM);
+    const platform = try getPlatform(target);
     try precolor.apply(&ir_program, platform.abi, alloc);
     try parallel_copies.lower(&ir_program, alloc);
 
