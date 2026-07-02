@@ -182,6 +182,7 @@ fn linkPython(
     lib_dir: []const u8,
     lib_name: []const u8,
 ) void {
+    module.link_libc = true;
     module.addIncludePath(.{ .cwd_relative = include_dir });
     module.addLibraryPath(.{ .cwd_relative = lib_dir });
     module.addRPath(.{ .cwd_relative = lib_dir });

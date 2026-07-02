@@ -60,6 +60,12 @@ fn emitFunction(
             switch (instruction) {
                 .function_call => |fc| {
                     try out.print(alloc, "\tcallq {s}\n", .{fc.function_name});
+                    // HACK: we aren't assigning %rax (return reg) properly
+                    // -- so use an extra mov to bridge this -- fix pre_color!
+                    if (fc.dst) |dst| {
+                        const dst_reg = try abi.regFor(dst, colors);
+                        try out.print(alloc, "\tmovq %rax, %{s}\n", .{dst_reg});
+                    }
                 },
                 .len => |l| {
                     const dst = try abi.regFor(l.dst, colors);
@@ -143,11 +149,12 @@ fn emitFunction(
                                     try out.print(alloc, "\taddq {s}, %{s}\n", .{ rhs, dst });
                                 },
                                 .div => {
-                                    // TODO: skip for now
-                                    // try out.print(alloc, "\tdivq {s}, %{s}\n", .{ rhs, dst });
+                                    // FIXME: this is wrong
+                                    try out.print(alloc, "\tmovq $0, %{s}\n", .{dst});
                                 },
                                 .mod => {
-                                    // TODO: skip for now
+                                    // FIXME: this is wrong
+                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
                                 },
                                 else => |e| {
                                     std.debug.print("cant handle {s}\n", .{@tagName(e)});
@@ -314,7 +321,10 @@ fn saveCalleeSaveReg(out: *ArrayList(u8), abi: Abi, alloc: std.mem.Allocator) !v
 }
 
 fn restoreCalleeSafeReg(out: *ArrayList(u8), abi: Abi, alloc: std.mem.Allocator) !void {
-    for (abi.callee_save_regs) |reg| {
+    var i = abi.callee_save_regs.len;
+    while (i > 0) {
+        i -= 1;
+        const reg = abi.callee_save_regs[i];
         try out.print(alloc, "\tpopq %{s}\n", .{reg});
     }
 }
