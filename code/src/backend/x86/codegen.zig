@@ -60,12 +60,6 @@ fn emitFunction(
             switch (instruction) {
                 .function_call => |fc| {
                     try out.print(alloc, "\tcallq {s}\n", .{fc.function_name});
-                    // HACK: we aren't assigning %rax (return reg) properly
-                    // -- so use an extra mov to bridge this -- fix pre_color!
-                    if (fc.dst) |dst| {
-                        const dst_reg = try abi.regFor(dst, colors);
-                        try out.print(alloc, "\tmovq %rax, %{s}\n", .{dst_reg});
-                    }
                 },
                 .len => |l| {
                     const dst = try abi.regFor(l.dst, colors);
@@ -105,7 +99,7 @@ fn emitFunction(
                                         },
                                         .reg => |reg| {
                                             const dst = try abi.regFor(m.dst, colors);
-                                            const src = try abi.paramRegFor(reg.id);
+                                            const src = try abi.regForFromIndex(reg.id);
                                             try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
                                         },
                                         else => |e| {
@@ -117,7 +111,7 @@ fn emitFunction(
                                 .reg => |reg| {
                                     switch (m.src) {
                                         .temp => {
-                                            const dst = try abi.paramRegFor(reg.id);
+                                            const dst = try abi.regForFromIndex(reg.id);
                                             const src = try abi.regFor(m.src, colors);
                                             try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
                                         },

@@ -67,14 +67,14 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                         .function_name = fc.function_name,
                         .args = args,
                     } });
-                    // HACK: comment out to fix bug in x86 register selection
-                    // move into return register
-                    // if (fc.dst) |dst| {
-                    //     try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                    //         .dst = dst,
-                    //         .src = Operand{ .reg = .{ .id = 0 } },
-                    //     } } });
-                    // }
+                    if (fc.dst) |dst| {
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                            .dst = dst,
+                            .src = Operand{ .reg = .{
+                                .id = abi.function_return_idx,
+                            } },
+                        } } });
+                    }
                 },
                 else => try new_instructions.append(alloc, instruction.*),
             }

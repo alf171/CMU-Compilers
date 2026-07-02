@@ -102,7 +102,7 @@ fn emitFunction(
                                         },
                                         // reg <- temp
                                         .reg => |reg| {
-                                            const src = try abi.paramRegFor(reg.id);
+                                            const src = try abi.regForFromIndex(reg.id);
                                             try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                                         },
                                     }

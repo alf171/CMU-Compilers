@@ -10,11 +10,14 @@ pub const Abi = struct {
     allocatable_regs: []const []const u8,
     /// calculation could be moved to comptime
     call_clobber_mask: u32,
+    /// the index in allocatable_regs which the function_return reg is held
+    function_return_idx: u8,
 
     pub fn init(
         function_arg_regs: []const []const u8,
         caller_save_regs: []const []const u8,
         callee_save_regs: []const []const u8,
+        function_return_idx: u8,
     ) @This() {
         // [ high bits ] [ low bits ]
         // [ callee safe bits ] [ caller safe bits ] [function param bits]
@@ -27,6 +30,7 @@ pub const Abi = struct {
             .callee_save_regs = callee_save_regs,
             .allocatable_regs = function_arg_regs ++ caller_save_regs ++ callee_save_regs,
             .call_clobber_mask = caller_save_mask | function_param_mask,
+            .function_return_idx = function_return_idx,
         };
     }
 
@@ -41,6 +45,11 @@ pub const Abi = struct {
     pub fn paramRegFor(self: @This(), index: usize) ![]const u8 {
         if (index >= self.function_arg_regs.len) return error.TooManyArgs;
         return self.function_arg_regs[index];
+    }
+
+    pub fn regForFromIndex(self: @This(), index: usize) ![]const u8 {
+        if (index >= self.allocatable_regs.len) return error.TooManyArgs;
+        return self.allocatable_regs[index];
     }
 
     pub fn regFor(self: @This(), op: Operand, colors: *const ColoredGraph) ![]const u8 {

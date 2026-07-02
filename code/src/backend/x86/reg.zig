@@ -19,4 +19,5 @@ pub const X86Abi = Abi.init(
     &function_param_regs,
     &caller_save_regs,
     &callee_save_regs,
+    6,
 );
