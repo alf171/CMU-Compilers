@@ -79,17 +79,42 @@ pub fn build(b: *std.Build) void {
     integration_test.root_module.addImport("middle", middle_mod);
     integration_test.root_module.addImport("backend", backend_mod);
 
-    // frontend is using cypthon for the parser
-    frontend.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
-    frontend.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
-    frontend.root_module.linkSystemLibrary("python3.13", .{});
-    frontend_mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
-    frontend_mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
-    frontend_mod.linkSystemLibrary("python3.13", .{});
-    // needed for integ tests too
-    integration_test.root_module.addIncludePath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/include/python3.13" });
-    integration_test.root_module.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/Frameworks/Python.framework/Versions/3.13/lib" });
-    integration_test.root_module.linkSystemLibrary("python3.13", .{});
+    const python_exe = b.option(
+        []const u8,
+        "python-exe",
+        "Python executable used to discover include and library directories",
+    ) orelse "python3.13";
+    const detected_python_include_dir = trim(b.run(&.{
+        python_exe,
+        "-c",
+        "import sysconfig; print(sysconfig.get_path('include'))",
+    }));
+    const detected_python_lib_dir = trim(b.run(&.{
+        python_exe,
+        "-c",
+        "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))",
+    }));
+
+    const python_include_dir = b.option(
+        []const u8,
+        "python-include-dir",
+        "Directory containing Python.h",
+    ) orelse detected_python_include_dir;
+    const python_lib_dir = b.option(
+        []const u8,
+        "python-lib-dir",
+        "Directory containing libpython",
+    ) orelse detected_python_lib_dir;
+    const python_lib_name = b.option(
+        []const u8,
+        "python-lib-name",
+        "Python library name to link",
+    ) orelse "python3.13";
+
+    // frontend is using cpython for the parser
+    linkPython(frontend.root_module, python_include_dir, python_lib_dir, python_lib_name);
+    linkPython(frontend_mod, python_include_dir, python_lib_dir, python_lib_name);
+    linkPython(integration_test.root_module, python_include_dir, python_lib_dir, python_lib_name);
 
     // integration test
     const run_integration_tests = b.addRunArtifact(integration_test);
@@ -149,4 +174,20 @@ pub fn build(b: *std.Build) void {
 
     const check_step = b.step("check", "Typecheck without emitting");
     check_step.dependOn(&frontend.step);
+}
+
+fn linkPython(
+    module: *std.Build.Module,
+    include_dir: []const u8,
+    lib_dir: []const u8,
+    lib_name: []const u8,
+) void {
+    module.addIncludePath(.{ .cwd_relative = include_dir });
+    module.addLibraryPath(.{ .cwd_relative = lib_dir });
+    module.addRPath(.{ .cwd_relative = lib_dir });
+    module.linkSystemLibrary(lib_name, .{});
+}
+
+fn trim(value: []const u8) []const u8 {
+    return std.mem.trim(u8, value, &std.ascii.whitespace);
 }
