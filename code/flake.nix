@@ -22,9 +22,18 @@
         default = pkgs.mkShell {
           packages = with pkgs; [
             zig
+            zsh
             python313
             pkg-config
           ];
+
+          shellHook = ''
+            if [ -z "$ZSH_VERSION" ] && [ -z "$NIX_DEVELOP_ZSH" ]; then
+              export NIX_DEVELOP_ZSH=1
+              export SHELL=${pkgs.zsh}/bin/zsh
+              exec ${pkgs.zsh}/bin/zsh
+            fi
+          '';
         };
       });
     };
