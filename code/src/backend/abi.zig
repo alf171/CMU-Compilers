@@ -39,10 +39,8 @@ pub const Abi = struct {
 
     /// convert an index into a register
     pub fn paramRegFor(self: @This(), index: usize) ![]const u8 {
-        return switch (index) {
-            0...7 => |i| self.function_arg_regs[i],
-            else => error.TooManyArgs,
-        };
+        if (index >= self.function_arg_regs.len) return error.TooManyArgs;
+        return self.function_arg_regs[index];
     }
 
     pub fn regFor(self: @This(), op: Operand, colors: *const ColoredGraph) ![]const u8 {

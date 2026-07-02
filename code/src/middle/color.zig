@@ -191,18 +191,15 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
         if (!node.spill) {
             const str = try id.toString(allocator);
             defer allocator.free(str);
-            // std.debug.print("simplifying {s}\n", .{str});
             const reg = try scanForRegister(graph_node, &new_graph, k) orelse {
                 std.debug.print("couldn't find register for {s}\n", .{str});
-                try spill.put(id, {});
-                continue;
+                new_graph.deinit();
+                return .{ .spill_register = id };
             };
-            // std.debug.print("assigning reg for {s}\n", .{str});
             graph_node.register = reg;
         } else {
             const str = try id.toString(allocator);
             defer allocator.free(str);
-            // std.debug.print("spilling reg for {s}\n", .{str});
             new_graph.deinit();
             return .{ .spill_register = id };
         }
