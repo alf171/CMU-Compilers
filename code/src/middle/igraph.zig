@@ -83,6 +83,7 @@ pub const IGraph = struct {
                     self.nodes.getPtr(b).?.forbidden_colors |= (@as(u32, 1) << @intCast(reg.id));
                     return;
                 },
+                .unknown => return error.BadState,
             },
             .temp => switch (b) {
                 .temp => {
@@ -101,7 +102,9 @@ pub const IGraph = struct {
                     return;
                 },
                 .mem => return,
+                .unknown => return error.BadState,
             },
+            .unknown => return error.BadState,
         }
     }
 

@@ -3,6 +3,7 @@ const std = @import("std");
 const PhysicalReg = @import("ir.zig").PhysicalReg;
 const BlockId = @import("ir.zig").BlockId;
 const TempId = @import("ir.zig").TempId;
+const MemoryId = @import("ir.zig").MemoryId;
 const TypeInfo = @import("types.zig").TypeInfo;
 
 const Allocator = std.mem.Allocator;
@@ -34,7 +35,7 @@ pub const Operands = struct {
         var it = self.ops.keyIterator();
         while (it.next()) |op| {
             switch (op.*) {
-                .mem => |t| max_mem = @max(max_mem, t + 1),
+                .mem => |t| max_mem = @max(max_mem, t.id + 1),
                 else => {},
             }
         }
@@ -123,13 +124,20 @@ pub const ScopedTemp = struct {
     }
 };
 
-/// we only permit 255 spills per program
-pub const MemoryId = u8;
+pub const ScopedMemory = struct {
+    id: MemoryId,
+    function_id: usize,
+
+    pub fn equal(self: @This(), other: @This()) bool {
+        return self.function_id == other.function_id and self.id == other.id;
+    }
+};
 
 pub const Operand = union(enum) {
     temp: ScopedTemp,
     reg: PhysicalReg,
-    mem: MemoryId,
+    mem: ScopedMemory,
+    unknown,
 
     pub fn equal(self: @This(), other: @This()) bool {
         return switch (self) {
@@ -142,7 +150,11 @@ pub const Operand = union(enum) {
                 else => false,
             },
             .mem => |t1| switch (other) {
-                .mem => |t2| return t1 == t2,
+                .mem => |t2| return t1.equal(t2),
+                else => false,
+            },
+            .unknown => switch (other) {
+                .unknown => return true,
                 else => false,
             },
         };
@@ -156,7 +168,8 @@ pub const Operand = union(enum) {
         return switch (op) {
             .temp => |t| std.fmt.allocPrint(allocator, "temp{d}", .{t.id + 1}),
             .reg => |r| std.fmt.allocPrint(allocator, "reg{d}", .{r.id}),
-            .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t + 1}),
+            .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t.id + 1}),
+            else => return error.Unknown,
         };
     }
 
@@ -164,7 +177,8 @@ pub const Operand = union(enum) {
         switch (self) {
             .temp => |t| std.debug.print("temp{d}", .{t.id}),
             .reg => |r| std.debug.print("reg{d}", .{r.id}),
-            .mem => |id| std.debug.print("mem{d}", .{id}),
+            .mem => |m| std.debug.print("mem{d}", .{m.id}),
+            .unknown => std.debug.print("unknown", .{}),
         }
     }
 

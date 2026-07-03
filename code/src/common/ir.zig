@@ -40,6 +40,9 @@ pub const LocalInfo = struct {
 // compiler defined variable
 pub const TempId = u16;
 
+/// we only permit 255 spills per program
+pub const MemoryId = u8;
+
 pub const BinOp = enum { add, sub, mul, div, mod, unknown };
 
 pub const UnaryOp = enum { neg };
@@ -124,11 +127,21 @@ pub const Function = struct {
     blocks: ArrayList(BasicBlock),
     entry_block: BlockId,
     next_temp: TempId,
+    next_mem: MemoryId,
 
     pub fn nextTemp(self: *@This()) Operand {
         const id = self.next_temp;
         self.next_temp += 1;
         return Operand{ .temp = .{
+            .id = id,
+            .function_id = self.id,
+        } };
+    }
+
+    pub fn nextMem(self: *@This()) Operand {
+        const id = self.next_mem;
+        self.next_mem += 1;
+        return Operand{ .mem = .{
             .id = id,
             .function_id = self.id,
         } };

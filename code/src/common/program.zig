@@ -22,6 +22,7 @@ pub const Program = struct {
                 .params = &.{},
                 .return_type = .{ .int = .i64 },
                 .next_temp = 0,
+                .next_mem = 0,
             },
             .functions = .empty,
         };

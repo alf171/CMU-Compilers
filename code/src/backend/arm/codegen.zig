@@ -45,11 +45,9 @@ fn emitFunction(
         (array_slot_count + local_count) * 8,
         16,
     );
-    // HACK: MANUAL ALIGNMENT AND SIZING
-    const spill_stack_size = 16 * 8;
     const frame_stack_size = std.mem.alignForward(
         usize,
-        local_stack_size + spill_stack_size,
+        local_stack_size + (function.next_mem * 8),
         16,
     );
     try createFunctionHeader(out, function.name, frame_stack_size, abi, alloc);
@@ -97,7 +95,7 @@ fn emitFunction(
                                         },
                                         // temp <- mem
                                         .mem => |slot| {
-                                            const offset = spillOffset(local_stack_size, slot);
+                                            const offset = spillOffset(local_stack_size, slot.id);
                                             try emitStackLoad(out, dst, offset, ScratchReg, alloc);
                                         },
                                         // reg <- temp
@@ -105,13 +103,14 @@ fn emitFunction(
                                             const src = try abi.regForFromIndex(reg.id);
                                             try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                                         },
+                                        .unknown => return error.UnexpectedState,
                                     }
                                 },
                                 .mem => |slot| {
                                     switch (m.src) {
                                         // mem <- reg
                                         .temp => {
-                                            const offset = spillOffset(local_stack_size, slot);
+                                            const offset = spillOffset(local_stack_size, slot.id);
                                             const src = try abi.regFor(m.src, colors);
                                             try emitStackStore(out, src, offset, ScratchReg, alloc);
                                         },
@@ -135,6 +134,7 @@ fn emitFunction(
                                         },
                                     }
                                 },
+                                .unknown => return error.UnexpectedState,
                             }
                         },
                         .binop => |binop| {

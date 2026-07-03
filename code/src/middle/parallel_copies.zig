@@ -97,6 +97,7 @@ test "cycle" {
         .params = &.{},
         .entry_block = 0,
         .next_temp = 4,
+        .next_mem = 0,
         .return_type = .{ .int = .i64 },
     };
 

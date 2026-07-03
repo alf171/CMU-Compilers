@@ -5,6 +5,7 @@ const color = @import("color.zig");
 const spill = @import("spill.zig");
 const live = @import("live.zig");
 const coalesce = @import("coalesce.zig");
+const reg_alloc = @import("reg_alloc.zig");
 
 const Allocator = std.mem.Allocator;
 const AllocProgram = @import("common").alloc.AllocProgram;
@@ -31,10 +32,12 @@ pub fn run(ir_program: *IrProgram, graph: *igraph.IGraph, init_program: *AllocPr
         // free previous graph
         graph.deinit();
         // spill alloc
-        var new_program = try spill.spillReg(program, graph_attempt.spill_register, alloc);
+        // var new_program = try spill.spillReg(program, graph_attempt.spill_register, alloc);
         color_attemps += 1;
         // split in ir
         try spill.spillRegInIr(ir_program, program, graph_attempt.spill_register, alloc);
+        // rebuild alloc according to our spill
+        var new_program = try reg_alloc.build(ir_program.*, program.register_count, alloc);
         try live.calculateLiveOut(&new_program, alloc);
         program.deinit(alloc);
         program.* = new_program;

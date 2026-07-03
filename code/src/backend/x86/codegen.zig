@@ -45,11 +45,9 @@ fn emitFunction(
         (array_slot_count + local_count) * 8,
         16,
     );
-    // HACK: MANUAL ALIGNMENT AND SIZING
-    const spill_stack_size = 16 * 8;
     const frame_stack_size = std.mem.alignForward(
         usize,
-        local_stack_size + spill_stack_size,
+        local_stack_size + (function.next_mem * 8),
         16,
     );
     try createFunctionHeader(out, function.name, frame_stack_size, abi, alloc);

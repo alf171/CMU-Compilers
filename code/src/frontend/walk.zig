@@ -521,8 +521,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                         .type = try irBuilder.getFunctionReturnType(std.mem.span(name)),
                     };
                 }
-                // HACK: no one will fetch anyway on a void function
-                return TypedOperand{ .operand = .{ .mem = 0 }, .type = .void };
+                return TypedOperand{ .operand = .unknown, .type = .void };
             }
 
             switch (builtin.?) {
@@ -593,7 +592,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                             return error.UnsupportedWriteType;
                         },
                     }
-                    return .{ .operand = .{ .mem = 0 }, .type = .void };
+                    return .{ .operand = .unknown, .type = .void };
                 },
                 .Len => {
                     std.debug.assert(c.PyList_Size(args) == 1);
@@ -1024,6 +1023,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
         .blocks = blocks,
         .entry_block = 0,
         .next_temp = 0,
+        .next_mem = 0,
     });
 
     // save function state
