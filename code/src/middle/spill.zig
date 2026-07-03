@@ -28,7 +28,6 @@ pub fn spillRegInIr(program: *IrProgram, _: *const AllocProgram, spilled: Operan
 fn spillRegInFunction(
     function: *Function,
     spilled: Operand,
-    // slot: MemoryId,
     alloc: std.mem.Allocator,
 ) !void {
     var spill_slot: ?Operand = null;
@@ -87,41 +86,6 @@ fn spillRegInFunction(
         block.instructions.deinit(alloc);
         block.instructions = new_instructions;
     }
-}
-
-/// FIXME: this has a nasty bug of using global temps/memories instead of function local like everything else now!
-pub fn spillReg(current_program: *const AllocProgram, reg: Operand, alloc: std.mem.Allocator) !AllocProgram {
-    var new_program = AllocProgram{
-        .lines = .empty,
-        .blocks = .empty,
-        .register_count = current_program.register_count,
-    };
-    errdefer new_program.deinit(alloc);
-
-    // here ye, here ye
-    var next_temp = current_program.nextTemp();
-    const memory_pointer = current_program.nextMem();
-
-    for (current_program.blocks.items) |block| {
-        const new_start = new_program.lines.items.len;
-        for (current_program.lines.items[block.start..block.end]) |line| {
-            try spillLine(&new_program, line, reg, memory_pointer, &next_temp, block.function_id, alloc);
-        }
-
-        var successors = ArrayList(u32).empty;
-        try successors.appendSlice(alloc, block.successors.items);
-
-        try new_program.blocks.append(alloc, .{
-            .id = block.id,
-            .start = new_start,
-            .end = new_program.lines.items.len,
-            .successors = successors,
-            .function_id = block.function_id,
-        });
-    }
-
-    // std.log.debug("", .{ spill_info.def, spill_info.uses });
-    return new_program;
 }
 
 /// build a new program which spill the register provided
@@ -253,52 +217,6 @@ fn spillLine(
         .instruction_index = new_line_number,
     };
     try new_program.lines.append(alloc, new_line);
-}
-
-test "spillReg basic spill of defined reg" {
-    const alloc = std.testing.allocator;
-
-    const reg = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
-
-    var defines_ops = Operands.init(alloc);
-    try defines_ops.ops.put(reg, {});
-
-    const uses_ops = Operands.init(alloc);
-    const live_out_ops = Operands.init(alloc);
-
-    const line = Line{
-        .defines = defines_ops,
-        .uses = uses_ops,
-        .live_out = live_out_ops,
-        .instruction_index = 0,
-        .move = false,
-        .clobber_caller_saved = false,
-    };
-
-    var lines = ArrayList(Line).empty;
-    try lines.append(alloc, line);
-
-    var blocks = ArrayList(Block).empty;
-    try blocks.append(alloc, Block{
-        .id = 0,
-        .function_id = 0,
-        .start = 0,
-        .end = lines.items.len,
-        .successors = .empty,
-    });
-
-    var program = AllocProgram{
-        .lines = lines,
-        .register_count = 2,
-        .blocks = blocks,
-    };
-    defer program.deinit(alloc);
-
-    var new_prog = try spillReg(&program, reg, alloc);
-    defer new_prog.deinit(alloc);
-
-    try std.testing.expect(new_prog.nextMem() == program.nextMem() + 1);
-    try std.testing.expect(new_prog.lines.items.len > 0);
 }
 
 test "spill reg function" {

@@ -29,12 +29,10 @@ pub fn run(ir_program: *IrProgram, graph: *igraph.IGraph, init_program: *AllocPr
     var program = init_program;
 
     while (graph_attempt == .spill_register) {
+        color_attemps += 1;
         // free previous graph
         graph.deinit();
-        // spill alloc
-        // var new_program = try spill.spillReg(program, graph_attempt.spill_register, alloc);
-        color_attemps += 1;
-        // split in ir
+        // spill in ir
         try spill.spillRegInIr(ir_program, program, graph_attempt.spill_register, alloc);
         // rebuild alloc according to our spill
         var new_program = try reg_alloc.build(ir_program.*, program.register_count, alloc);
