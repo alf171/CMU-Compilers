@@ -268,18 +268,14 @@ fn emitFunction(
                                     try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
                                 },
                                 .int => |i| {
-                                    // TODO: modularize math being done here else where maybe?
+                                    const elem_size = try elem_type.sizeOfType();
+                                    std.debug.assert(std.math.isPowerOfTwo(elem_size));
+                                    const shift = std.math.log2_int(usize, elem_size);
+                                    try out.print(alloc, "\tlsl {s}, {s}, #{d}\n", .{ ScratchReg, index, shift });
+                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
                                     switch (i) {
-                                        .i64 => {
-                                            try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
-                                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                                            try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
-                                        },
-                                        .i32 => {
-                                            try out.print(alloc, "\tlsl {s}, {s}, #2\n", .{ ScratchReg, index });
-                                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                                            try out.print(alloc, "\tldrsw {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
-                                        },
+                                        .i64 => try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg }),
+                                        .i32 => try out.print(alloc, "\tldrsw {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg }),
                                     }
                                 },
                                 .bool, .char => {
@@ -302,54 +298,28 @@ fn emitFunction(
                                     try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
                                     try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
                                 },
-                                .int => |i| {
-                                    // TODO: modularize this logic
-                                    switch (i) {
-                                        .i64 => {
-                                            const dst = try abi.regFor(ls.list.operand, colors);
-                                            const index = try abi.regFor(ls.index, colors);
-                                            try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
-                                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                                            switch (ls.src) {
-                                                .operand => |op| {
-                                                    const src = try abi.regFor(op.operand, colors);
-                                                    try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
-                                                },
-                                                .constant => |c| {
-                                                    switch (c) {
-                                                        // .i32 => {},
-                                                        .i64 => |i_const| {
-                                                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, i_const });
-                                                            try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ ScratchReg2, dst, ScratchReg });
-                                                        },
-                                                        else => return error.NotImpl,
-                                                    }
-                                                },
-                                            }
+                                .int => {
+                                    const dst = try abi.regFor(ls.list.operand, colors);
+                                    const index = try abi.regFor(ls.index, colors);
+                                    const elem_size = try elem_type.sizeOfType();
+                                    std.debug.assert(std.math.isPowerOfTwo(elem_size));
+                                    const shift = std.math.log2_int(usize, elem_size);
+                                    try out.print(alloc, "\tlsl {s}, {s}, #{d}\n", .{ ScratchReg, index, shift });
+                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                                    switch (ls.src) {
+                                        .operand => |op| {
+                                            const src = try abi.regFor(op.operand, colors);
+                                            const prefix = try getRegPrefix(try op.type.sizeOfType());
+                                            try out.print(alloc, "\tstr {s}{s}, [{s}, {s}]\n", .{ prefix, src[1..], dst, ScratchReg });
                                         },
-                                        .i32 => {
-                                            const dst = try abi.regFor(ls.list.operand, colors);
-                                            const index = try abi.regFor(ls.index, colors);
-                                            try out.print(alloc, "\tlsl {s}, {s}, #2\n", .{ ScratchReg, index });
-                                            try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                                            switch (ls.src) {
-                                                .operand => |op| {
-                                                    const src = try abi.regFor(op.operand, colors);
-                                                    try out.print(alloc, "\tstr w{s}, [{s}, {s}]\n", .{ src[1..], dst, ScratchReg });
+                                        .constant => |c| {
+                                            switch (c) {
+                                                .i64, .i32 => |i_const| {
+                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, i_const });
+                                                    const prefix = try getRegPrefix(c.size());
+                                                    try out.print(alloc, "\tstr {s}{s}, [{s}, {s}]\n", .{ prefix, ScratchReg2[1..], dst, ScratchReg });
                                                 },
-                                                .constant => |c| {
-                                                    switch (c) {
-                                                        .i64 => |v| {
-                                                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, v });
-                                                            try out.print(alloc, "\tstr w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
-                                                        },
-                                                        .i32 => |v| {
-                                                            try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, v });
-                                                            try out.print(alloc, "\tstr w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
-                                                        },
-                                                        else => return error.NotImpl,
-                                                    }
-                                                },
+                                                else => return error.NotImpl,
                                             }
                                         },
                                     }
@@ -673,7 +643,7 @@ fn condForCmp(op: common.ir.CmpOp) []const u8 {
     };
 }
 
-pub fn valueToReg(
+fn valueToReg(
     value: ValueRef,
     out: *std.ArrayList(u8),
     cur_scratch_reg: []const u8,
@@ -693,6 +663,14 @@ pub fn valueToReg(
             }
         },
     }
+}
+
+fn getRegPrefix(size: usize) ![]const u8 {
+    return switch (size) {
+        1, 4 => "w",
+        8 => "x",
+        else => error.NotImpl,
+    };
 }
 
 test "testing" {}
