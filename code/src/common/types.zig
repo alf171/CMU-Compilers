@@ -21,6 +21,9 @@ pub const TypeInfo = union(enum) {
     iterable: struct {
         element: *const TypeInfo,
     },
+    lazy: struct {
+        value: *const TypeInfo,
+    },
     any,
 
     pub fn sizeOfType(self: TypeInfo) !usize {
@@ -39,6 +42,7 @@ pub const TypeInfo = union(enum) {
     pub fn isIterable(self: @This()) bool {
         return switch (self) {
             .list, .tuple, .iterable, .any => true,
+            .lazy => |lazy| isIterable(lazy.value.*),
             else => false,
         };
     }
@@ -49,7 +53,7 @@ pub fn getElementType(typeInfo: TypeInfo) !TypeInfo {
     return switch (typeInfo) {
         .list => |list_type| list_type.element.*,
         .iterable => |it_type| it_type.element.*,
-        .tuple => .any,
+        .lazy => |lazy| try getElementType(lazy.value.*),
         else => error.ExpectedListType,
     };
 }
@@ -61,6 +65,7 @@ pub fn getElementSize(typeInfo: TypeInfo) ?usize {
     };
 }
 
+/// bad ownership principles, should be rethought
 pub fn ownedPointer(t: TypeInfo, alloc: std.mem.Allocator) !*TypeInfo {
     const ptr = try alloc.create(TypeInfo);
     ptr.* = t;

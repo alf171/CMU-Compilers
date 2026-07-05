@@ -145,7 +145,7 @@ pub fn build(b: *std.Build) void {
 
     // ast testing
     const frontend_tests = b.addTest(.{
-        .root_module = frontend.root_module,
+        .root_module = frontend_mod,
     });
     const run_frontend_tests = b.addRunArtifact(frontend_tests);
     const frontend_test_step = b.step("frontend-test", "Run frontend tests");

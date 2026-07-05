@@ -62,6 +62,12 @@ pub const Instruction = union(enum) {
         dst: TypedOperand,
         elements: []ValueRef,
     },
+    // dst <- lazy[index]
+    lazy_load: struct {
+        dst: Operand,
+        lazy: TypedOperand,
+        index: Operand,
+    },
     // deglate to LIR impl
     lir: LirInstruction,
     unkown,
@@ -142,6 +148,14 @@ pub const Instruction = union(enum) {
                     value.print();
                 }
                 debugPrint("\n", .{});
+            },
+            .lazy_load => |ll| {
+                ll.dst.print();
+                debugPrint("<- ", .{});
+                ll.lazy.operand.print();
+                debugPrint("[", .{});
+                ll.index.print();
+                debugPrint("]\n", .{});
             },
             // delegate to lir
             .lir => |l| try l.printFn(),

@@ -637,7 +637,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                     const dst = irBuilder.nextTemp();
 
                     const type_ = TypeInfo{
-                        .iterable = .{ .element = try ownedPointer(.{ .int = .i64 }, alloc) },
+                        .lazy = .{ .value = &.{ .iterable = .{ .element = try ownedPointer(.{ .int = .i64 }, alloc) } } },
                     };
                     const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
                     try irBuilder.emit(Instruction{ .range = .{
@@ -871,25 +871,32 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 body_.iterator;
             switch (iterable.type) {
                 .tuple => {
-                    try irBuilder_.emit(Instruction{ .lir = .{ .tuple_load = .{
+                    try irBuilder_.emit(.{ .lir = .{ .tuple_load = .{
                         .dst = value,
                         .tuple = iterable,
                         .index = index.operand,
                     } } }, alloc_);
                 },
                 .list => {
-                    try irBuilder_.emit(Instruction{ .lir = .{ .list_load = .{
+                    try irBuilder_.emit(.{ .lir = .{ .list_load = .{
                         .dst = value,
                         .list = iterable,
                         .index = index.operand,
                     } } }, alloc_);
                 },
                 .iterable => {
-                    try irBuilder_.emit(Instruction{ .lir = .{ .tuple_load = .{
+                    try irBuilder_.emit(.{ .lir = .{ .tuple_load = .{
                         .dst = value,
                         .tuple = iterable,
                         .index = index.operand,
                     } } }, alloc_);
+                },
+                .lazy => {
+                    try irBuilder_.emit(.{ .lazy_load = .{
+                        .dst = value,
+                        .lazy = iterable,
+                        .index = index.operand,
+                    } }, alloc_);
                 },
                 else => return error.CantIndexInto,
             }

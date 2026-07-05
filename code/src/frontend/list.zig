@@ -8,6 +8,7 @@ const Program = @import("common").program.Program;
 const Instruction = @import("common").mir.Instruction;
 const getElementType = @import("common").types.getElementType;
 
+/// handles buisness logic of storing [size] [elements...] when consumers just see elements
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
     try rewriteFunction(&program.main, alloc);
     for (program.functions.items) |*function| {

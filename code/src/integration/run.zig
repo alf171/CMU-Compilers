@@ -2,7 +2,7 @@ const std = @import("std");
 
 const c = @import("frontend").python.c;
 const walkAstWithRuntime = @import("frontend").run.walkAstWithRuntime;
-const tuple = @import("frontend").tuple;
+const lazy = @import("frontend").lazy;
 const list = @import("frontend").list;
 const print = @import("frontend").print;
 const middle = @import("middle");
@@ -71,7 +71,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     // rewrite layer
-    try tuple.rewrite(&ir_program, alloc);
+    try lazy.rewrite(&ir_program, alloc);
     try list.rewrite(&ir_program, alloc);
     try print.rewrite(&ir_program, alloc);
     // phi cleanup
