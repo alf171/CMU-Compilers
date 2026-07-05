@@ -18,10 +18,13 @@ pub const TypeInfo = union(enum) {
     tuple: struct {
         elements: []const TypeInfo,
     },
+    iterable: struct {
+        element: *const TypeInfo,
+    },
     any,
 
-    pub fn sizeOfType(t: TypeInfo) !usize {
-        return switch (t) {
+    pub fn sizeOfType(self: TypeInfo) !usize {
+        return switch (self) {
             .bool, .char => 1,
             .int => |i| switch (i) {
                 .i64 => 8,
@@ -32,12 +35,20 @@ pub const TypeInfo = union(enum) {
             else => error.NotImpl,
         };
     }
+
+    pub fn isIterable(self: @This()) bool {
+        return switch (self) {
+            .list, .tuple, .iterable, .any => true,
+            else => false,
+        };
+    }
 };
 
 /// expects a list input type
 pub fn getElementType(typeInfo: TypeInfo) !TypeInfo {
     return switch (typeInfo) {
         .list => |list_type| list_type.element.*,
+        .iterable => |it_type| it_type.element.*,
         .tuple => .any,
         else => error.ExpectedListType,
     };

@@ -636,9 +636,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
 
                     const dst = irBuilder.nextTemp();
 
-                    // HACK: with range(x, y), we don't have a size
                     const type_ = TypeInfo{
-                        .tuple = .{ .elements = &.{} },
+                        .iterable = .{ .element = try ownedPointer(.{ .int = .i64 }, alloc) },
                     };
                     const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
                     try irBuilder.emit(Instruction{ .range = .{
@@ -849,7 +848,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
     std.debug.assert(iter != null);
 
     const expr = try walkExpr(iter, irBuilder, null, alloc);
-    std.debug.assert(expr.type == .list or expr.type == .tuple or expr.type == .any);
+    std.debug.assert(expr.type.isIterable());
 
     const index0 = irBuilder.nextTemp();
     try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
@@ -882,6 +881,13 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                     try irBuilder_.emit(Instruction{ .lir = .{ .list_load = .{
                         .dst = value,
                         .list = iterable,
+                        .index = index.operand,
+                    } } }, alloc_);
+                },
+                .iterable => {
+                    try irBuilder_.emit(Instruction{ .lir = .{ .tuple_load = .{
+                        .dst = value,
+                        .tuple = iterable,
                         .index = index.operand,
                     } } }, alloc_);
                 },
@@ -935,13 +941,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
 
     const len_temp = irBuilder.nextTemp();
 
-    switch (expr.type) {
-        .tuple => {},
-        .list => {},
-        .any => {},
-        else => return error.IndexNotList,
-    }
-
+    std.debug.assert(expr.type.isIterable());
     try irBuilder.emit(Instruction{ .len = .{
         .dst = len_temp,
         .value = expr,

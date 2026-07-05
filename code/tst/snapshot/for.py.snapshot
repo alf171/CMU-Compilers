@@ -1,9 +1,14 @@
 [4mrunning program:[0m
 
-# i = 3
-# for m in range(i):
-#     for k in range(3):
-#         print(m)
-#         print(k)
+sum = 0
+i = 3
+for m in range(i):
+    for k in range(3):
+        # TODO: support +=
+        sum = sum + m + k
+
+print(sum)
 
 [4mactual output:[0m
+18
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10
