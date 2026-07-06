@@ -24,6 +24,11 @@ pub const TypeInfo = union(enum) {
     lazy: struct {
         value: *const TypeInfo,
     },
+    // model a function in type system
+    callable: struct {
+        params: []const TypeInfo,
+        returns: *const TypeInfo,
+    },
     any,
 
     pub fn sizeOfType(self: TypeInfo) !usize {
@@ -65,7 +70,7 @@ pub fn getElementSize(typeInfo: TypeInfo) ?usize {
     };
 }
 
-/// bad ownership principles, should be rethought
+/// FIXME: bad ownership principles, should be rethought
 pub fn ownedPointer(t: TypeInfo, alloc: std.mem.Allocator) !*TypeInfo {
     const ptr = try alloc.create(TypeInfo);
     ptr.* = t;

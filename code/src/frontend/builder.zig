@@ -73,15 +73,6 @@ pub const IrBuilder = struct {
         return error.CantFindCurrentFunction;
     }
 
-    pub fn getFunctionReturnType(self: *@This(), name: []const u8) !TypeInfo {
-        for (self.program.functions.items) |function| {
-            if (std.mem.eql(u8, function.name, name)) {
-                return function.return_type;
-            }
-        }
-        return error.FunctionNotFound;
-    }
-
     pub fn nextTemp(self: *@This()) Operand {
         const function = self.currentFunction() catch &self.program.main;
         return function.nextTemp();
@@ -91,6 +82,16 @@ pub const IrBuilder = struct {
         const idx = self.next_function_idx;
         self.next_function_idx += 1;
         return idx;
+    }
+
+    // O(function) scan looking for matching name
+    pub fn findFunction(self: *@This(), name: []const u8) ?*Function {
+        for (self.program.functions.items) |*function| {
+            if (std.mem.eql(u8, function.name, name)) {
+                return function;
+            }
+        }
+        return null;
     }
 
     pub fn getLocal(self: *@This(), name: []const u8) !LocalId {

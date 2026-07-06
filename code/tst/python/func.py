@@ -1,3 +1,5 @@
+from typing import Callable
+
 def f(c: bool) -> int:
   if c:
       x = 1
@@ -5,5 +7,9 @@ def f(c: bool) -> int:
       x = 2
   return x
 
-y = f(True)
+def g(f: Callable[[bool], int], y: bool) -> int:
+    return 2 * f(y)
+
+f_temp = f
+y = g(f_temp, False)
 print(y)

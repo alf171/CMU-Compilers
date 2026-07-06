@@ -33,13 +33,13 @@ const LoopCondition = @import("loop.zig").LoopCondition;
 
 const PyObject = c.PyObject;
 
-const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, Return, Pass, Unknown };
+const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, Return, Pass, ImportFrom, Unknown };
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Tuple, Subscript, IfExp, Unknown };
 
 const BuiltinCall = enum { Print, Write, Range, Len };
 
-const SubscriberTypes = enum { list, tuple };
+const SubscriberTypes = enum { list, tuple, callable };
 
 const RangeBounds = struct {
     start: TypedOperand,
@@ -80,6 +80,9 @@ pub fn walkStmt(raw_stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloc
         .FuncDef => try walkFuncDef(raw_stmt, irBuilder, alloc),
         .Return => try walkReturn(raw_stmt, irBuilder, alloc),
         .Pass => {},
+        // ignore bc we are building these concepts into language so importants aren't used
+        // currently we do this with Callable -- not requiring an import
+        .ImportFrom => {},
         else => {
             std.debug.print("unsupported statement type: {s}: ", .{getPyType(raw_stmt)});
             printAstDump(raw_stmt);
@@ -112,7 +115,7 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
                 .local = .{
                     .id = local,
                     .name = try alloc.dupe(u8, std.mem.span(id)),
-                    .type = .any,
+                    .type = rhs_value.type,
                 },
                 .src = rhs_value.operand,
             } } }, alloc);
@@ -446,7 +449,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             const id = c.PyUnicode_AsUTF8(id_obj);
             std.debug.assert(id != null);
 
-            const localId = try irBuilder.getOrCreateLocal(std.mem.span(id), null, alloc);
+            const name = std.mem.span(id);
+            const localId = try irBuilder.getOrCreateLocal(name, null, alloc);
 
             if (irBuilder.local_values.get(localId)) |value| {
                 return value;
@@ -454,7 +458,30 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
 
             const dst = irBuilder.nextTemp();
             const local = try irBuilder.locals.items[localId].duplicate(alloc);
-            try irBuilder.emit(Instruction{ .lir = .{ .load_local = .{ .dst = dst, .local = local } } }, alloc);
+            if (irBuilder.findFunction(name)) |function| {
+                var params = try alloc.alloc(TypeInfo, function.params.len);
+                for (function.params, 0..) |param, i| {
+                    params[i] = param.type;
+                }
+                const function_dst: TypedOperand = .{
+                    .operand = function.nextTemp(),
+                    .type = .{ .callable = .{
+                        .params = params,
+                        .returns = try ownedPointer(function.return_type, alloc),
+                    } },
+                };
+                // declare function we will return
+                try irBuilder.emit(.{
+                    .function_ref = .{
+                        .dst = function_dst.operand,
+                        .function_name = try alloc.dupe(u8, function.name),
+                    },
+                }, alloc);
+                return function_dst;
+            }
+            try irBuilder.emit(.{
+                .lir = .{ .load_local = .{ .dst = dst, .local = local } },
+            }, alloc);
             return TypedOperand{ .operand = dst, .type = local.type };
         },
         // Compare(left=Constant(1),ops=[Lt()],comparators=[Constant(2)])
@@ -495,159 +522,192 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             std.debug.assert(args != null);
 
             const builtin = getBuiltinCall(std.mem.span(name));
-            // user defined function
-            if (builtin == null) {
-                var arguments = ArrayList(TypedOperand).empty;
-                for (0..@intCast(c.PyList_Size(args))) |i| {
-                    const arg_obj = c.PyList_GetItem(args, @intCast(i));
-                    std.debug.assert(arg_obj != null);
-                    const arg = try walkExpr(arg_obj, irBuilder, null, alloc);
-                    try arguments.append(alloc, arg);
+
+            if (builtin) |b| {
+                switch (b) {
+                    .Print => {
+                        std.debug.assert(c.PyList_Size(args) == 1);
+                        const arg0 = c.PyList_GetItem(args, 0);
+                        std.debug.assert(arg0 != null);
+                        const src = try walkExpr(arg0, irBuilder, null, alloc);
+
+                        try irBuilder.emit(Instruction{ .print = .{
+                            .src = src,
+                        } }, alloc);
+                        return src;
+                    },
+                    .Write => {
+                        std.debug.assert(c.PyList_Size(args) == 3);
+                        const arg0 = c.PyList_GetItem(args, 0);
+                        std.debug.assert(arg0 != null);
+                        const fd = try walkExpr(arg0, irBuilder, null, alloc);
+                        const arg1 = c.PyList_GetItem(args, 1);
+                        std.debug.assert(arg1 != null);
+                        const buf = try walkExpr(arg1, irBuilder, null, alloc);
+                        const arg2 = c.PyList_GetItem(args, 2);
+                        std.debug.assert(arg2 != null);
+                        const len = try walkExpr(arg2, irBuilder, null, alloc);
+                        switch (buf.type) {
+                            .list => {
+                                // gross but we need to increment past the book keeping size value
+                                const eight = irBuilder.nextTemp();
+                                try irBuilder.emit(.{ .lir = .{ .constant = .{
+                                    .dst = eight,
+                                    .value = .{ .i64 = 8 },
+                                } } }, alloc);
+                                const data = irBuilder.nextTemp();
+                                try irBuilder.emit(.{ .lir = .{ .binop = .{
+                                    .dst = data,
+                                    .lhs = .{ .operand = buf },
+                                    .op = .add,
+                                    .rhs = .{ .operand = .{
+                                        .operand = eight,
+                                        .type = .{ .int = .i64 },
+                                    } },
+                                } } }, alloc);
+                                try irBuilder.emit(.{
+                                    .function_call = .{
+                                        .dst = null,
+                                        .args = try alloc.dupe(TypedOperand, &.{
+                                            fd,
+                                            .{ .operand = data, .type = buf.type },
+                                            len,
+                                        }),
+                                        .callee = .{ .direct = "write" },
+                                    },
+                                }, alloc);
+                            },
+                            .tuple => {
+                                try irBuilder.emit(.{
+                                    .function_call = .{
+                                        .dst = null,
+                                        .args = try alloc.dupe(TypedOperand, &.{ fd, buf, len }),
+                                        .callee = .{ .direct = "write" },
+                                    },
+                                }, alloc);
+                            },
+                            else => |e| {
+                                std.debug.print("cant write type {s}\n", .{@tagName(e)});
+                                return error.UnsupportedWriteType;
+                            },
+                        }
+                        return .{ .operand = .unknown, .type = .void };
+                    },
+                    .Len => {
+                        std.debug.assert(c.PyList_Size(args) == 1);
+                        const arg0 = c.PyList_GetItem(args, 0);
+                        std.debug.assert(arg0 != null);
+                        const value = try walkExpr(arg0, irBuilder, null, alloc);
+                        const dst = irBuilder.nextTemp();
+                        try irBuilder.emit(Instruction{ .len = .{
+                            .dst = dst,
+                            .value = value,
+                        } }, alloc);
+                        return .{ .operand = dst, .type = .{ .int = .i64 } };
+                    },
+                    // Call(func=Name(id='range', ctx=Load()), args=[Constant(value=0), Constant(value=10)])
+                    .Range => {
+                        const bounds = switch (c.PyList_Size(args)) {
+                            1 => blk: {
+                                const start = irBuilder.nextTemp();
+                                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
+                                    .dst = start,
+                                    .value = .{ .i64 = 0 },
+                                } } }, alloc);
+
+                                const endItem = c.PyList_GetItem(args, 0);
+                                std.debug.assert(endItem != null);
+                                const end = try walkExpr(endItem, irBuilder, null, alloc);
+
+                                break :blk RangeBounds{ .start = TypedOperand{ .type = .{ .int = .i64 }, .operand = start }, .end = end };
+                            },
+                            2 => blk: {
+                                const startItem = c.PyList_GetItem(args, 0);
+                                std.debug.assert(startItem != null);
+                                const start = try walkExpr(startItem, irBuilder, null, alloc);
+                                const endItem = c.PyList_GetItem(args, 1);
+                                std.debug.assert(endItem != null);
+                                const end = try walkExpr(endItem, irBuilder, null, alloc);
+                                break :blk RangeBounds{ .start = start, .end = end };
+                            },
+                            else => return error.InvalidBounds,
+                        };
+
+                        const dst = irBuilder.nextTemp();
+
+                        const type_ = TypeInfo{
+                            .lazy = .{ .value = try ownedPointer(.{ .iterable = .{ .element = try ownedPointer(.{ .int = .i64 }, alloc) } }, alloc) },
+                        };
+                        const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
+                        try irBuilder.emit(Instruction{ .range = .{
+                            .dst = typed_dst,
+                            .start = bounds.start,
+                            .end = bounds.end,
+                        } }, alloc);
+                        return typed_dst;
+                    },
                 }
-                const function_return_type = try irBuilder.getFunctionReturnType(std.mem.span(name));
-                const maybe_dst: ?Operand = if (function_return_type == .void)
+            }
+
+            // user defined function
+            var arguments = ArrayList(TypedOperand).empty;
+            for (0..@intCast(c.PyList_Size(args))) |i| {
+                const arg_obj = c.PyList_GetItem(args, @intCast(i));
+                std.debug.assert(arg_obj != null);
+                const arg = try walkExpr(arg_obj, irBuilder, null, alloc);
+                try arguments.append(alloc, arg);
+            }
+            const name_slice = std.mem.span(name);
+
+            if (irBuilder.getLocal(name_slice) catch null) |local_id| {
+                if (irBuilder.local_values.get(local_id)) |callee| {
+                    if (callee.type == .callable) {
+                        const maybe_dst: ?Operand = if (callee.type.callable.returns.* == .void)
+                            null
+                        else
+                            irBuilder.nextTemp();
+
+                        try irBuilder.emit(.{
+                            .function_call = .{
+                                .callee = .{ .indirect = callee },
+                                .dst = maybe_dst,
+                                .args = try arguments.toOwnedSlice(alloc),
+                            },
+                        }, alloc);
+
+                        if (maybe_dst) |dst| {
+                            return TypedOperand{
+                                .operand = dst,
+                                .type = callee.type.callable.returns.*,
+                            };
+                        }
+                        return TypedOperand{ .operand = .unknown, .type = .void };
+                    }
+                }
+            }
+
+            if (irBuilder.findFunction(std.mem.span(name))) |function| {
+                const maybe_dst: ?Operand = if (function.return_type == .void)
                     null
                 else
                     irBuilder.nextTemp();
-                try irBuilder.emit(.{ .function_call = .{
-                    .function_name = std.mem.span(name),
-                    .dst = maybe_dst,
-                    .args = try arguments.toOwnedSlice(alloc),
-                } }, alloc);
+                try irBuilder.emit(.{
+                    .function_call = .{
+                        .callee = .{ .direct = name_slice },
+                        .dst = maybe_dst,
+                        .args = try arguments.toOwnedSlice(alloc),
+                    },
+                }, alloc);
 
                 if (maybe_dst) |dst| {
                     return TypedOperand{
                         .operand = dst,
-                        .type = try irBuilder.getFunctionReturnType(std.mem.span(name)),
+                        .type = function.return_type,
                     };
                 }
                 return TypedOperand{ .operand = .unknown, .type = .void };
             }
-
-            switch (builtin.?) {
-                .Print => {
-                    std.debug.assert(c.PyList_Size(args) == 1);
-                    const arg0 = c.PyList_GetItem(args, 0);
-                    std.debug.assert(arg0 != null);
-                    const src = try walkExpr(arg0, irBuilder, null, alloc);
-
-                    try irBuilder.emit(Instruction{ .print = .{
-                        .src = src,
-                    } }, alloc);
-                    return src;
-                },
-                // TODO: consider moving this logic into write.zig -- also rename to print.zig?
-                .Write => {
-                    std.debug.assert(c.PyList_Size(args) == 3);
-                    const arg0 = c.PyList_GetItem(args, 0);
-                    std.debug.assert(arg0 != null);
-                    const fd = try walkExpr(arg0, irBuilder, null, alloc);
-                    const arg1 = c.PyList_GetItem(args, 1);
-                    std.debug.assert(arg1 != null);
-                    const buf = try walkExpr(arg1, irBuilder, null, alloc);
-                    const arg2 = c.PyList_GetItem(args, 2);
-                    std.debug.assert(arg2 != null);
-                    const len = try walkExpr(arg2, irBuilder, null, alloc);
-                    switch (buf.type) {
-                        .list => {
-                            // gross but we need to increment past the book keeping size value
-                            const eight = irBuilder.nextTemp();
-                            try irBuilder.emit(.{ .lir = .{ .constant = .{
-                                .dst = eight,
-                                .value = .{ .i64 = 8 },
-                            } } }, alloc);
-                            const data = irBuilder.nextTemp();
-                            try irBuilder.emit(.{ .lir = .{ .binop = .{
-                                .dst = data,
-                                .lhs = .{ .operand = buf },
-                                .op = .add,
-                                .rhs = .{ .operand = .{
-                                    .operand = eight,
-                                    .type = .{ .int = .i64 },
-                                } },
-                            } } }, alloc);
-                            try irBuilder.emit(.{
-                                .function_call = .{
-                                    .dst = null,
-                                    .args = try alloc.dupe(TypedOperand, &.{
-                                        fd,
-                                        .{ .operand = data, .type = buf.type },
-                                        len,
-                                    }),
-                                    .function_name = "write",
-                                },
-                            }, alloc);
-                        },
-                        .tuple => {
-                            try irBuilder.emit(.{
-                                .function_call = .{
-                                    .dst = null,
-                                    .args = try alloc.dupe(TypedOperand, &.{ fd, buf, len }),
-                                    .function_name = "write",
-                                },
-                            }, alloc);
-                        },
-                        else => |e| {
-                            std.debug.print("cant write type {s}\n", .{@tagName(e)});
-                            return error.UnsupportedWriteType;
-                        },
-                    }
-                    return .{ .operand = .unknown, .type = .void };
-                },
-                .Len => {
-                    std.debug.assert(c.PyList_Size(args) == 1);
-                    const arg0 = c.PyList_GetItem(args, 0);
-                    std.debug.assert(arg0 != null);
-                    const value = try walkExpr(arg0, irBuilder, null, alloc);
-                    const dst = irBuilder.nextTemp();
-                    try irBuilder.emit(Instruction{ .len = .{
-                        .dst = dst,
-                        .value = value,
-                    } }, alloc);
-                    return .{ .operand = dst, .type = .{ .int = .i64 } };
-                },
-                // Call(func=Name(id='range', ctx=Load()), args=[Constant(value=0), Constant(value=10)])
-                .Range => {
-                    const bounds = switch (c.PyList_Size(args)) {
-                        1 => blk: {
-                            const start = irBuilder.nextTemp();
-                            try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
-                                .dst = start,
-                                .value = .{ .i64 = 0 },
-                            } } }, alloc);
-
-                            const endItem = c.PyList_GetItem(args, 0);
-                            std.debug.assert(endItem != null);
-                            const end = try walkExpr(endItem, irBuilder, null, alloc);
-
-                            break :blk RangeBounds{ .start = TypedOperand{ .type = .{ .int = .i64 }, .operand = start }, .end = end };
-                        },
-                        2 => blk: {
-                            const startItem = c.PyList_GetItem(args, 0);
-                            std.debug.assert(startItem != null);
-                            const start = try walkExpr(startItem, irBuilder, null, alloc);
-                            const endItem = c.PyList_GetItem(args, 1);
-                            std.debug.assert(endItem != null);
-                            const end = try walkExpr(endItem, irBuilder, null, alloc);
-                            break :blk RangeBounds{ .start = start, .end = end };
-                        },
-                        else => return error.InvalidBounds,
-                    };
-
-                    const dst = irBuilder.nextTemp();
-
-                    const type_ = TypeInfo{
-                        .lazy = .{ .value = &.{ .iterable = .{ .element = try ownedPointer(.{ .int = .i64 }, alloc) } } },
-                    };
-                    const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
-                    try irBuilder.emit(Instruction{ .range = .{
-                        .dst = typed_dst,
-                        .start = bounds.start,
-                        .end = bounds.end,
-                    } }, alloc);
-                    return typed_dst;
-                },
-            }
+            return error.CantFindFunction;
         },
         // IfExp(test=Name(id='c', ctx=Load()), body=Constant(value='FALSE'), orelse=Constant(value='TRUE'))
         .IfExp => {
@@ -1146,6 +1206,7 @@ fn getStmtKind(stmt: *PyObject) StmtKind {
     if (std.mem.eql(u8, name, "FunctionDef")) return .FuncDef;
     if (std.mem.eql(u8, name, "Return")) return .Return;
     if (std.mem.eql(u8, name, "Pass")) return .Pass;
+    if (std.mem.eql(u8, name, "ImportFrom")) return .ImportFrom;
     return .Unknown;
 }
 
@@ -1192,14 +1253,12 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
             return .{ .list = .{ .element = try ownedPointer(.char, alloc), .size = null } };
         }
         return error.TypeNotImplemented;
-    }
-    // Subscript(value=Name(id='list', ctx=Load()), slice=Name(id='int', ctx=Load()), ctx=Load())
-    // Subscript(value=Name(id='tuple', ctx=Load()), slice=Tuple(elts=[Name(id='int', ctx=Load()), Name(id='int', ctx=Load())], ctx=Load()), ctx=Load())
-    else if (std.mem.eql(u8, kind, "Subscript")) {
+    } else if (std.mem.eql(u8, kind, "Subscript")) {
         const slice_obj = c.PyObject_GetAttrString(annotation, "slice");
         std.debug.assert(slice_obj != null);
 
         switch (try getSubscriberType(annotation)) {
+            // Subscript(value=Name(id='list', ctx=Load()), slice=Name(id='int', ctx=Load()), ctx=Load())
             .list => {
                 // recursively get type
                 const elem_type = try parseTypeAnnotation(slice_obj, alloc);
@@ -1208,6 +1267,7 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
                     .size = null,
                 } };
             },
+            // Subscript(value=Name(id='tuple', ctx=Load()), slice=Tuple(elts=[Name(id='int', ctx=Load()), Name(id='int', ctx=Load())], ctx=Load()), ctx=Load())
             .tuple => {
                 const elts = c.PyObject_GetAttrString(slice_obj, "elts");
                 std.debug.assert(elts != null);
@@ -1220,6 +1280,32 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
                 }
                 return .{ .tuple = .{
                     .elements = elem_types,
+                } };
+            },
+            // Subscript(value=Name(id='Callable', ctx=Load()), slice=Tuple(elts=[List(elts=[Name(id='bool', ctx=Load())], ctx=Load()), Name(id='int', ctx=Load())], ctx=Load()), ctx=Load())
+            .callable => {
+                const elts = c.PyObject_GetAttrString(slice_obj, "elts");
+                std.debug.assert(elts != null);
+                const len: usize = @intCast(c.PyList_Size(elts));
+                std.debug.assert(len == 2);
+                const params_obj = c.PyList_GetItem(elts, 0);
+                std.debug.assert(params_obj != null);
+                const return_obj = c.PyList_GetItem(elts, 1);
+                std.debug.assert(return_obj != null);
+
+                const params_elts = c.PyObject_GetAttrString(params_obj, "elts");
+                std.debug.assert(params_elts != null);
+                const input_len: usize = @intCast(c.PyList_Size(params_elts));
+                const elem_types = try alloc.alloc(TypeInfo, input_len);
+                for (0..input_len) |i| {
+                    const elt = c.PyList_GetItem(params_elts, @intCast(i));
+                    std.debug.assert(elt != null);
+                    elem_types[i] = try parseTypeAnnotation(elt, alloc);
+                }
+
+                return .{ .callable = .{
+                    .params = elem_types,
+                    .returns = &try parseTypeAnnotation(return_obj, alloc),
                 } };
             },
         }
@@ -1241,6 +1327,7 @@ fn getSubscriberType(annotation: *PyObject) !SubscriberTypes {
     const name = std.mem.span(c.PyUnicode_AsUTF8(id_obj));
     if (std.mem.eql(u8, name, "list")) return .list;
     if (std.mem.eql(u8, name, "tuple")) return .tuple;
+    if (std.mem.eql(u8, name, "Callable")) return .callable;
 
     return error.InvalidSubscriber;
 }
@@ -1317,7 +1404,7 @@ test "while loop" {
         Instruction{ .lir = .{ .store_local = .{ .local = LocalInfo{
             .id = 0,
             .name = "x",
-            .type = .any,
+            .type = .{ .int = .i64 },
         }, .src = .{ .temp = .{ .id = 0, .function_id = 0 } } } } },
         entry[1],
     );

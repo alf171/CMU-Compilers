@@ -41,15 +41,23 @@ The goal of this project is to learn more about compilers from a lower level. Pr
   - [ ] rdna3
 - [ ] classes or objs or structs (?)
   - [ ] will be used eventually to write a minitorch
-- [ ] build `Lazy` into the type system
-  - [ ] leverage for tuple to become lazy[tuple[...]]
-  - [ ] `p0`: get for i in `range(0, 5) print(i)` to pass
-  - [ ] allow for more complex rewrites like `map(f, range(5))`
-  - [ ] call `.realize()` on lazy[x] to yield x (can leverage yield syntax)?
-  - [ ] `pN`: submit and await to bridge gap between coloring
+- [ ] support arbitrary transformations like `map`
+```{ir}
+block0:
+  temp4 <- f
+  temp1 <- false
+  reg0 <- temp4
+  reg1 <- temp1
+  temp2 <- g(reg0, reg1)
+  temp2 <- reg0
+  reg0 <- temp2
+  print_int(reg0)
+```
+- [ ] copy prop here
+- [ ] rewrite tuple len into a constant op
 
 ### Linker
-- [ ] remove clang dep
+- [ ] remove clang on linux/x86
 
 ### MiniTorch
 - a tiny ml framework leveraging language

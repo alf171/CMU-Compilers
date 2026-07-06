@@ -57,7 +57,12 @@ fn emitFunction(
         for (block.instructions.items) |instruction| {
             switch (instruction) {
                 .function_call => |fc| {
-                    try out.print(alloc, "\tcallq {s}\n", .{fc.function_name});
+                    switch (fc.callee) {
+                        .direct => |function_name| {
+                            try out.print(alloc, "\tcallq {s}\n", .{function_name});
+                        },
+                        else => return error.NotImpl,
+                    }
                 },
                 .len => |l| {
                     const dst = try abi.regFor(l.dst, colors);

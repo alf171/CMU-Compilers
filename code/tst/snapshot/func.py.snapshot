@@ -1,5 +1,7 @@
 [4mrunning program:[0m
 
+from typing import Callable
+
 def f(c: bool) -> int:
   if c:
       x = 1
@@ -7,9 +9,12 @@ def f(c: bool) -> int:
       x = 2
   return x
 
-y = f(True)
+def g(f: Callable[[bool], int], y: bool) -> int:
+    return 2 * f(y)
+
+y = g(f, False)
 print(y)
 
 [4mactual output:[0m
-1
+4
 [!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

@@ -51,11 +51,21 @@ pub const Instruction = union(enum) {
     },
     function_call: struct {
         dst: ?Operand,
-        function_name: []const u8,
+        callee: union(enum) {
+            /// a function name to call
+            direct: []const u8,
+            /// a value holding our function
+            indirect: TypedOperand,
+        },
         args: []TypedOperand,
     },
     function_return: struct {
         value: ?Operand,
+    },
+    // used to pass functions as value
+    function_ref: struct {
+        dst: Operand,
+        function_name: []const u8,
     },
     // heap based variable size
     list_literal: struct {
@@ -126,6 +136,10 @@ pub const Instruction = union(enum) {
                 }
                 debugPrint("]\n", .{});
             },
+            .function_ref => |fr| {
+                fr.dst.print();
+                debugPrint(" <- {s}\n", .{fr.function_name});
+            },
             .function_param => |fp| {
                 fp.dst.operand.print();
                 debugPrint(" <- param {d}\n", .{fp.index});
@@ -135,7 +149,13 @@ pub const Instruction = union(enum) {
                     dst.print();
                     debugPrint(" <- ", .{});
                 }
-                debugPrint("{s}(", .{fc.function_name});
+                switch (fc.callee) {
+                    .direct => |function_name| debugPrint("{s}(", .{function_name}),
+                    .indirect => |ind| {
+                        ind.operand.print();
+                        debugPrint("(", .{});
+                    },
+                }
                 for (fc.args, 0..) |arg, i| {
                     if (i != 0) debugPrint(", ", .{});
                     arg.operand.print();
@@ -186,6 +206,12 @@ pub const Instruction = union(enum) {
                 }
             },
             .function_call => |*fc| {
+                switch (fc.callee) {
+                    .direct => {},
+                    .indirect => |*dir| {
+                        if (dir.operand.equal(old)) dir.operand = new;
+                    },
+                }
                 for (fc.args) |*arg| {
                     if (arg.operand.equal(old)) arg.operand = new;
                 }
@@ -239,6 +265,7 @@ pub const Instruction = union(enum) {
             .len => |l| .{ .operand = l.dst },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .print => null,
+            .function_ref => |fr| .{ .operand = fr.dst },
             .function_param => |fp| .{ .operand = fp.dst.operand },
             .function_call => |fc| if (fc.dst) |op| .{ .operand = op } else null,
             .function_return => null,
@@ -278,8 +305,15 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
+            .function_ref => {},
             .function_param => {},
             .function_call => |fc| {
+                switch (fc.callee) {
+                    .direct => {},
+                    .indirect => |ind| {
+                        try res.append(alloc, .{ .operand = ind.operand });
+                    },
+                }
                 for (fc.args) |arg| {
                     try res.append(alloc, .{ .operand = arg.operand });
                 }

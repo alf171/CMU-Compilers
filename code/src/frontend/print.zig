@@ -31,28 +31,21 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             }
                             try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
-                                .function_name = "print_string",
+                                .callee = .{ .direct = "print_string" },
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
                             } });
                         },
-                        // .tuple => {
-                        //     try new_instructions.append(alloc, .{ .lir = .{ .function_call = .{
-                        //         .dst = null,
-                        //         .function_name = "print_string",
-                        //         .args = try alloc.dupe(TypedOperand, &.{p.src}),
-                        //     } } });
-                        // },
                         .bool => {
                             try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
-                                .function_name = "print_bool",
+                                .callee = .{ .direct = "print_bool" },
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
                             } });
                         },
                         .int => {
                             try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
-                                .function_name = "print_int",
+                                .callee = .{ .direct = "print_int" },
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
                             } });
                         },

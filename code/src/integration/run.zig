@@ -72,6 +72,8 @@ pub fn main(init: std.process.Init) !void {
 
     // rewrite layer
     try lazy.rewrite(&ir_program, alloc);
+    // TODO: add a small pass for len(tuple) calls
+    // try tuple.rewrite(&ir_program, alloc);
     try list.rewrite(&ir_program, alloc);
     try print.rewrite(&ir_program, alloc);
     // phi cleanup

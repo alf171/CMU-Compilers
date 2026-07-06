@@ -36,7 +36,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     });
                     try new_instructions.append(alloc, .{ .function_call = .{
                         .dst = ll.dst.operand,
-                        .function_name = "arena_malloc",
+                        .callee = .{ .direct = "arena_malloc" },
                         .args = args,
                     } });
                     // store list size

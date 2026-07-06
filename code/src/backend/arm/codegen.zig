@@ -402,11 +402,24 @@ fn emitFunction(
                 },
                 // abi specific component are handled in pre_color
                 .function_call => |fc| {
-                    try out.print(alloc, "\tbl _{s}\n", .{fc.function_name});
+                    switch (fc.callee) {
+                        .direct => |function_name| {
+                            try out.print(alloc, "\tbl _{s}\n", .{function_name});
+                        },
+                        .indirect => |ind| {
+                            const addr = try abi.regFor(ind.operand, colors);
+                            try out.print(alloc, "\tblr {s}\n", .{addr});
+                        },
+                    }
                 },
                 // abi specific component are handled in pre_color
                 .function_return => {
                     try out.print(alloc, "\tb _{s}_epilogue\n", .{function.name});
+                },
+                .function_ref => |fr| {
+                    const dst = try abi.regFor(fr.dst, colors);
+                    try out.print(alloc, "\tadrp {s}, _{s}@PAGE\n", .{ dst, fr.function_name });
+                    try out.print(alloc, "\tadd {s}, {s}, _{s}@PAGEOFF\n", .{ dst, dst, fr.function_name });
                 },
                 else => |ir| {
                     std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(ir)});
