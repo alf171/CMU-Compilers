@@ -48,7 +48,8 @@ fn runFunction(function: *Function, alloc_program: *const AllocProgram, alloc: s
 
             // if operand hasn't been used yet, instruction can be removed
             if (!hasSideEffects(instruction) and defines != null and !seen.contains(defines.?)) {
-                _ = block.instructions.orderedRemove(i);
+                var removed = block.instructions.orderedRemove(i);
+                removed.deinit(alloc);
                 uses.deinit(alloc);
                 continue;
             }

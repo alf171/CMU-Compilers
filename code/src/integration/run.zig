@@ -31,7 +31,16 @@ pub fn main(init: std.process.Init) !void {
     const arena = init.arena;
     const args = try init.minimal.args.toSlice(arena.allocator());
     const io = init.io;
-    const alloc = arena.allocator();
+
+    // var alloc = arena.allocator();
+    var debug_alloc = std.heap.DebugAllocator(.{}){};
+    defer {
+        const status = debug_alloc.deinit();
+        if (status == .leak) {
+            std.debug.print("leaks detected\n", .{});
+        }
+    }
+    const alloc = debug_alloc.allocator();
 
     if (args.len < 3) {
         std.debug.print("usage: {s} <input file> <output asm> [--run]\n", .{args[0]});
@@ -59,17 +68,6 @@ pub fn main(init: std.process.Init) !void {
     var ir_program = try walkAstWithRuntime(input_file, should_optim, io, alloc);
     defer ir_program.deinit(alloc);
 
-    // dump ir after optim pass
-    if (should_dump_ir) {
-        std.debug.print("\n{s}pre phi elimination:{s}\n", .{ underline_code, reset_code });
-        try ir_program.print();
-    }
-
-    // run optimization passses
-    if (should_optim) {
-        try copy.run(&ir_program, alloc);
-    }
-
     // rewrite layer
     try lazy.rewrite(&ir_program, alloc);
     // TODO: add a small pass for len(tuple) calls
@@ -78,6 +76,11 @@ pub fn main(init: std.process.Init) !void {
     try print.rewrite(&ir_program, alloc);
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
+
+    // run optimization passses
+    if (should_optim) {
+        try copy.run(&ir_program, alloc);
+    }
 
     const platform = try getPlatform(target);
     try precolor.apply(&ir_program, platform.abi, alloc);

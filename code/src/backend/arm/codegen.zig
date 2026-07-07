@@ -144,18 +144,20 @@ fn emitFunction(
                             switch (binop.op) {
                                 // can use imm
                                 .add => {
-                                    const rhs_reg = if (valueAsImm(binop.rhs)) |rhs_imm|
-                                        try std.fmt.allocPrint(alloc, "#{d}", .{rhs_imm})
-                                    else
-                                        try abi.regFor(binop.rhs.operand.operand, colors);
-                                    try out.print(alloc, "\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
+                                    if (valueAsImm(binop.rhs)) |rhs_imm| {
+                                        try out.print(alloc, "\tadd {s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
+                                    } else {
+                                        const rhs = try abi.regFor(binop.rhs.operand.operand, colors);
+                                        try out.print(alloc, "\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs });
+                                    }
                                 },
                                 .sub => {
-                                    const rhs_reg = if (valueAsImm(binop.rhs)) |rhs_imm|
-                                        try std.fmt.allocPrint(alloc, "#{d}", .{rhs_imm})
-                                    else
-                                        try abi.regFor(binop.rhs.operand.operand, colors);
-                                    try out.print(alloc, "\tsub {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
+                                    if (valueAsImm(binop.rhs)) |rhs_imm| {
+                                        try out.print(alloc, "\tsub {s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
+                                    } else {
+                                        const rhs = try abi.regFor(binop.rhs.operand.operand, colors);
+                                        try out.print(alloc, "\tsub {s}, {s}, {s}\n", .{ dst, lhs, rhs });
+                                    }
                                 },
                                 // cant use imm
                                 .mul => {
@@ -417,7 +419,7 @@ fn emitFunction(
                     try out.print(alloc, "\tb _{s}_epilogue\n", .{function.name});
                 },
                 .function_ref => |fr| {
-                    const dst = try abi.regFor(fr.dst, colors);
+                    const dst = try abi.regFor(fr.dst.operand, colors);
                     try out.print(alloc, "\tadrp {s}, _{s}@PAGE\n", .{ dst, fr.function_name });
                     try out.print(alloc, "\tadd {s}, {s}, _{s}@PAGEOFF\n", .{ dst, dst, fr.function_name });
                 },

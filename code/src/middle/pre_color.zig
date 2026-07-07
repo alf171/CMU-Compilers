@@ -28,6 +28,7 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                         .dst = fp.dst.operand,
                         .src = .{ .reg = .{ .id = id } },
                     } } });
+                    instruction.deinit(alloc);
                 },
                 .function_return => |fr| {
                     if (fr.value) |src_op| {
@@ -38,10 +39,12 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                         } } });
                         // emits branch with proper coloring
                         try new_instructions.append(alloc, .{ .function_return = .{ .value = reg } });
+                        instruction.deinit(alloc);
                     } else {
                         // emits branch
                         try new_instructions.append(alloc, instruction.*);
                     }
+                    instruction.deinit(alloc);
                 },
                 .function_call => |fc| {
                     var copies = try alloc.alloc(Copy, fc.args.len);
@@ -75,6 +78,7 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                             } },
                         } } });
                     }
+                    instruction.deinit(alloc);
                 },
                 else => try new_instructions.append(alloc, instruction.*),
             }

@@ -8,7 +8,7 @@ const Program = @import("common").program.Program;
 const Instruction = @import("common").mir.Instruction;
 const getElementType = @import("common").types.getElementType;
 
-/// handles buisness logic of storing [size] [elements...] when consumers just see elements
+/// calls malloc and handles layoff buisness logic like size being the first elem
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
     try rewriteFunction(&program.main, alloc);
     for (program.functions.items) |*function| {
@@ -82,6 +82,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             } },
                         });
                     }
+                    instruction.deinit(alloc);
                 },
                 else => try new_instructions.append(alloc, instruction.*),
             }

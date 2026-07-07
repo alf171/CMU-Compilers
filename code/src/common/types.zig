@@ -31,7 +31,66 @@ pub const TypeInfo = union(enum) {
     },
     any,
 
-    pub fn sizeOfType(self: TypeInfo) !usize {
+    pub fn deinit(self: @This(), alloc: std.mem.Allocator) void {
+        switch (self) {
+            .list => |list| {
+                list.element.*.deinit(alloc);
+                alloc.destroy(@constCast(list.element));
+            },
+            .tuple => |tuple| {
+                for (tuple.elements) |elem| {
+                    elem.deinit(alloc);
+                }
+                alloc.free(tuple.elements);
+            },
+            .iterable => |iterable| {
+                iterable.element.*.deinit(alloc);
+                alloc.destroy(@constCast(iterable.element));
+            },
+            .lazy => |lazy| {
+                lazy.value.*.deinit(alloc);
+                alloc.destroy(@constCast(lazy.value));
+            },
+            .callable => |callable| {
+                for (callable.params) |param| {
+                    param.deinit(alloc);
+                }
+                alloc.free(callable.params);
+
+                callable.returns.*.deinit(alloc);
+                alloc.destroy(@constCast(callable.returns));
+            },
+            else => {},
+        }
+    }
+
+    pub fn clone(self: @This(), alloc: std.mem.Allocator) !@This() {
+        switch (self) {
+            .list => |l| {
+                return .{ .list = .{
+                    .element = try ownedPointer(try l.element.*.clone(alloc), alloc),
+                    .size = l.size,
+                } };
+            },
+            .callable => |c| {
+                var params = try alloc.alloc(TypeInfo, c.params.len);
+                for (c.params, 0..) |param, i| {
+                    params[i] = try param.clone(alloc);
+                }
+                return .{ .callable = .{
+                    .params = params,
+                    .returns = try ownedPointer(try c.returns.*.clone(alloc), alloc),
+                } };
+            },
+            .void, .int, .bool, .char => return self,
+            else => |e| {
+                std.debug.print("clone does support {s}\n", .{@tagName(e)});
+                return error.NotImpl;
+            },
+        }
+    }
+
+    pub fn sizeOfType(self: @This()) !usize {
         return switch (self) {
             .bool, .char => 1,
             .int => |i| switch (i) {
@@ -70,7 +129,6 @@ pub fn getElementSize(typeInfo: TypeInfo) ?usize {
     };
 }
 
-/// FIXME: bad ownership principles, should be rethought
 pub fn ownedPointer(t: TypeInfo, alloc: std.mem.Allocator) !*TypeInfo {
     const ptr = try alloc.create(TypeInfo);
     ptr.* = t;

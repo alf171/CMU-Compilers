@@ -3,6 +3,7 @@ const debugPrint = std.debug.print;
 const ArrayList = std.ArrayList;
 const BasicBlock = @import("ir.zig").BasicBlock;
 const Function = @import("ir.zig").Function;
+const Param = @import("alloc.zig").Param;
 
 pub const Program = struct {
     main: Function,
@@ -15,11 +16,11 @@ pub const Program = struct {
 
         return Program{
             .main = Function{
-                .name = "main",
+                .name = try alloc.dupe(u8, "main"),
                 .id = 0,
                 .blocks = blocks,
                 .entry_block = 0,
-                .params = &.{},
+                .params = try alloc.alloc(Param, 0),
                 .return_type = .{ .int = .i64 },
                 .next_temp = 0,
                 .next_mem = 0,
@@ -29,26 +30,31 @@ pub const Program = struct {
     }
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
-        for (self.main.blocks.items) |*block| {
+        deinitFunction(&self.main, alloc);
+        for (self.functions.items) |*func| {
+            deinitFunction(func, alloc);
+        }
+
+        self.functions.deinit(alloc);
+    }
+
+    fn deinitFunction(function: *Function, alloc: std.mem.Allocator) void {
+        for (function.blocks.items) |*block| {
             for (block.instructions.items) |*instruction| {
-                switch (instruction.*) {
-                    .lir => |l| {
-                        switch (l) {
-                            .store_local => |sl| alloc.free(sl.local.name),
-                            .load_local => |ll| alloc.free(ll.local.name),
-                            else => {},
-                        }
-                    },
-                    .phi => |phi| {
-                        alloc.free(phi.inputs);
-                    },
-                    else => {},
-                }
+                instruction.deinit(alloc);
             }
             block.instructions.deinit(alloc);
             block.successors.deinit(alloc);
         }
-        self.main.blocks.deinit(alloc);
+        function.blocks.deinit(alloc);
+        // function metadata
+        function.return_type.deinit(alloc);
+        alloc.free(function.name);
+        for (function.params) |param| {
+            alloc.free(param.name);
+            param.type.deinit(alloc);
+        }
+        alloc.free(function.params);
     }
 
     pub fn print(self: @This()) !void {

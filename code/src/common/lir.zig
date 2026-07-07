@@ -473,4 +473,20 @@ pub const Instruction = union(enum) {
         }
         return res;
     }
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        switch (self.*) {
+            .tuple_literal => |tl| {
+                tl.dst.type.deinit(alloc);
+                alloc.free(tl.elements);
+            },
+            .store_local => |sl| {
+                alloc.free(sl.local.name);
+            },
+            .load_local => |ll| {
+                alloc.free(ll.local.name);
+            },
+            else => {},
+        }
+    }
 };

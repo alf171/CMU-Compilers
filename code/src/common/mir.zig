@@ -64,7 +64,7 @@ pub const Instruction = union(enum) {
     },
     // used to pass functions as value
     function_ref: struct {
-        dst: Operand,
+        dst: TypedOperand,
         function_name: []const u8,
     },
     // heap based variable size
@@ -81,6 +81,37 @@ pub const Instruction = union(enum) {
     // deglate to LIR impl
     lir: LirInstruction,
     unkown,
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        switch (self.*) {
+            .phi => |phi| {
+                alloc.free(phi.inputs);
+            },
+            .function_param => |fp| {
+                fp.dst.type.deinit(alloc);
+                alloc.free(fp.name);
+            },
+            .function_ref => |fr| {
+                fr.dst.type.deinit(alloc);
+                alloc.free(fr.function_name);
+            },
+            .function_call => |fc| {
+                alloc.free(fc.args);
+            },
+            .list_literal => |ll| {
+                ll.dst.type.deinit(alloc);
+                alloc.free(ll.elements);
+            },
+            .lazy_load => |ll| {
+                ll.lazy.type.deinit(alloc);
+            },
+            .range => |r| {
+                r.dst.type.deinit(alloc);
+            },
+            .lir => |*lir| lir.deinit(alloc),
+            else => {},
+        }
+    }
 
     pub fn printFn(self: @This()) !void {
         switch (self) {
@@ -137,7 +168,7 @@ pub const Instruction = union(enum) {
                 debugPrint("]\n", .{});
             },
             .function_ref => |fr| {
-                fr.dst.print();
+                fr.dst.operand.print();
                 debugPrint(" <- {s}\n", .{fr.function_name});
             },
             .function_param => |fp| {
@@ -265,7 +296,7 @@ pub const Instruction = union(enum) {
             .len => |l| .{ .operand = l.dst },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .print => null,
-            .function_ref => |fr| .{ .operand = fr.dst },
+            .function_ref => |fr| .{ .operand = fr.dst.operand },
             .function_param => |fp| .{ .operand = fp.dst.operand },
             .function_call => |fc| if (fc.dst) |op| .{ .operand = op } else null,
             .function_return => null,

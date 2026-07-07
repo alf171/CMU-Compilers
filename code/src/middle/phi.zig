@@ -85,9 +85,11 @@ fn insertParallelCopyBeforeTerminator(function: *Function, pred: BlockId, instru
 fn removePhisFromBlock(block: *common.ir.BasicBlock, alloc: std.mem.Allocator) !void {
     var new_instructions = ArrayList(Instruction).empty;
     errdefer new_instructions.deinit(alloc);
-    for (block.instructions.items) |instruction| {
-        switch (instruction) {
-            .phi => {},
+    for (block.instructions.items) |*instruction| {
+        switch (instruction.*) {
+            .phi => {
+                instruction.deinit(alloc);
+            },
             else => |ins| try new_instructions.append(alloc, ins),
         }
     }

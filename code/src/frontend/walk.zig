@@ -211,12 +211,13 @@ fn walkAnnotatedAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.me
 
     const annotation = c.PyObject_GetAttrString(stmt, "annotation");
     const annotation_type = try parseTypeAnnotation(annotation, alloc);
+    defer annotation_type.deinit(alloc);
     const rhs = c.PyObject_GetAttrString(stmt, "value");
     const rhs_value = try walkExpr(rhs, irBuilder, annotation_type, alloc);
 
     const local = try irBuilder.getOrCreateLocal(std.mem.span(target_id), annotation_type, alloc);
     try irBuilder.local_values.put(local, rhs_value);
-    try irBuilder.emit(Instruction{ .lir = .{ .store_local = .{
+    try irBuilder.emit(.{ .lir = .{ .store_local = .{
         .local = .{
             .id = local,
             .name = try alloc.dupe(u8, std.mem.span(target_id)),
@@ -282,18 +283,18 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 const bytes = std.mem.span(raw);
                 const dst = irBuilder.nextTemp();
                 var elements: ArrayList(ValueRef) = .empty;
-                var element_types: ArrayList(TypeInfo) = .empty;
+                // var element_types: ArrayList(TypeInfo) = .empty;
                 for (bytes) |char| {
                     try elements.append(alloc, .{ .constant = .{
                         .char = char,
                     } });
-                    try element_types.append(alloc, .char);
+                    // try element_types.append(alloc, .char);
                 }
                 // null terminator
                 try elements.append(alloc, .{ .constant = .{
                     .char = 0,
                 } });
-                try element_types.append(alloc, .char);
+                // try element_types.append(alloc, .char);
 
                 const _type = TypeInfo{
                     .list = .{
@@ -357,7 +358,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             const first_elem_type = elem_type orelse return error.NoTypeFound;
             const type_ = TypeInfo{ .list = .{
                 .element = try types.ownedPointer(
-                    first_elem_type,
+                    try first_elem_type.clone(alloc),
                     alloc,
                 ),
                 .size = @intCast(len),
@@ -383,7 +384,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 elements[i] = ValueRef{
                     .operand = elem_op,
                 };
-                element_types[i] = elem_op.type;
+                element_types[i] = try elem_op.type.clone(alloc);
             }
 
             const dst = irBuilder.nextTemp();
@@ -457,28 +458,28 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             }
 
             const dst = irBuilder.nextTemp();
-            const local = try irBuilder.locals.items[localId].duplicate(alloc);
             if (irBuilder.findFunction(name)) |function| {
                 var params = try alloc.alloc(TypeInfo, function.params.len);
                 for (function.params, 0..) |param, i| {
-                    params[i] = param.type;
+                    params[i] = try param.type.clone(alloc);
                 }
                 const function_dst: TypedOperand = .{
                     .operand = function.nextTemp(),
                     .type = .{ .callable = .{
                         .params = params,
-                        .returns = try ownedPointer(function.return_type, alloc),
+                        .returns = try ownedPointer(try function.return_type.clone(alloc), alloc),
                     } },
                 };
                 // declare function we will return
                 try irBuilder.emit(.{
                     .function_ref = .{
-                        .dst = function_dst.operand,
+                        .dst = function_dst,
                         .function_name = try alloc.dupe(u8, function.name),
                     },
                 }, alloc);
                 return function_dst;
             }
+            const local = try irBuilder.locals.items[localId].duplicate(alloc);
             try irBuilder.emit(.{
                 .lir = .{ .load_local = .{ .dst = dst, .local = local } },
             }, alloc);
@@ -1111,7 +1112,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     for (function.params, 0..) |param, i| {
         const value = TypedOperand{
             .operand = irBuilder.nextTemp(),
-            .type = param.type,
+            .type = try param.type.clone(alloc),
         };
 
         try irBuilder.emit(Instruction{ .function_param = .{
@@ -1305,7 +1306,7 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
 
                 return .{ .callable = .{
                     .params = elem_types,
-                    .returns = &try parseTypeAnnotation(return_obj, alloc),
+                    .returns = try ownedPointer(try parseTypeAnnotation(return_obj, alloc), alloc),
                 } };
             },
         }

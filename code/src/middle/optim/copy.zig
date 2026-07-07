@@ -6,6 +6,7 @@ const BasicBlock = @import("common").ir.BasicBlock;
 const Function = @import("common").ir.Function;
 const Program = @import("common").program.Program;
 const Operand = @import("common").alloc.Operand;
+const TypedOperand = @import("common").alloc.TypedOperand;
 const ConstValue = @import("common").ir.ConstValue;
 const ValueRef = @import("common").ir.ValueRef;
 const Instruction = @import("common").mir.Instruction;

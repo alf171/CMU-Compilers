@@ -36,7 +36,9 @@ fn readFile(
     alloc: std.mem.Allocator,
 ) !*PyObject {
     const code = try std.Io.Dir.cwd().readFileAlloc(io, file_name, alloc, .limited(1 << 20));
+    defer alloc.free(code);
     const code_z = try alloc.dupeSentinel(u8, code, 0);
+    defer alloc.free(code_z);
 
     const ast_module = c.PyImport_ImportModule("ast");
 
