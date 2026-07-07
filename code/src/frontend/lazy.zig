@@ -93,7 +93,9 @@ test "range behaves lazily" {
     // we are hardcoding what walk.zig currently passes through here
     const range: TypedOperand = .{
         .operand = program.main.nextTemp(),
-        .type = .{ .lazy = .{ .value = &.{ .iterable = .{ .element = &.{ .int = .i64 } } } } },
+        .type = .{ .lazy = .{ .value = try ownedPointer(.{ .iterable = .{
+            .element = try ownedPointer(.{ .int = .i64 }, alloc),
+        } }, alloc) } },
     };
     try block0.instructions.append(alloc, .{
         .range = .{
