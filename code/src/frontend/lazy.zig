@@ -7,24 +7,26 @@ const Program = @import("common").program.Program;
 const Instruction = @import("common").mir.Instruction;
 const ownedPointer = @import("common").types.ownedPointer;
 
-const Range = struct {
-    start: Operand,
-    end: Operand,
+const LazyProducers = union(enum) {
+    range: struct {
+        start: Operand,
+        end: Operand,
+    },
 };
 
 /// currently handles range rewrites
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
-    var ranges = HashMap(Operand, Range).init(alloc);
-    defer ranges.deinit();
+    var producers = HashMap(Operand, LazyProducers).init(alloc);
+    defer producers.deinit();
 
-    try rewriteFunction(&program.main, &ranges, alloc);
+    try rewriteFunction(&program.main, &producers, alloc);
     for (program.functions.items) |*function| {
-        ranges.clearRetainingCapacity();
-        try rewriteFunction(function, &ranges, alloc);
+        producers.clearRetainingCapacity();
+        try rewriteFunction(function, &producers, alloc);
     }
 }
 
-fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc: std.mem.Allocator) !void {
+fn rewriteFunction(function: *Function, producers: *HashMap(Operand, LazyProducers), alloc: std.mem.Allocator) !void {
     for (function.blocks.items) |*block| {
         var new_instructions = std.ArrayList(Instruction).empty;
         errdefer new_instructions.deinit(alloc);
@@ -32,43 +34,55 @@ fn rewriteFunction(function: *Function, ranges: *HashMap(Operand, Range), alloc:
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
                 .range => |r| {
-                    try ranges.put(r.dst.operand, Range{ .start = r.start.operand, .end = r.end.operand });
+                    try producers.put(r.dst.operand, .{ .range = .{
+                        .start = r.start.operand,
+                        .end = r.end.operand,
+                    } });
+                    instruction.deinit(alloc);
                 },
                 .lazy_load => |ll| {
-                    const lhs = ranges.get(ll.lazy.operand) orelse {
+                    const lhs = producers.get(ll.lazy.operand) orelse {
                         try new_instructions.append(alloc, instruction.*);
                         continue;
                     };
-                    try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
-                        .dst = ll.dst,
-                        .lhs = .{ .operand = .{
-                            .operand = lhs.start,
-                            .type = .{ .int = .i64 },
-                        } },
-                        .op = .add,
-                        .rhs = .{ .operand = .{
-                            .operand = ll.index,
-                            .type = .{ .int = .i64 },
-                        } },
-                    } } });
+                    switch (lhs) {
+                        .range => |range| {
+                            try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
+                                .dst = ll.dst,
+                                .lhs = .{ .operand = .{
+                                    .operand = range.start,
+                                    .type = .{ .int = .i64 },
+                                } },
+                                .op = .add,
+                                .rhs = .{ .operand = .{
+                                    .operand = ll.index,
+                                    .type = .{ .int = .i64 },
+                                } },
+                            } } });
+                        },
+                    }
                 },
                 .len => |l| {
-                    const range = ranges.get(l.value.operand) orelse {
+                    const producer = producers.get(l.value.operand) orelse {
                         try new_instructions.append(alloc, instruction.*);
                         continue;
                     };
-                    try new_instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
-                        .dst = l.dst,
-                        .lhs = .{ .operand = .{
-                            .operand = range.end,
-                            .type = .{ .int = .i64 },
-                        } },
-                        .op = .sub,
-                        .rhs = .{ .operand = .{
-                            .operand = range.start,
-                            .type = .{ .int = .i64 },
-                        } },
-                    } } });
+                    switch (producer) {
+                        .range => |range| {
+                            try new_instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
+                                .dst = l.dst,
+                                .lhs = .{ .operand = .{
+                                    .operand = range.end,
+                                    .type = .{ .int = .i64 },
+                                } },
+                                .op = .sub,
+                                .rhs = .{ .operand = .{
+                                    .operand = range.start,
+                                    .type = .{ .int = .i64 },
+                                } },
+                            } } });
+                        },
+                    }
                 },
                 else => {
                     try new_instructions.append(alloc, instruction.*);
