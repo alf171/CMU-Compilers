@@ -33,19 +33,19 @@ pub const Instruction = union(enum) {
         rhs: ValueRef,
     },
     move: struct {
-        dst: Operand,
+        dst: TypedOperand,
         src: Operand,
     },
     unaryop: struct {
-        dst: Operand,
+        dst: TypedOperand,
         op: UnaryOp,
         src: Operand,
     },
     compare: struct {
-        dst: Operand,
+        dst: TypedOperand,
         op: CmpOp,
-        lhs: Operand,
-        rhs: Operand,
+        lhs: TypedOperand,
+        rhs: TypedOperand,
     },
     jump: struct {
         target: BlockId,
@@ -112,8 +112,8 @@ pub const Instruction = union(enum) {
                     .char => |value| {
                         debugPrint(" <- {any}\n", .{value});
                     },
-                    .float => {
-                        return error.TypeNotImpl;
+                    .float => |f| {
+                        debugPrint(" <- {d}\n", .{f});
                     },
                 }
             },
@@ -135,23 +135,23 @@ pub const Instruction = union(enum) {
                 debugPrint(" <- \"{s}\"\n", .{ll.local.name});
             },
             .unaryop => |uop| {
-                uop.dst.print();
+                uop.dst.operand.print();
                 debugPrint(" <- {s} ", .{@tagName(uop.op)});
                 uop.src.print();
                 debugPrint("\n", .{});
             },
             .move => |m| {
-                m.dst.print();
+                m.dst.operand.print();
                 debugPrint(" <- ", .{});
                 m.src.print();
                 debugPrint("\n", .{});
             },
             .compare => |c| {
-                c.dst.print();
+                c.dst.operand.print();
                 debugPrint(" <- ", .{});
-                c.lhs.print();
+                c.lhs.operand.print();
                 debugPrint(" {s} ", .{c.op.symbol()});
-                c.rhs.print();
+                c.rhs.operand.print();
                 debugPrint("\n", .{});
             },
             .jump => |j| {
@@ -270,8 +270,8 @@ pub const Instruction = union(enum) {
                 if (lls.len.equal(old)) lls.len = new;
             },
             .compare => |*c| {
-                if (c.lhs.equal(old)) c.lhs = new;
-                if (c.rhs.equal(old)) c.rhs = new;
+                if (c.lhs.operand.equal(old)) c.lhs.operand = new;
+                if (c.rhs.operand.equal(old)) c.rhs.operand = new;
             },
             .tuple_load => |*tl| {
                 if (tl.tuple.operand.equal(old)) tl.tuple.operand = new;
@@ -325,13 +325,13 @@ pub const Instruction = union(enum) {
                 if (bop.dst.equal(old)) bop.dst = new;
             },
             .move => |*mov| {
-                if (mov.dst.equal(old)) mov.dst = new;
+                if (mov.dst.operand.equal(old)) mov.dst.operand = new;
             },
             .list_load => |*ll| {
                 if (ll.dst.equal(old)) ll.dst = new;
             },
             .compare => |*c| {
-                if (c.dst.equal(old)) c.dst = new;
+                if (c.dst.operand.equal(old)) c.dst.operand = new;
             },
             .tuple_load => |*tl| {
                 if (tl.dst.equal(old)) tl.dst = new;
@@ -359,9 +359,9 @@ pub const Instruction = union(enum) {
             .load_local => |ll| .{ .operand = ll.dst },
             .constant => |c| .{ .operand = c.dst },
             .binop => |bop| .{ .operand = bop.dst },
-            .move => |m| .{ .operand = m.dst },
-            .unaryop => |uop| .{ .operand = uop.dst },
-            .compare => |c| .{ .operand = c.dst },
+            .move => |m| .{ .operand = m.dst.operand },
+            .unaryop => |uop| .{ .operand = uop.dst.operand },
+            .compare => |c| .{ .operand = c.dst.operand },
             .tuple_literal => |tl| .{ .operand = tl.dst.operand },
             .tuple_load => |tl| .{ .operand = tl.dst },
             .list_load => |ll| .{ .operand = ll.dst },
@@ -408,8 +408,8 @@ pub const Instruction = union(enum) {
                 try res.append(alloc, .{ .operand = uop.src });
             },
             .compare => |c| {
-                try res.append(alloc, .{ .operand = c.lhs });
-                try res.append(alloc, .{ .operand = c.rhs });
+                try res.append(alloc, .{ .operand = c.lhs.operand });
+                try res.append(alloc, .{ .operand = c.rhs.operand });
             },
             .branch => |b| {
                 try res.append(alloc, .{ .operand = b.condition });

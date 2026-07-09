@@ -11,15 +11,17 @@ pub const SeenValue = union(enum) {
     local: LocalId,
 };
 
-pub const PhysicalReg = struct {
-    id: u8,
-    // class: RegClass,
+pub const RegisterType = union(enum) {
+    /// general purpose register
+    gp,
+    /// floating point register
+    f,
 };
 
-// pub const RegClass = union(enum) {
-//     int,
-//     float,
-// };
+pub const PhysicalReg = struct {
+    id: u8,
+    class: RegisterType,
+};
 
 pub const BlockId = u32;
 // python defined variable

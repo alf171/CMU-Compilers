@@ -29,8 +29,12 @@ pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
         for (block.instructions.items) |*instruction| {
             try rewriteUses(instruction, &copyMap);
 
-            if (instruction.* == .lir) {
-                switch (instruction.lir) {
+            switch (instruction.*) {
+                // naive impl: barrier needed since function param regs could be dirty
+                .function_call => {
+                    copyMap.clearRetainingCapacity();
+                },
+                .lir => |lir| switch (lir) {
                     .move => |mov| {
                         const dst = mov.dst;
                         const src = try resolve(.{ .operand = .{
@@ -38,10 +42,10 @@ pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             .type = .any,
                         } }, &copyMap);
                         switch (src) {
-                            .constant => try copyMap.put(dst, src),
+                            .constant => try copyMap.put(dst.operand, src),
                             .operand => |op| {
-                                if (!dst.equal(op.operand)) {
-                                    try copyMap.put(dst, src);
+                                if (!dst.operand.equal(op.operand)) {
+                                    try copyMap.put(dst.operand, src);
                                 }
                             },
                         }
@@ -50,7 +54,8 @@ pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         try copyMap.put(c.dst, .{ .constant = c.value });
                     },
                     else => {},
-                }
+                },
+                else => {},
             }
         }
     }
@@ -65,8 +70,8 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
                     bop.rhs = try resolve(bop.rhs, copyMap);
                 },
                 .compare => |*c| {
-                    c.lhs = try resolveOperand(c.lhs, copyMap);
-                    c.rhs = try resolveOperand(c.rhs, copyMap);
+                    c.lhs.operand = try resolveOperand(c.lhs.operand, copyMap);
+                    c.rhs.operand = try resolveOperand(c.rhs.operand, copyMap);
                 },
                 .move => |*m| {
                     m.src = try resolveOperand(m.src, copyMap);
@@ -128,6 +133,17 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
                     .operand => |*op| op.*.operand = try resolveOperand(op.*.operand, copyMap),
                     .constant => {},
                 }
+            }
+        },
+        .function_call => |*fc| {
+            switch (fc.callee) {
+                .direct => {},
+                .indirect => |*ind| {
+                    ind.*.operand = try resolveOperand(ind.*.operand, copyMap);
+                },
+            }
+            for (fc.args) |*arg| {
+                arg.*.operand = try resolveOperand(arg.*.operand, copyMap);
             }
         },
         else => {},
@@ -202,4 +218,41 @@ test "basic block copy prop" {
             .type = .{ .int = .i64 },
         },
     } });
+}
+
+test "function param regs getting folded" {
+    const alloc = std.testing.allocator;
+
+    var program = try Program.init(alloc);
+    defer program.deinit(alloc);
+    var instructions = &program.main.blocks.items[0].instructions;
+
+    // TODO: t0 = 5
+    // r0 = t0
+    const t0: Operand = .{ .temp = .{ .id = 1, .function_id = 0 } };
+    const r0: Operand = .{ .reg = .{ .id = 0 } };
+    try instructions.append(alloc, .{ .lir = .{ .move = .{
+        .dst = t0,
+        .src = r0,
+    } } });
+    // foobar(t0)
+    try instructions.append(alloc, .{
+        .function_call = .{
+            .dst = null,
+            .callee = .{ .direct = "foobar" },
+            .args = try alloc.dupe(TypedOperand, &[_]TypedOperand{.{
+                .operand = t0,
+                .type = .any,
+            }}),
+        },
+    });
+    try run(&program, alloc);
+    const new_instructions = program.main.blocks.items[0].instructions.items;
+    try std.testing.expectEqual(2, new_instructions.len);
+    try std.testing.expectEqualDeep(Instruction{
+        .lir = .{ .move = .{ .dst = t0, .src = r0 } },
+    }, new_instructions[0]);
+    const call = new_instructions[1].function_call;
+    try std.testing.expectEqual(@as(usize, 1), call.args.len);
+    try std.testing.expectEqualDeep(r0, call.args[0].operand);
 }

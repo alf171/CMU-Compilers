@@ -12,7 +12,8 @@ def f(c: bool) -> int:
 def g(f: Callable[[bool], int], y: bool) -> int:
     return 2 * f(y)
 
-y = g(f, False)
+f_temp = f
+y = g(f_temp, False)
 print(y)
 
 [4mactual output:[0m

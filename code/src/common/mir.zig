@@ -12,11 +12,12 @@ const UnaryOp = @import("ir.zig").UnaryOp;
 const SeenValue = @import("ir.zig").SeenValue;
 const ValueRef = @import("ir.zig").ValueRef;
 const TypedOperand = @import("alloc.zig").TypedOperand;
+const TypeInfo = @import("types.zig").TypeInfo;
 const LirInstruction = @import("lir.zig").Instruction;
 
 pub const PhiInput = struct { pred: BlockId, value: Operand };
 
-pub const Copy = struct { dst: Operand, src: Operand };
+pub const Copy = struct { dst: TypedOperand, src: Operand };
 
 pub const LoopPhi = struct {
     local: LocalId,
@@ -50,7 +51,7 @@ pub const Instruction = union(enum) {
         index: usize,
     },
     function_call: struct {
-        dst: ?Operand,
+        dst: ?TypedOperand,
         callee: union(enum) {
             /// a function name to call
             direct: []const u8,
@@ -77,6 +78,11 @@ pub const Instruction = union(enum) {
         dst: Operand,
         lazy: TypedOperand,
         index: Operand,
+    },
+    cast: struct {
+        dst: Operand,
+        dst_target_type: TypeInfo,
+        src: TypedOperand,
     },
     // deglate to LIR impl
     lir: LirInstruction,
@@ -148,7 +154,7 @@ pub const Instruction = union(enum) {
                 debugPrint("(", .{});
                 for (pc.copies, 0..) |copy, i| {
                     if (i != 0) debugPrint(", ", .{});
-                    copy.dst.print();
+                    copy.dst.operand.print();
                 }
                 debugPrint(") <- ", .{});
                 debugPrint("(", .{});
@@ -177,7 +183,7 @@ pub const Instruction = union(enum) {
             },
             .function_call => |fc| {
                 if (fc.dst) |dst| {
-                    dst.print();
+                    dst.operand.print();
                     debugPrint(" <- ", .{});
                 }
                 switch (fc.callee) {
@@ -207,6 +213,12 @@ pub const Instruction = union(enum) {
                 debugPrint("[", .{});
                 ll.index.print();
                 debugPrint("]\n", .{});
+            },
+            .cast => |c| {
+                c.dst.print();
+                debugPrint(" <- ({s})", .{@tagName(c.dst_target_type)});
+                c.src.operand.print();
+                debugPrint("\n", .{});
             },
             // delegate to lir
             .lir => |l| try l.printFn(),
@@ -274,8 +286,8 @@ pub const Instruction = union(enum) {
             },
             .function_call => |*fc| {
                 if (fc.dst) |*op| {
-                    if (op.equal(old)) {
-                        fc.dst.? = new;
+                    if (op.operand.equal(old)) {
+                        op.operand = new;
                     }
                 }
             },
@@ -298,8 +310,9 @@ pub const Instruction = union(enum) {
             .print => null,
             .function_ref => |fr| .{ .operand = fr.dst.operand },
             .function_param => |fp| .{ .operand = fp.dst.operand },
-            .function_call => |fc| if (fc.dst) |op| .{ .operand = op } else null,
+            .function_call => |fc| if (fc.dst) |op| .{ .operand = op.operand } else null,
             .function_return => null,
+            .cast => |c| .{ .operand = c.dst },
             .lir => |l| try l.getDefines(),
             else => |e| {
                 debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});
@@ -353,6 +366,9 @@ pub const Instruction = union(enum) {
                 if (fc.value) |op| {
                     try res.append(alloc, .{ .operand = op });
                 }
+            },
+            .cast => |c| {
+                try res.append(alloc, .{ .operand = c.src.operand });
             },
             .lir => |l| {
                 var seen = try l.getUses(alloc);

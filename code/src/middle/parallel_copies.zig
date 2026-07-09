@@ -39,16 +39,16 @@ fn lowerFunction(function: *Function, alloc: std.mem.Allocator) !void {
             switch (instruction) {
                 .parallel_copy => |pc| {
                     for (pc.copies) |copy| {
-                        if (used.contains(copy.dst)) {
+                        if (used.contains(copy.dst.operand)) {
                             const temp = Operand{ .temp = .{
                                 .id = function.next_temp,
                                 .function_id = function.id,
                             } };
                             try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
-                                .dst = temp,
-                                .src = copy.dst,
+                                .dst = .{ .operand = temp, .type = .any },
+                                .src = copy.dst.operand,
                             } } });
-                            try used.put(copy.dst, temp);
+                            try used.put(copy.dst.operand, temp);
                             function.next_temp += 1;
                             // emit the original instruction too
                             const src = if (used.get(copy.src)) |entry| entry orelse copy.src else copy.src;

@@ -53,7 +53,7 @@ fn spillRegInFunction(
                                 spill_slot = function.nextMem();
                             }
                             try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
-                                .dst = t1,
+                                .dst = .{ .operand = t1, .type = .any },
                                 .src = spill_slot.?,
                             } } });
                             try instruction.replaceUses(spilled, t1);
@@ -73,7 +73,7 @@ fn spillRegInFunction(
                             spill_slot = function.nextMem();
                         }
                         try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
-                            .dst = spill_slot.?,
+                            .dst = .{ .operand = spill_slot.?, .type = .any },
                             .src = t2,
                         } } });
                         continue;

@@ -121,10 +121,10 @@ pub fn walkLoop(
             const lhs = irBuilder.local_values.get(comp.local) orelse return error.LocalNotFound;
             const rhs = irBuilder.local_values.get(comp.rhs_local) orelse return error.LocalNotFound;
             try irBuilder.emit(Instruction{ .lir = .{ .compare = .{
-                .dst = dst,
-                .lhs = lhs.operand,
+                .dst = .{ .operand = dst, .type = .bool },
+                .lhs = lhs,
                 .op = comp.cmp,
-                .rhs = rhs.operand,
+                .rhs = rhs,
             } } }, alloc);
             break :blk dst;
         },
@@ -132,10 +132,10 @@ pub fn walkLoop(
             const dst = irBuilder.nextTemp();
             const lhs = carries[comp.carry_index].current;
             try irBuilder.emit(Instruction{ .lir = .{ .compare = .{
-                .dst = dst,
-                .lhs = lhs.operand,
+                .dst = .{ .operand = dst, .type = .bool },
+                .lhs = lhs,
                 .op = comp.cmp,
-                .rhs = comp.rhs.operand,
+                .rhs = comp.rhs,
             } } }, alloc);
             break :blk dst;
         },

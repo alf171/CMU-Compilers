@@ -8,7 +8,7 @@ const Program = @import("common").program.Program;
 const Instruction = @import("common").mir.Instruction;
 const getElementType = @import("common").types.getElementType;
 
-/// calls malloc and handles layoff buisness logic like size being the first elem
+/// handles buisness logic of storing [size] [elements...] when consumers just see elements
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
     try rewriteFunction(&program.main, alloc);
     for (program.functions.items) |*function| {
@@ -35,7 +35,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         .{ .operand = size_temp, .type = .{ .int = .i64 } },
                     });
                     try new_instructions.append(alloc, .{ .function_call = .{
-                        .dst = ll.dst,
+                        .dst = ll.dst.operand,
                         .callee = .{ .direct = "arena_malloc" },
                         .args = args,
                     } });
@@ -60,12 +60,12 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 break :blk ValueRef{ .constant = c };
                             },
                             .operand => |o| blk: {
-                                const src: TypedOperand = .{ .operand = function.nextTemp(), .type = .any };
+                                const src = function.nextTemp();
                                 try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                                     .dst = src,
                                     .src = o.operand,
                                 } } });
-                                break :blk ValueRef{ .operand = src };
+                                break :blk ValueRef{ .operand = .{ .operand = src, .type = .any } };
                             },
                         };
                         const index = function.nextTemp();
@@ -82,7 +82,6 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             } },
                         });
                     }
-                    instruction.deinit(alloc);
                 },
                 else => try new_instructions.append(alloc, instruction.*),
             }

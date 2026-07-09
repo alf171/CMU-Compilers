@@ -65,8 +65,8 @@ fn emitFunction(
                     }
                 },
                 .len => |l| {
-                    const dst = try abi.regFor(l.dst, colors);
-                    const src = try abi.regFor(l.value.operand, colors);
+                    const dst = try abi.regFor(l.dst, colors, .gp);
+                    const src = try abi.regFor(l.value.operand, colors, .gp);
                     switch (l.value.type) {
                         .list => {
                             try out.print(alloc, "\tmovq (%{s}), %{s}\n", .{ src, dst });
@@ -80,7 +80,7 @@ fn emitFunction(
                 .lir => |l| {
                     switch (l) {
                         .constant => |c| {
-                            const dst = try abi.regFor(c.dst, colors);
+                            const dst = try abi.regFor(c.dst, colors, .gp);
                             switch (c.value) {
                                 .i64 => |i| {
                                     try out.print(alloc, "\tmovq ${d}, %{s}\n", .{ i, dst });
@@ -92,17 +92,17 @@ fn emitFunction(
                             }
                         },
                         .move => |m| {
-                            switch (m.dst) {
+                            switch (m.dst.operand) {
                                 .temp => {
                                     switch (m.src) {
                                         .temp => {
-                                            const dst = try abi.regFor(m.dst, colors);
-                                            const src = try abi.regFor(m.src, colors);
+                                            const dst = try abi.regFor(m.dst.operand, colors, .gp);
+                                            const src = try abi.regFor(m.src, colors, .gp);
                                             try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
                                         },
                                         .reg => |reg| {
-                                            const dst = try abi.regFor(m.dst, colors);
-                                            const src = try abi.regForFromIndex(reg.id);
+                                            const dst = try abi.regFor(m.dst.operand, colors, .gp);
+                                            const src = try abi.regForFromIndex(reg.id, .gp);
                                             try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
                                         },
                                         else => |e| {
@@ -114,8 +114,8 @@ fn emitFunction(
                                 .reg => |reg| {
                                     switch (m.src) {
                                         .temp => {
-                                            const dst = try abi.regForFromIndex(reg.id);
-                                            const src = try abi.regFor(m.src, colors);
+                                            const dst = try abi.regForFromIndex(reg.id, .gp);
+                                            const src = try abi.regFor(m.src, colors, .gp);
                                             try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
                                         },
                                         else => |e| {
@@ -131,14 +131,14 @@ fn emitFunction(
                             }
                         },
                         .binop => |bop| {
-                            const dst = try abi.regFor(bop.dst, colors);
+                            const dst = try abi.regFor(bop.dst, colors, .gp);
                             const lhs = try valueToReg(bop.lhs, out, ScratchReg, colors, abi, alloc);
                             if (!std.mem.eql(u8, dst, lhs)) {
                                 try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
                             }
 
                             const rhs = if (valueAsImm(bop.rhs)) |imm| try std.fmt.allocPrint(alloc, "${d}", .{imm}) else blk: {
-                                const reg = try abi.regFor(bop.rhs.operand.operand, colors);
+                                const reg = try abi.regFor(bop.rhs.operand.operand, colors, .gp);
                                 break :blk try std.fmt.allocPrint(alloc, "%{s}", .{reg});
                             };
                             switch (bop.op) {
@@ -160,9 +160,9 @@ fn emitFunction(
                             }
                         },
                         .compare => |c| {
-                            const dst = try abi.regFor(c.dst, colors);
-                            const lhs = try abi.regFor(c.lhs, colors);
-                            const rhs = try abi.regFor(c.rhs, colors);
+                            const dst = try abi.regFor(c.dst.operand, colors, .gp);
+                            const lhs = try abi.regFor(c.lhs.operand, colors, .gp);
+                            const rhs = try abi.regFor(c.rhs.operand, colors, .gp);
                             try out.print(alloc, "\tcmpq %{s}, %{s}\n", .{ lhs, rhs });
                             // HACK: use lower 8 bits of %rax
                             try out.print(alloc, "\t{s} %al\n", .{condForCmp(c.op)});
@@ -172,13 +172,13 @@ fn emitFunction(
                             try out.print(alloc, "\tjmp {s}_L{d}\n", .{ function.name, j.target });
                         },
                         .branch => |b| {
-                            const cond = try abi.regFor(b.condition, colors);
+                            const cond = try abi.regFor(b.condition, colors, .gp);
                             try out.print(alloc, "\tcmpq $0, %{s}\n", .{cond});
                             try out.print(alloc, "\tjne {s}_L{d}\n", .{ function.name, b.then_block });
                             try out.print(alloc, "\tjmp {s}_L{d}\n", .{ function.name, b.else_block });
                         },
                         .tuple_literal => |tl| {
-                            const dst = try abi.regFor(tl.dst.operand, colors);
+                            const dst = try abi.regFor(tl.dst.operand, colors, .gp);
 
                             const tuple_type = switch (tl.dst.type) {
                                 .tuple => |tuple| tuple.elements,
@@ -199,7 +199,7 @@ fn emitFunction(
                             var cur_offset: usize = 0;
                             for (tl.elements, 0..) |elem, i| {
                                 const src = switch (elem) {
-                                    .operand => try abi.regFor(elem.operand.operand, colors),
+                                    .operand => try abi.regFor(elem.operand.operand, colors, .gp),
                                     .constant => |c| blk: {
                                         try emitConstantToReg(out, ScratchReg, c, alloc);
                                         break :blk ScratchReg;
@@ -224,8 +224,8 @@ fn emitFunction(
                             try out.print(alloc, "\tleaq -{d}(%rbp), %{s}\n", .{ base_offset, dst });
                         },
                         .list_len_set => |lls| {
-                            const src = try abi.regFor(lls.list.operand, colors);
-                            const len = try abi.regFor(lls.len, colors);
+                            const src = try abi.regFor(lls.list.operand, colors, .gp);
+                            const len = try abi.regFor(lls.len, colors, .gp);
                             try out.print(alloc, "\tmovq %{s}, (%{s})\n", .{ len, src });
                         },
                         .list_store => |ls| {
@@ -233,18 +233,18 @@ fn emitFunction(
                             switch (elem_type) {
                                 // index = (index + 1) << 3
                                 .list, .tuple => {
-                                    const dst = try abi.regFor(ls.list.operand, colors);
+                                    const dst = try abi.regFor(ls.list.operand, colors, .gp);
                                     std.debug.assert(ls.src == .operand);
-                                    const src = try abi.regFor(ls.src.operand.operand, colors);
-                                    const index = try abi.regFor(ls.index, colors);
+                                    const src = try abi.regFor(ls.src.operand.operand, colors, .gp);
+                                    const index = try abi.regFor(ls.index, colors, .gp);
                                     try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ ScratchReg, index });
                                     try out.print(alloc, "\tshlq $3, %{s}\n", .{ScratchReg});
                                     try out.print(alloc, "\taddq $8, %{s}\n", .{ScratchReg});
                                     try out.print(alloc, "\tmovq %{s}, (%{s}, %{s})\n", .{ src, dst, ScratchReg });
                                 },
                                 .char => {
-                                    const dst = try abi.regFor(ls.list.operand, colors);
-                                    const index = try abi.regFor(ls.index, colors);
+                                    const dst = try abi.regFor(ls.list.operand, colors, .gp);
+                                    const index = try abi.regFor(ls.index, colors, .gp);
                                     switch (ls.src) {
                                         .constant => |constant| {
                                             switch (constant) {
@@ -255,7 +255,7 @@ fn emitFunction(
                                             }
                                         },
                                         .operand => |o| {
-                                            const src = try abi.regFor(o.operand, colors);
+                                            const src = try abi.regFor(o.operand, colors, .gp);
                                             try out.print(alloc, "\tmovq %{s}, 8(%{s},%{s},8)\n", .{ src, dst, index });
                                         },
                                     }
@@ -267,11 +267,11 @@ fn emitFunction(
                             }
                         },
                         .select => |s| {
-                            const dst = try abi.regFor(s.dst, colors);
+                            const dst = try abi.regFor(s.dst, colors, .gp);
                             const if_reg = try valueToReg(s.if_value, out, ScratchReg, colors, abi, alloc);
                             const else_reg = try valueToReg(s.else_value, out, ScratchReg2, colors, abi, alloc);
 
-                            const condition = try abi.regFor(s.condition, colors);
+                            const condition = try abi.regFor(s.condition, colors, .gp);
 
                             try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ else_reg, dst });
                             try out.print(alloc, "\tcmpq $0, %{s}\n", .{condition});
@@ -312,16 +312,16 @@ fn createFunctionHeader(out: *ArrayList(u8), name: []const u8, local_stack_size:
 }
 
 fn saveCalleeSaveReg(out: *ArrayList(u8), abi: Abi, alloc: std.mem.Allocator) !void {
-    for (abi.callee_save_regs) |reg| {
+    for (abi.gp_callee_save_regs) |reg| {
         try out.print(alloc, "\tpushq %{s}\n", .{reg});
     }
 }
 
 fn restoreCalleeSafeReg(out: *ArrayList(u8), abi: Abi, alloc: std.mem.Allocator) !void {
-    var i = abi.callee_save_regs.len;
+    var i = abi.gp_callee_save_regs.len;
     while (i > 0) {
         i -= 1;
-        const reg = abi.callee_save_regs[i];
+        const reg = abi.gp_callee_save_regs[i];
         try out.print(alloc, "\tpopq %{s}\n", .{reg});
     }
 }
@@ -505,7 +505,7 @@ pub fn valueToReg(
     alloc: std.mem.Allocator,
 ) ![]const u8 {
     switch (value) {
-        .operand => |op| return abi.regFor(op.operand, colors),
+        .operand => |op| return abi.regFor(op.operand, colors, .gp),
         .constant => |c| {
             switch (c) {
                 .i32, .i64 => |i| {

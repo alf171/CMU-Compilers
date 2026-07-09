@@ -37,7 +37,7 @@ const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, 
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Tuple, Subscript, IfExp, Unknown };
 
-const BuiltinCall = enum { Print, Write, Range, Len };
+const BuiltinCall = enum { Print, Write, Range, Len, Int, Float };
 
 const SubscriberTypes = enum { list, tuple, callable };
 
@@ -237,7 +237,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             // order here will impact temp numbering
             const lhs = try walkExpr(left, irBuilder, null, alloc);
             const rhs = try walkExpr(right, irBuilder, null, alloc);
-            if (lhs.type != .int and rhs.type != .int) {
+            if (!try lhs.type.equal(rhs.type)) {
                 return error.UnsupportedBinOp;
             }
 
@@ -249,7 +249,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 .rhs = .{ .operand = rhs },
             } } };
             try irBuilder.emit(instruction, alloc);
-            return TypedOperand{ .operand = dst, .type = .{ .int = .i64 } };
+            return TypedOperand{ .operand = dst, .type = lhs.type };
         },
         .UnaryOp => {
             const operand_obj = c.PyObject_GetAttrString(stmt, "operand");
@@ -257,11 +257,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             const dst = irBuilder.nextTemp();
             const op = try getUnaryOp(stmt);
             try irBuilder.emit(Instruction{ .lir = .{ .unaryop = .{
-                .dst = dst,
+                .dst = .{ .operand = dst, .type = src.type },
                 .op = op,
                 .src = src.operand,
             } } }, alloc);
-            return TypedOperand{ .operand = dst, .type = .{ .int = .i64 } };
+            return TypedOperand{ .operand = dst, .type = src.type };
         },
         .Constant => {
             const value_obj = c.PyObject_GetAttrString(stmt, "value");
@@ -272,6 +272,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 const dst = irBuilder.nextTemp();
                 try irBuilder.emit(Instruction{ .lir = .{ .constant = .{ .dst = dst, .value = value } } }, alloc);
                 return TypedOperand{ .operand = dst, .type = .{ .int = .i64 } };
+            } else if (std.mem.eql(u8, value_type, "float")) {
+                const value = ConstValue{ .float = c.PyFloat_AsDouble(value_obj) };
+                const dst = irBuilder.nextTemp();
+                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{ .dst = dst, .value = value } } }, alloc);
+                return TypedOperand{ .operand = dst, .type = .float };
             } else if (std.mem.eql(u8, value_type, "bool")) {
                 const value = ConstValue{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
                 const dst = irBuilder.nextTemp();
@@ -496,17 +501,17 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
 
             const lhs = try walkExpr(left_obj, irBuilder, null, alloc);
             const rhs = try walkExpr(right_obj, irBuilder, null, alloc);
-            const dst = irBuilder.nextTemp();
+            const dst: TypedOperand = .{ .operand = irBuilder.nextTemp(), .type = .bool };
             const op = try getCompareOp(stmt);
 
             try irBuilder.emit(Instruction{ .lir = .{ .compare = .{
                 .dst = dst,
-                .lhs = lhs.operand,
+                .lhs = lhs,
                 .op = op,
-                .rhs = rhs.operand,
+                .rhs = rhs,
             } } }, alloc);
 
-            return TypedOperand{ .operand = dst, .type = .bool };
+            return dst;
         },
         // Expr(value=Call(func=Name(id="print"),args=[BinOp(...)]))
         .Call => {
@@ -647,6 +652,38 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                         } }, alloc);
                         return typed_dst;
                     },
+                    .Int => {
+                        std.debug.assert(c.PyList_Size(args) == 1);
+                        const arg0 = c.PyList_GetItem(args, 0);
+                        std.debug.assert(arg0 != null);
+                        const value = try walkExpr(arg0, irBuilder, null, alloc);
+                        const dst: TypedOperand = .{
+                            .operand = irBuilder.nextTemp(),
+                            .type = .{ .int = .i64 },
+                        };
+                        try irBuilder.emit(Instruction{ .cast = .{
+                            .dst = dst.operand,
+                            .dst_target_type = .{ .int = .i64 },
+                            .src = value,
+                        } }, alloc);
+                        return dst;
+                    },
+                    .Float => {
+                        std.debug.assert(c.PyList_Size(args) == 1);
+                        const arg0 = c.PyList_GetItem(args, 0);
+                        std.debug.assert(arg0 != null);
+                        const value = try walkExpr(arg0, irBuilder, null, alloc);
+                        const dst: TypedOperand = .{
+                            .operand = irBuilder.nextTemp(),
+                            .type = .float,
+                        };
+                        try irBuilder.emit(Instruction{ .cast = .{
+                            .dst = dst.operand,
+                            .dst_target_type = .float,
+                            .src = value,
+                        } }, alloc);
+                        return dst;
+                    },
                 }
             }
 
@@ -663,10 +700,13 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             if (irBuilder.getLocal(name_slice) catch null) |local_id| {
                 if (irBuilder.local_values.get(local_id)) |callee| {
                     if (callee.type == .callable) {
-                        const maybe_dst: ?Operand = if (callee.type.callable.returns.* == .void)
+                        const maybe_dst: ?TypedOperand = if (callee.type.callable.returns.* == .void)
                             null
                         else
-                            irBuilder.nextTemp();
+                            .{
+                                .operand = irBuilder.nextTemp(),
+                                .type = callee.type.callable.returns.*,
+                            };
 
                         try irBuilder.emit(.{
                             .function_call = .{
@@ -676,22 +716,20 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                             },
                         }, alloc);
 
-                        if (maybe_dst) |dst| {
-                            return TypedOperand{
-                                .operand = dst,
-                                .type = callee.type.callable.returns.*,
-                            };
-                        }
+                        if (maybe_dst) |dst| return dst;
                         return TypedOperand{ .operand = .unknown, .type = .void };
                     }
                 }
             }
 
             if (irBuilder.findFunction(std.mem.span(name))) |function| {
-                const maybe_dst: ?Operand = if (function.return_type == .void)
+                const maybe_dst: ?TypedOperand = if (function.return_type == .void)
                     null
                 else
-                    irBuilder.nextTemp();
+                    .{
+                        .operand = irBuilder.nextTemp(),
+                        .type = function.return_type,
+                    };
                 try irBuilder.emit(.{
                     .function_call = .{
                         .callee = .{ .direct = name_slice },
@@ -700,14 +738,10 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                     },
                 }, alloc);
 
-                if (maybe_dst) |dst| {
-                    return TypedOperand{
-                        .operand = dst,
-                        .type = function.return_type,
-                    };
-                }
+                if (maybe_dst) |dst| return dst;
                 return TypedOperand{ .operand = .unknown, .type = .void };
             }
+            std.debug.print("cant find function {s}\n", .{name});
             return error.CantFindFunction;
         },
         // IfExp(test=Name(id='c', ctx=Load()), body=Constant(value='FALSE'), orelse=Constant(value='TRUE'))
@@ -1358,6 +1392,10 @@ fn getBuiltinCall(name: []const u8) ?BuiltinCall {
         return BuiltinCall.Write;
     } else if (std.mem.eql(u8, name, "len")) {
         return BuiltinCall.Len;
+    } else if (std.mem.eql(u8, name, "int")) {
+        return BuiltinCall.Int;
+    } else if (std.mem.eql(u8, name, "float")) {
+        return BuiltinCall.Float;
     }
     return null;
 }

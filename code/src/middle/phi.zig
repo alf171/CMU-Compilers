@@ -38,7 +38,7 @@ pub fn eliminatePhiInFunction(function: *Function, alloc: std.mem.Allocator) !vo
                             entry.value_ptr.* = ArrayList(Copy).empty;
                         }
                         try entry.value_ptr.append(alloc, .{
-                            .dst = phi.dst.operand,
+                            .dst = phi.dst,
                             .src = input.value,
                         });
                     }

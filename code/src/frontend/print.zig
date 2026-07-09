@@ -49,6 +49,13 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
                             } });
                         },
+                        .float => {
+                            try new_instructions.append(alloc, .{ .function_call = .{
+                                .dst = null,
+                                .callee = .{ .direct = "print_float" },
+                                .args = try alloc.dupe(TypedOperand, &.{p.src}),
+                            } });
+                        },
                         else => |e| {
                             std.debug.print("dont support print of type {s}\n", .{@tagName(e)});
                             return error.UnsupportedPrint;

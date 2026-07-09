@@ -11,11 +11,14 @@ def f() -> None:
       y = t # y = 1
       i = i + 1 # i = 2
 
-    # print(x)
-    # print(y)
+    print(x)
+    print(y)
     # also should work with no return
     return
 
 f()
 
 [4mactual output:[0m
+2
+1
+[!!memory report!!]: allocs=2 frees=2 allocated_bytes=20 freed_bytes=20

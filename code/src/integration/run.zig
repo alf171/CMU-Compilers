@@ -92,20 +92,20 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    var alloc_program = try reg_alloc.build(ir_program, @intCast(platform.abi.allocatable_regs.len), alloc);
+    var alloc_program = try reg_alloc.build(ir_program, @intCast(platform.abi.gp_allocatable_regs.len), alloc);
     try live.calculateLiveOut(&alloc_program, alloc);
 
     // run optimzation passes
     if (should_optim) {
         try dead.run(&ir_program, &alloc_program, alloc);
         alloc_program.deinit(alloc);
-        alloc_program = try reg_alloc.build(ir_program, @intCast(platform.abi.allocatable_regs.len), alloc);
+        alloc_program = try reg_alloc.build(ir_program, @intCast(platform.abi.gp_allocatable_regs.len), alloc);
         try live.calculateLiveOut(&alloc_program, alloc);
     }
 
     defer alloc_program.deinit(alloc);
 
-    var graph = try igraph.createIgraph(alloc_program.lines, platform.abi.call_clobber_mask, alloc);
+    var graph = try igraph.createIgraph(alloc_program.lines, platform.abi.gp_call_clobber_mask, alloc);
     defer graph.deinit();
 
     const file = try std.Io.Dir.createFileAbsolute(io, output_file, .{});
@@ -114,7 +114,7 @@ pub fn main(init: std.process.Init) !void {
 
     defer file.close(io);
 
-    const result = try loop.run(&ir_program, &graph, &alloc_program, should_optim, platform.abi.call_clobber_mask, alloc, null);
+    const result = try loop.run(&ir_program, &graph, &alloc_program, should_optim, platform.abi.gp_call_clobber_mask, alloc, null);
     var colored = result.graph;
     defer colored.deinit();
 
