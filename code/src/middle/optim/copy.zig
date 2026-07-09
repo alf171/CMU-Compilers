@@ -183,7 +183,7 @@ test "basic block copy prop" {
 
     // t1 = t0
     try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
-        .dst = .{ .temp = .{ .id = 1, .function_id = 0 } },
+        .dst = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any },
         .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
     } } });
     // t2 = t1
@@ -230,7 +230,7 @@ test "function param regs getting folded" {
     // TODO: t0 = 5
     // r0 = t0
     const t0: Operand = .{ .temp = .{ .id = 1, .function_id = 0 } };
-    const r0: Operand = .{ .reg = .{ .id = 0 } };
+    const r0: Operand = .{ .reg = .{ .id = 0, .class = .gp } };
     try instructions.append(alloc, .{ .lir = .{ .move = .{
         .dst = t0,
         .src = r0,

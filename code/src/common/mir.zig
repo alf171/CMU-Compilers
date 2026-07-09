@@ -30,7 +30,7 @@ pub const Instruction = union(enum) {
         src: TypedOperand,
     },
     len: struct {
-        dst: Operand,
+        dst: TypedOperand,
         value: TypedOperand,
     },
     range: struct {
@@ -75,7 +75,7 @@ pub const Instruction = union(enum) {
     },
     // dst <- lazy[index]
     lazy_load: struct {
-        dst: Operand,
+        dst: TypedOperand,
         lazy: TypedOperand,
         index: Operand,
     },
@@ -135,7 +135,7 @@ pub const Instruction = union(enum) {
                 debugPrint(")\n", .{});
             },
             .len => |l| {
-                l.dst.print();
+                l.dst.operand.print();
                 debugPrint(" <- len(", .{});
                 l.value.operand.print();
                 debugPrint(")\n", .{});
@@ -207,7 +207,7 @@ pub const Instruction = union(enum) {
                 debugPrint("\n", .{});
             },
             .lazy_load => |ll| {
-                ll.dst.print();
+                ll.dst.operand.print();
                 debugPrint("<- ", .{});
                 ll.lazy.operand.print();
                 debugPrint("[", .{});
@@ -276,7 +276,7 @@ pub const Instruction = union(enum) {
                 if (r.dst.operand.equal(old)) r.dst.operand = new;
             },
             .len => |*l| {
-                if (l.dst.equal(old)) l.dst = new;
+                if (l.dst.operand.equal(old)) l.dst.operand = new;
             },
             .list_literal => |*ll| {
                 if (ll.dst.operand.equal(old)) ll.dst.operand = new;
@@ -305,7 +305,7 @@ pub const Instruction = union(enum) {
         return switch (instruction) {
             .phi => |pi| .{ .operand = pi.dst.operand },
             .range => |r| .{ .operand = r.dst.operand },
-            .len => |l| .{ .operand = l.dst },
+            .len => |l| .{ .operand = l.dst.operand },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .print => null,
             .function_ref => |fr| .{ .operand = fr.dst.operand },

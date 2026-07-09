@@ -21,6 +21,10 @@ pub const RegisterType = union(enum) {
 pub const PhysicalReg = struct {
     id: u8,
     class: RegisterType,
+
+    pub fn equal(self: @This(), other: @This()) bool {
+        return self.id == other.id and std.meta.activeTag(self.class) == std.meta.activeTag(other.class);
+    }
 };
 
 pub const BlockId = u32;

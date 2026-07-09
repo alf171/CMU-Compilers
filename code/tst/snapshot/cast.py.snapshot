@@ -1,0 +1,16 @@
+[4mrunning program:[0m
+
+# cast float -> int
+print(float(0))
+print(float(-3))
+# cast int -> float
+print(int(5.1))
+print(int(-5.9))
+
+
+[4mactual output:[0m
+0.00000
+-3.00000
+5
+-5
+[!!memory report!!]: allocs=8 frees=8 allocated_bytes=80 freed_bytes=80

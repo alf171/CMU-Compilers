@@ -65,7 +65,7 @@ fn emitFunction(
                     }
                 },
                 .len => |l| {
-                    const dst = try abi.regFor(l.dst, colors, .gp);
+                    const dst = try abi.regFor(l.dst.operand, colors, .gp);
                     const src = try abi.regFor(l.value.operand, colors, .gp);
                     switch (l.value.type) {
                         .list => {
@@ -131,7 +131,7 @@ fn emitFunction(
                             }
                         },
                         .binop => |bop| {
-                            const dst = try abi.regFor(bop.dst, colors, .gp);
+                            const dst = try abi.regFor(bop.dst.operand, colors, .gp);
                             const lhs = try valueToReg(bop.lhs, out, ScratchReg, colors, abi, alloc);
                             if (!std.mem.eql(u8, dst, lhs)) {
                                 try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });

@@ -11,10 +11,8 @@ const ValueRef = common.ir.ValueRef;
 const getElementType = common.types.getElementType;
 const ColoredGraph = @import("middle").color.ColoredGraph;
 const Abi = @import("../abi.zig").Abi;
-const RegisterType = @import("../abi.zig").RegisterType;
+const RegisterType = @import("common").ir.RegisterType;
 const valueAsImm = @import("../common.zig").valueAsImm;
-const ScratchReg = @import("reg.zig").gp_scratch_reg;
-const ScratchReg2 = @import("reg.zig").gp_scratch_reg_2;
 
 pub fn emit(program: *const Program, colors: *const ColoredGraph, abi: Abi, alloc: std.mem.Allocator) ![]u8 {
     var out = ArrayList(u8).empty;
@@ -77,20 +75,21 @@ fn emitFunction(
                                 .float => |value| {
                                     const dst = try abi.regFor(c.dst, colors, .f);
                                     const bits: u64 = @bitCast(value);
-                                    try emitMovUnsigned(out, ScratchReg, bits, alloc);
-                                    try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, ScratchReg });
+                                    const scratch_reg = try abi.scratchReg(0, .gp);
+                                    try emitMovUnsigned(out, scratch_reg, bits, alloc);
+                                    try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, scratch_reg });
                                 },
                             }
                         },
                         // str: src, dst (register -> memory)
                         .store_local => |sl| {
                             const src = try abi.regFor(sl.src, colors, .gp);
-                            try emitStackStore(out, src, localOffset(sl.local.id), ScratchReg, alloc);
+                            try emitStackStore(out, src, localOffset(sl.local.id), try abi.scratchReg(0, .gp), alloc);
                         },
                         // ldr: dst, src (memory -> register)
                         .load_local => |ll| {
                             const dst = try abi.regFor(ll.dst, colors, .gp);
-                            try emitStackLoad(out, dst, localOffset(ll.local.id), ScratchReg, alloc);
+                            try emitStackLoad(out, dst, localOffset(ll.local.id), try abi.scratchReg(0, .gp), alloc);
                         },
                         .move => |m| {
                             switch (m.dst.operand) {
@@ -109,16 +108,16 @@ fn emitFunction(
                                         // temp <- mem
                                         .mem => |slot| {
                                             const offset = spillOffset(local_stack_size, slot.id);
-                                            try emitStackLoad(out, dst, offset, ScratchReg, alloc);
+                                            try emitStackLoad(out, dst, offset, try abi.scratchReg(0, .gp), alloc);
                                         },
                                         // reg <- temp
                                         .reg => |reg| {
-                                            switch (m.dst.type) {
-                                                .float => {
+                                            switch (reg.class) {
+                                                .f => {
                                                     const src = try abi.regForFromIndex(reg.id, .f);
                                                     try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, src });
                                                 },
-                                                else => {
+                                                .gp => {
                                                     const src = try abi.regForFromIndex(reg.id, .gp);
                                                     try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                                                 },
@@ -133,7 +132,7 @@ fn emitFunction(
                                         .temp => {
                                             const offset = spillOffset(local_stack_size, slot.id);
                                             const src = try abi.regFor(m.src, colors, .gp);
-                                            try emitStackStore(out, src, offset, ScratchReg, alloc);
+                                            try emitStackStore(out, src, offset, try abi.scratchReg(0, .gp), alloc);
                                         },
                                         .mem => {
                                             return error.MemoryToMemoryMoveDetected;
@@ -145,9 +144,11 @@ fn emitFunction(
                                     switch (m.src) {
                                         // reg <- temp
                                         .temp => {
-                                            const src = try abi.regFor(m.src, colors, .gp);
-                                            // nit dont allow self move
-                                            try out.print(alloc, "\tmov {s}, {s}\n", .{ try abi.paramRegFor(reg.id, .gp), src });
+                                            const src = try abi.regFor(m.src, colors, reg.class);
+                                            switch (reg.class) {
+                                                .f => try out.print(alloc, "\tfmov {s}, {s}\n", .{ try abi.paramRegFor(reg.id, .f), src }),
+                                                .gp => try out.print(alloc, "\tmov {s}, {s}\n", .{ try abi.paramRegFor(reg.id, .gp), src }),
+                                            }
                                         },
                                         else => |e| {
                                             std.debug.print("{s} not impl!\n", .{@tagName(e)});
@@ -159,40 +160,57 @@ fn emitFunction(
                             }
                         },
                         .binop => |binop| {
-                            const dst = try abi.regFor(binop.dst, colors, .gp);
-                            const lhs = try valueToReg(binop.lhs, out, ScratchReg, colors, abi, alloc);
+                            const dst = try abi.regFor(binop.dst.operand, colors, abi.regFromType(binop.dst.type));
+                            const lhs = try valueToReg(binop.lhs, out, try abi.scratchReg(1, .gp), colors, abi, alloc);
 
                             switch (binop.op) {
                                 // can use imm
                                 .add => {
+                                    switch (binop.dst.type) {
+                                        .float => try out.print(alloc, "\tfadd ", .{}),
+                                        else => try out.print(alloc, "\tadd ", .{}),
+                                    }
                                     if (valueAsImm(binop.rhs)) |rhs_imm| {
-                                        try out.print(alloc, "\tadd {s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
+                                        try out.print(alloc, "{s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
                                     } else {
                                         const rhs = try abi.regFor(binop.rhs.operand.operand, colors, .gp);
-                                        try out.print(alloc, "\tadd {s}, {s}, {s}\n", .{ dst, lhs, rhs });
+                                        try out.print(alloc, "{s}, {s}, {s}\n", .{ dst, lhs, rhs });
                                     }
                                 },
                                 .sub => {
+                                    switch (binop.dst.type) {
+                                        .float => try out.print(alloc, "\tfsub ", .{}),
+                                        else => try out.print(alloc, "\tsub ", .{}),
+                                    }
                                     if (valueAsImm(binop.rhs)) |rhs_imm| {
-                                        try out.print(alloc, "\tsub {s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
+                                        try out.print(alloc, "{s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
                                     } else {
-                                        const rhs = try abi.regFor(binop.rhs.operand.operand, colors, .gp);
-                                        try out.print(alloc, "\tsub {s}, {s}, {s}\n", .{ dst, lhs, rhs });
+                                        const rhs = try abi.regFor(binop.rhs.operand.operand, colors, abi.regFromType(binop.rhs.operand.type));
+                                        try out.print(alloc, "{s}, {s}, {s}\n", .{ dst, lhs, rhs });
                                     }
                                 },
                                 // cant use imm
                                 .mul => {
-                                    const rhs_reg = try valueToReg(binop.rhs, out, ScratchReg2, colors, abi, alloc);
-                                    try out.print(alloc, "\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
+                                    const reg_type = abi.regFromType(binop.dst.type);
+                                    const rhs_reg = try valueToReg(binop.rhs, out, try abi.scratchReg(0, reg_type), colors, abi, alloc);
+                                    switch (binop.dst.type) {
+                                        .float => try out.print(alloc, "\tfmul {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg }),
+                                        else => try out.print(alloc, "\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg }),
+                                    }
                                 },
                                 .div => {
-                                    const rhs_reg = try valueToReg(binop.rhs, out, ScratchReg2, colors, abi, alloc);
-                                    try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg });
+                                    const rhs_reg = try valueToReg(binop.rhs, out, try abi.scratchReg(0, .gp), colors, abi, alloc);
+                                    switch (binop.dst.type) {
+                                        .float => try out.print(alloc, "\tfdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg }),
+                                        else => try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg }),
+                                    }
                                 },
                                 .mod => {
-                                    const rhs_reg = try valueToReg(binop.rhs, out, ScratchReg2, colors, abi, alloc);
-                                    try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ ScratchReg, lhs, rhs_reg });
-                                    try out.print(alloc, "\tmsub {s}, {s}, {s}, {s}\n", .{ dst, ScratchReg, rhs_reg, lhs });
+                                    const scratch_reg = try abi.scratchReg(0, .gp);
+                                    const scratch_reg_2 = try abi.scratchReg(1, .gp);
+                                    const rhs_reg = try valueToReg(binop.rhs, out, scratch_reg_2, colors, abi, alloc);
+                                    try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ scratch_reg, lhs, rhs_reg });
+                                    try out.print(alloc, "\tmsub {s}, {s}, {s}, {s}\n", .{ dst, scratch_reg, rhs_reg, lhs });
                                 },
                                 else => |op| {
                                     std.debug.print("op is not supported {s}\n", .{@tagName(op)});
@@ -237,8 +255,9 @@ fn emitFunction(
                                 const src = switch (elem) {
                                     .operand => try abi.regFor(elem.operand.operand, colors, .gp),
                                     .constant => |c| blk: {
-                                        try emitConstantToReg(out, ScratchReg, c, alloc);
-                                        break :blk ScratchReg;
+                                        const scratch_reg = try abi.scratchReg(0, .gp);
+                                        try emitConstantToReg(out, scratch_reg, c, alloc);
+                                        break :blk scratch_reg;
                                     },
                                 };
 
@@ -250,8 +269,8 @@ fn emitFunction(
                                 };
 
                                 switch (elem_type) {
-                                    .int => try emitStackStore(out, src, offset, ScratchReg2, alloc),
-                                    .bool, .char => try emitStackStoreByte(out, src, offset, ScratchReg2, alloc),
+                                    .int => try emitStackStore(out, src, offset, try abi.scratchReg(0, .gp), alloc),
+                                    .bool, .char => try emitStackStoreByte(out, src, offset, try abi.scratchReg(0, .gp), alloc),
                                     else => return error.NotImpl,
                                 }
                                 cur_offset += try elem_type.sizeOfType();
@@ -268,8 +287,9 @@ fn emitFunction(
                             switch (elem_type) {
                                 // index = index << 3
                                 .int => {
-                                    try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
-                                    try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, tuple, ScratchReg });
+                                    const scratch_reg = try abi.scratchReg(0, .gp);
+                                    try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ scratch_reg, index });
+                                    try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, tuple, scratch_reg });
                                 },
                                 .bool => {
                                     try out.print(alloc, "\tldr w{s}, [{s}, {s}]\n", .{ dst[1..], tuple, index });
@@ -286,24 +306,27 @@ fn emitFunction(
                             switch (elem_type) {
                                 // index = (index + 1) << 3
                                 .list, .tuple => {
-                                    try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
-                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                                    try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg });
+                                    const scratch_reg = try abi.scratchReg(0, .gp);
+                                    try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ scratch_reg, index });
+                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ scratch_reg, scratch_reg });
+                                    try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, scratch_reg });
                                 },
                                 .int => |i| {
                                     const elem_size = try elem_type.sizeOfType();
                                     std.debug.assert(std.math.isPowerOfTwo(elem_size));
                                     const shift = std.math.log2_int(usize, elem_size);
-                                    try out.print(alloc, "\tlsl {s}, {s}, #{d}\n", .{ ScratchReg, index, shift });
-                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                                    const scratch_reg = try abi.scratchReg(0, .gp);
+                                    try out.print(alloc, "\tlsl {s}, {s}, #{d}\n", .{ scratch_reg, index, shift });
+                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ scratch_reg, scratch_reg });
                                     switch (i) {
-                                        .i64 => try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg }),
-                                        .i32 => try out.print(alloc, "\tldrsw {s}, [{s}, {s}]\n", .{ dst, array, ScratchReg }),
+                                        .i64 => try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, array, scratch_reg }),
+                                        .i32 => try out.print(alloc, "\tldrsw {s}, [{s}, {s}]\n", .{ dst, array, scratch_reg }),
                                     }
                                 },
                                 .bool, .char => {
-                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, index });
-                                    try out.print(alloc, "\tldrb w{s}, [{s}, {s}]\n", .{ dst[1..], array, ScratchReg });
+                                    const scratch_reg = try abi.scratchReg(0, .gp);
+                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ scratch_reg, index });
+                                    try out.print(alloc, "\tldrb w{s}, [{s}, {s}]\n", .{ dst[1..], array, scratch_reg });
                                 },
                                 else => return error.TypeNotImpl,
                             }
@@ -317,9 +340,10 @@ fn emitFunction(
                                     std.debug.assert(ls.src == .operand);
                                     const src = try abi.regFor(ls.src.operand.operand, colors, .gp);
                                     const index = try abi.regFor(ls.index, colors, .gp);
-                                    try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ ScratchReg, index });
-                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
-                                    try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, ScratchReg });
+                                    const scratch_reg = try abi.scratchReg(0, .gp);
+                                    try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ scratch_reg, index });
+                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ scratch_reg, scratch_reg });
+                                    try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, scratch_reg });
                                 },
                                 .int => {
                                     const dst = try abi.regFor(ls.list.operand, colors, .gp);
@@ -327,20 +351,22 @@ fn emitFunction(
                                     const elem_size = try elem_type.sizeOfType();
                                     std.debug.assert(std.math.isPowerOfTwo(elem_size));
                                     const shift = std.math.log2_int(usize, elem_size);
-                                    try out.print(alloc, "\tlsl {s}, {s}, #{d}\n", .{ ScratchReg, index, shift });
-                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, ScratchReg });
+                                    const scratch_reg = try abi.scratchReg(0, .gp);
+                                    try out.print(alloc, "\tlsl {s}, {s}, #{d}\n", .{ scratch_reg, index, shift });
+                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ scratch_reg, scratch_reg });
                                     switch (ls.src) {
                                         .operand => |op| {
                                             const src = try abi.regFor(op.operand, colors, .gp);
                                             const prefix = try getRegPrefix(try op.type.sizeOfType());
-                                            try out.print(alloc, "\tstr {s}{s}, [{s}, {s}]\n", .{ prefix, src[1..], dst, ScratchReg });
+                                            try out.print(alloc, "\tstr {s}{s}, [{s}, {s}]\n", .{ prefix, src[1..], dst, scratch_reg });
                                         },
                                         .constant => |c| {
                                             switch (c) {
                                                 .i64, .i32 => |i_const| {
-                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, i_const });
+                                                    const scratch_reg_2 = try abi.scratchReg(1, .gp);
+                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ scratch_reg_2, i_const });
                                                     const prefix = try getRegPrefix(c.size());
-                                                    try out.print(alloc, "\tstr {s}{s}, [{s}, {s}]\n", .{ prefix, ScratchReg2[1..], dst, ScratchReg });
+                                                    try out.print(alloc, "\tstr {s}{s}, [{s}, {s}]\n", .{ prefix, scratch_reg_2[1..], dst, scratch_reg });
                                                 },
                                                 else => return error.NotImpl,
                                             }
@@ -349,26 +375,28 @@ fn emitFunction(
                                 },
                                 .bool, .char => {
                                     const index = try abi.regFor(ls.index, colors, .gp);
-                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ ScratchReg, index });
+                                    const scratch_reg = try abi.scratchReg(0, .gp);
+                                    try out.print(alloc, "\tadd {s}, {s}, #8\n", .{ scratch_reg, index });
                                     const dst = try abi.regFor(ls.list.operand, colors, .gp);
                                     switch (ls.src) {
                                         .operand => |op| {
                                             const src = try abi.regFor(op.operand, colors, .gp);
-                                            try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ src[1..], dst, ScratchReg });
+                                            try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ src[1..], dst, scratch_reg });
                                         },
                                         .constant => |c| {
+                                            const scratch_reg_2 = try abi.scratchReg(1, .gp);
                                             switch (c) {
                                                 .i32 => |v| {
-                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, v });
-                                                    try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
+                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ scratch_reg_2, v });
+                                                    try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ scratch_reg_2[1..], dst, scratch_reg });
                                                 },
                                                 .i64 => |v| {
-                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, v });
-                                                    try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
+                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ scratch_reg_2, v });
+                                                    try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ scratch_reg_2[1..], dst, scratch_reg });
                                                 },
                                                 .char => |char| {
-                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ ScratchReg2, char });
-                                                    try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ ScratchReg2[1..], dst, ScratchReg });
+                                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ scratch_reg_2, char });
+                                                    try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ scratch_reg_2[1..], dst, scratch_reg });
                                                 },
                                                 else => |e| {
                                                     std.debug.print("type not impl {s}\n", .{@tagName(e)});
@@ -407,8 +435,10 @@ fn emitFunction(
                         },
                         .select => |s| {
                             const dst = try abi.regFor(s.dst, colors, .gp);
-                            const if_reg = try valueToReg(s.if_value, out, ScratchReg, colors, abi, alloc);
-                            const else_reg = try valueToReg(s.else_value, out, ScratchReg2, colors, abi, alloc);
+                            const scratch_reg = try abi.scratchReg(0, .gp);
+                            const if_reg = try valueToReg(s.if_value, out, scratch_reg, colors, abi, alloc);
+                            const scratch_reg_2 = try abi.scratchReg(1, .gp);
+                            const else_reg = try valueToReg(s.else_value, out, scratch_reg_2, colors, abi, alloc);
 
                             const condition = try abi.regFor(s.condition, colors, .gp);
                             try out.print(alloc, "\tcmp {s}, #0\n", .{condition});
@@ -437,7 +467,7 @@ fn emitFunction(
                     }
                 },
                 .len => |l| {
-                    const dst = try abi.regFor(l.dst, colors, .gp);
+                    const dst = try abi.regFor(l.dst.operand, colors, .gp);
                     const src = try abi.regFor(l.value.operand, colors, .gp);
                     switch (l.value.type) {
                         .list => {
@@ -741,6 +771,7 @@ fn condForCmp(op: common.ir.CmpOp) []const u8 {
     };
 }
 
+// TODO: emitMov is more generic than this
 fn valueToReg(
     value: ValueRef,
     out: *std.ArrayList(u8),
@@ -750,11 +781,11 @@ fn valueToReg(
     alloc: std.mem.Allocator,
 ) ![]const u8 {
     switch (value) {
-        .operand => |op| return abi.regFor(op.operand, colors, .gp),
+        .operand => |op| return abi.regFor(op.operand, colors, abi.regFromType(op.type)),
         .constant => |c| {
             switch (c) {
                 .float => |f| {
-                    try out.print(alloc, "mov {s}, #{}\n", .{ cur_scratch_reg, f });
+                    try out.print(alloc, "fmov {s}, #{}\n", .{ cur_scratch_reg, f });
                     return cur_scratch_reg;
                 },
                 .i32, .i64 => |i| {

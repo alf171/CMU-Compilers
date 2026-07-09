@@ -14,22 +14,26 @@ pub const Abi = struct {
     gp_allocatable_regs: []const []const u8,
     gp_call_clobber_mask: u32,
     gp_function_return_idx: u8,
+    gp_scratch_regs: []const []const u8,
     fp_function_arg_regs: []const []const u8,
     fp_caller_save_regs: []const []const u8,
     fp_callee_save_regs: []const []const u8,
     fp_allocatable_regs: []const []const u8,
     fp_call_clobber_mask: u32,
     fp_function_return_idx: u8,
+    fp_scratch_regs: []const []const u8,
 
     pub fn init(
         gp_function_arg_regs: []const []const u8,
         gp_caller_save_regs: []const []const u8,
         gp_callee_save_regs: []const []const u8,
         gp_function_return_idx: u8,
+        gp_scratch_regs: []const []const u8,
         fp_function_arg_regs: []const []const u8,
         fp_caller_save_regs: []const []const u8,
         fp_callee_save_regs: []const []const u8,
         fp_function_return_idx: u8,
+        fp_scratch_regs: []const []const u8,
     ) @This() {
         // [ high bits ] [ low bits ]
         // [ callee safe bits ] [ caller safe bits ] [function param bits]
@@ -45,12 +49,14 @@ pub const Abi = struct {
             .gp_allocatable_regs = gp_function_arg_regs ++ gp_caller_save_regs ++ gp_callee_save_regs,
             .gp_call_clobber_mask = gp_caller_save_mask | gp_function_param_mask,
             .gp_function_return_idx = gp_function_return_idx,
+            .gp_scratch_regs = gp_scratch_regs,
             .fp_function_arg_regs = fp_function_arg_regs,
             .fp_caller_save_regs = fp_caller_save_regs,
             .fp_callee_save_regs = fp_callee_save_regs,
             .fp_allocatable_regs = fp_function_arg_regs ++ fp_caller_save_regs ++ fp_callee_save_regs,
             .fp_call_clobber_mask = fp_caller_save_mask | fp_function_param_mask,
             .fp_function_return_idx = fp_function_return_idx,
+            .fp_scratch_regs = fp_scratch_regs,
         };
     }
 
@@ -115,12 +121,26 @@ pub const Abi = struct {
         }
     }
 
+    /// TODO: consider moving this maybe into TypeInfo?
     pub fn regFromType(self: @This(), type_info: TypeInfo) RegisterType {
         _ = self;
         return switch (type_info) {
             .float => .f,
             else => return .gp,
         };
+    }
+
+    pub fn scratchReg(self: @This(), index: usize, reg_type: RegisterType) ![]const u8 {
+        switch (reg_type) {
+            .f => {
+                if (index >= self.fp_scratch_regs.len) return error.InvalidScratchReg;
+                return self.fp_scratch_regs[index];
+            },
+            .gp => {
+                if (index >= self.gp_scratch_regs.len) return error.InvalidScratchReg;
+                return self.gp_scratch_regs[index];
+            },
+        }
     }
 };
 

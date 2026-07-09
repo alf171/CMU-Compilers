@@ -237,13 +237,13 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             // order here will impact temp numbering
             const lhs = try walkExpr(left, irBuilder, null, alloc);
             const rhs = try walkExpr(right, irBuilder, null, alloc);
-            if (!try lhs.type.equal(rhs.type)) {
+            if (!lhs.type.equal(rhs.type)) {
                 return error.UnsupportedBinOp;
             }
 
             const dst = irBuilder.nextTemp();
             const instruction = Instruction{ .lir = .{ .binop = .{
-                .dst = dst,
+                .dst = .{ .operand = dst, .type = lhs.type },
                 .op = op,
                 .lhs = .{ .operand = lhs },
                 .rhs = .{ .operand = rhs },
@@ -563,7 +563,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                                 } } }, alloc);
                                 const data = irBuilder.nextTemp();
                                 try irBuilder.emit(.{ .lir = .{ .binop = .{
-                                    .dst = data,
+                                    .dst = .{ .operand = data, .type = .any },
                                     .lhs = .{ .operand = buf },
                                     .op = .add,
                                     .rhs = .{ .operand = .{
@@ -604,12 +604,12 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                         const arg0 = c.PyList_GetItem(args, 0);
                         std.debug.assert(arg0 != null);
                         const value = try walkExpr(arg0, irBuilder, null, alloc);
-                        const dst = irBuilder.nextTemp();
+                        const dst: TypedOperand = .{ .operand = irBuilder.nextTemp(), .type = .{ .int = .i64 } };
                         try irBuilder.emit(Instruction{ .len = .{
                             .dst = dst,
                             .value = value,
                         } }, alloc);
-                        return .{ .operand = dst, .type = .{ .int = .i64 } };
+                        return dst;
                     },
                     // Call(func=Name(id='range', ctx=Load()), args=[Constant(value=0), Constant(value=10)])
                     .Range => {
@@ -988,7 +988,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 },
                 .lazy => {
                     try irBuilder_.emit(.{ .lazy_load = .{
-                        .dst = value,
+                        .dst = .{ .operand = value, .type = .any },
                         .lazy = iterable,
                         .index = index.operand,
                     } }, alloc_);
@@ -1019,17 +1019,14 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 .value = .{ .i64 = 1 },
             } } }, alloc_);
 
-            const index_next = irBuilder_.nextTemp();
+            const index_next: TypedOperand = .{ .operand = irBuilder_.nextTemp(), .type = .{ .int = .i64 } };
             try irBuilder_.emit(Instruction{ .lir = .{ .binop = .{
                 .dst = index_next,
                 .lhs = .{ .operand = index },
                 .op = .add,
                 .rhs = .{ .operand = .{ .operand = one, .type = .{ .int = .i64 } } },
             } } }, alloc_);
-            carries[0].next = TypedOperand{
-                .operand = index_next,
-                .type = .{ .int = .i64 },
-            };
+            carries[0].next = index_next;
         }
     };
 
@@ -1041,7 +1038,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
         .type = .{ .int = .i64 },
     }, .current = undefined, .next = null, .inputs = undefined });
 
-    const len_temp = irBuilder.nextTemp();
+    const len_temp: TypedOperand = .{ .operand = irBuilder.nextTemp(), .type = .{ .int = .i64 } };
 
     std.debug.assert(expr.type.isIterable());
     try irBuilder.emit(Instruction{ .len = .{
@@ -1065,7 +1062,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
         LoopCondition{ .operand_compare = .{
             .carry_index = 0,
             .cmp = .lt,
-            .rhs = .{ .operand = len_temp, .type = .{ .int = .i64 } },
+            .rhs = len_temp,
         } },
         LoopBody{ .for_loop = .{
             .stmt_list = body,

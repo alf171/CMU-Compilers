@@ -20,9 +20,11 @@ pub const X86Abi = Abi.init(
     &caller_save_regs,
     &callee_save_regs,
     6,
+    &.{ scratch_reg, scratch_reg_2 },
     // FIXME: this is wrong
     &function_param_regs,
     &caller_save_regs,
     &callee_save_regs,
     6,
+    &.{ scratch_reg, scratch_reg_2 },
 );

@@ -146,7 +146,7 @@ pub const Operand = union(enum) {
                 else => false,
             },
             .reg => |r1| switch (other) {
-                .reg => |r2| return r1.id == r2.id,
+                .reg => |r2| return r1.equal(r2),
                 else => false,
             },
             .mem => |t1| switch (other) {

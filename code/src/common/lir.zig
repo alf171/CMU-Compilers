@@ -27,7 +27,7 @@ pub const Instruction = union(enum) {
         value: ConstValue,
     },
     binop: struct {
-        dst: Operand,
+        dst: TypedOperand,
         op: BinOp,
         lhs: ValueRef,
         rhs: ValueRef,
@@ -118,7 +118,7 @@ pub const Instruction = union(enum) {
                 }
             },
             .binop => |binop| {
-                binop.dst.print();
+                binop.dst.operand.print();
                 debugPrint(" <- {s} ", .{@tagName(binop.op)});
                 binop.lhs.print();
                 debugPrint(", ", .{});
@@ -322,7 +322,7 @@ pub const Instruction = union(enum) {
     pub fn replaceDefines(self: *@This(), old: Operand, new: Operand) !void {
         switch (self.*) {
             .binop => |*bop| {
-                if (bop.dst.equal(old)) bop.dst = new;
+                if (bop.dst.operand.equal(old)) bop.dst.operand = new;
             },
             .move => |*mov| {
                 if (mov.dst.operand.equal(old)) mov.dst.operand = new;
@@ -358,7 +358,7 @@ pub const Instruction = union(enum) {
             .store_local => |sl| .{ .local = sl.local.id },
             .load_local => |ll| .{ .operand = ll.dst },
             .constant => |c| .{ .operand = c.dst },
-            .binop => |bop| .{ .operand = bop.dst },
+            .binop => |bop| .{ .operand = bop.dst.operand },
             .move => |m| .{ .operand = m.dst.operand },
             .unaryop => |uop| .{ .operand = uop.dst.operand },
             .compare => |c| .{ .operand = c.dst.operand },

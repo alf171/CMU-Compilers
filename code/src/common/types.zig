@@ -111,19 +111,8 @@ pub const TypeInfo = union(enum) {
         };
     }
 
-    pub fn equal(self: @This(), other: @This()) !bool {
-        switch (self) {
-            // int32 == int64...
-            .int => return other == .int,
-            .void => return other == .void,
-            .float => return other == .float,
-            .bool => return other == .bool,
-            .char => return other == .char,
-            else => |e| {
-                std.debug.print("equal doesnt support {s}\n", .{@tagName(e)});
-                return error.NotImpl;
-            },
-        }
+    pub fn equal(self: @This(), other: @This()) bool {
+        return std.meta.activeTag(self) == std.meta.activeTag(other);
     }
 };
 

@@ -4,8 +4,8 @@ const ValueRef = common.ir.ValueRef;
 const Abi = @import("../abi.zig").Abi;
 
 // reserve two regs for scratch purposes
-pub const gp_scratch_reg = "x16";
-pub const gp_scratch_reg_2 = "x17";
+const gp_scratch_reg = "x16";
+const gp_scratch_reg_2 = "x17";
 
 /// function param registers
 const gp_function_param_regs = [_][]const u8{ "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7" };
@@ -34,8 +34,10 @@ pub const ArmAbi = Abi.init(
     &gp_caller_save_regs,
     &gp_callee_save_regs,
     0,
+    &.{ gp_scratch_reg, gp_scratch_reg_2 },
     &fp_function_param_regs,
     &fp_caller_save_regs,
     &fp_callee_save_regs,
     0,
+    &.{fp_scratch_reg},
 );
