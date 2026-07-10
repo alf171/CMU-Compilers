@@ -188,7 +188,7 @@ test "basic block copy prop" {
     } } });
     // t2 = t1
     try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
-        .dst = .{ .temp = .{ .id = 2, .function_id = 0 } },
+        .dst = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any },
         .src = .{ .temp = .{ .id = 1, .function_id = 0 } },
     } } });
     // print(t2)
@@ -203,12 +203,12 @@ test "basic block copy prop" {
 
     // t1 = t0
     try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .lir = .{ .move = .{
-        .dst = .{ .temp = .{ .id = 1, .function_id = 0 } },
+        .dst = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any },
         .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
     } } });
     // t2 = t0
     try std.testing.expectEqualDeep(new_instructions[1], Instruction{ .lir = .{ .move = .{
-        .dst = .{ .temp = .{ .id = 2, .function_id = 0 } },
+        .dst = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any },
         .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
     } } });
     // print(t0)
@@ -232,7 +232,7 @@ test "function param regs getting folded" {
     const t0: Operand = .{ .temp = .{ .id = 1, .function_id = 0 } };
     const r0: Operand = .{ .reg = .{ .id = 0, .class = .gp } };
     try instructions.append(alloc, .{ .lir = .{ .move = .{
-        .dst = t0,
+        .dst = .{ .operand = t0, .type = .any },
         .src = r0,
     } } });
     // foobar(t0)
@@ -250,7 +250,7 @@ test "function param regs getting folded" {
     const new_instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(2, new_instructions.len);
     try std.testing.expectEqualDeep(Instruction{
-        .lir = .{ .move = .{ .dst = t0, .src = r0 } },
+        .lir = .{ .move = .{ .dst = .{ .operand = t0, .type = .any }, .src = r0 } },
     }, new_instructions[0]);
     const call = new_instructions[1].function_call;
     try std.testing.expectEqual(@as(usize, 1), call.args.len);

@@ -121,7 +121,7 @@ test "range behaves lazily" {
     const n = program.main.nextTemp();
     try block0.instructions.append(alloc, .{
         .len = .{
-            .dst = n,
+            .dst = .{ .operand = n, .type = .any },
             .value = range,
         },
     });
@@ -130,7 +130,7 @@ test "range behaves lazily" {
     try block0.instructions.append(alloc, .{ .lir = .{ .constant = .{ .dst = index, .value = .{ .i64 = 1 } } } });
     try block0.instructions.append(alloc, .{
         .lazy_load = .{
-            .dst = i,
+            .dst = .{ .operand = i, .type = .any },
             .lazy = range,
             .index = index,
         },

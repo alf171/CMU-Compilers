@@ -228,7 +228,7 @@ test "spill reg function" {
     const A = Operand{ .temp = .{ .id = 0, .function_id = 0 } };
     const B = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
     try instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
-        .dst = A,
+        .dst = .{ .operand = A, .type = .any },
         .lhs = .{ .operand = .{ .operand = A, .type = .any } },
         .op = .add,
         .rhs = .{ .operand = .{ .operand = B, .type = .any } },
@@ -266,17 +266,17 @@ test "spill reg function" {
     const new_instructions = function.blocks.items[0].instructions.items;
     try std.testing.expectEqual(3, new_instructions.len);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .move = .{
-        .dst = Operand{ .temp = .{ .id = 2, .function_id = 0 } },
-        .src = Operand{ .mem = .{ .id = 0, .function_id = 0 } },
+        .dst = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any },
+        .src = .{ .mem = .{ .id = 0, .function_id = 0 } },
     } } }, new_instructions[0]);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .binop = .{
-        .dst = .{ .temp = .{ .id = 3, .function_id = 0 } },
+        .dst = .{ .operand = .{ .temp = .{ .id = 3, .function_id = 0 } }, .type = .any },
         .lhs = .{ .operand = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any } },
         .op = .add,
         .rhs = .{ .operand = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any } },
     } } }, new_instructions[1]);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .move = .{
-        .dst = Operand{ .mem = .{ .id = 0, .function_id = 0 } },
-        .src = Operand{ .temp = .{ .id = 3, .function_id = 0 } },
+        .dst = .{ .operand = .{ .mem = .{ .id = 0, .function_id = 0 } }, .type = .any },
+        .src = .{ .temp = .{ .id = 3, .function_id = 0 } },
     } } }, new_instructions[2]);
 }

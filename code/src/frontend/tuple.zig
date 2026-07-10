@@ -23,64 +23,15 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
 
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
-                .list_literal => |ll| {
-                    const elem_type = try getElementType(ll.dst.type);
-                    const byte_count = 8 + ll.elements.len * try elem_type.sizeOfType();
-                    const size_temp = function.nextTemp();
-                    try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                        .dst = size_temp,
-                        .value = .{ .i64 = @intCast(byte_count) },
-                    } } });
-                    const args = try alloc.dupe(TypedOperand, &.{
-                        .{ .operand = size_temp, .type = .{ .int = .i64 } },
-                    });
-                    try new_instructions.append(alloc, .{ .function_call = .{
-                        .dst = ll.dst.operand,
-                        .callee = .{ .direct = "arena_malloc" },
-                        .args = args,
-                    } });
-                    // store list size
-                    {
-                        const size = function.nextTemp();
+                .len => |l| {
+                    if (l.value.type == .tuple) {
+                        const tuple = l.value.type.tuple;
                         try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                            .dst = size,
-                            .value = .{ .i64 = @intCast(ll.elements.len) },
+                            .dst = l.dst.operand,
+                            .value = .{ .i64 = @intCast(tuple.elements.len) },
                         } } });
-                        try new_instructions.append(alloc, .{
-                            .lir = .{ .list_len_set = .{
-                                .list = ll.dst,
-                                .len = size,
-                            } },
-                        });
-                    }
-                    // store elements
-                    for (ll.elements, 0..) |elem, i| {
-                        const src: ValueRef = switch (elem) {
-                            .constant => |c| blk: {
-                                break :blk ValueRef{ .constant = c };
-                            },
-                            .operand => |o| blk: {
-                                const src = function.nextTemp();
-                                try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                                    .dst = src,
-                                    .src = o.operand,
-                                } } });
-                                break :blk ValueRef{ .operand = .{ .operand = src, .type = .any } };
-                            },
-                        };
-                        const index = function.nextTemp();
-                        try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                            .dst = index,
-                            .value = .{ .i64 = @intCast(i) },
-                        } } });
-
-                        try new_instructions.append(alloc, .{
-                            .lir = .{ .list_store = .{
-                                .list = ll.dst,
-                                .index = index,
-                                .src = src,
-                            } },
-                        });
+                    } else {
+                        try new_instructions.append(alloc, instruction.*);
                     }
                 },
                 else => try new_instructions.append(alloc, instruction.*),

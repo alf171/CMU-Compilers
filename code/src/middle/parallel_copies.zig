@@ -121,9 +121,9 @@ test "cycle" {
 
     try function.blocks.items[0].instructions.append(alloc, Instruction{
         .parallel_copy = .{ .copies = try alloc.dupe(Copy, &.{
-            Copy{ .dst = a, .src = b },
-            Copy{ .dst = b, .src = c },
-            Copy{ .dst = c, .src = a },
+            Copy{ .dst = .{ .operand = a, .type = .any }, .src = b },
+            Copy{ .dst = .{ .operand = b, .type = .any }, .src = c },
+            Copy{ .dst = .{ .operand = c, .type = .any }, .src = a },
         }) },
     });
 
@@ -133,7 +133,7 @@ test "cycle" {
         switch (instruction) {
             .parallel_copy => |pc| {
                 for (pc.copies) |copy| {
-                    try originally_defined.put(copy.dst, {});
+                    try originally_defined.put(copy.dst.operand, {});
                 }
             },
             else => return error.UnexpectedState,
@@ -156,7 +156,7 @@ test "cycle" {
                     std.debug.print("using {} again", .{m.src.temp});
                     return error.ValueUsedTwice;
                 }
-                try seen_defined_operands.put(m.dst, {});
+                try seen_defined_operands.put(m.dst.operand, {});
             },
             else => return error.UnexpectedInstruction,
         }
