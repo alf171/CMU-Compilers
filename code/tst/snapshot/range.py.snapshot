@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 x = range(3, 5)
 print(len(x))
@@ -6,7 +6,16 @@ print(len(x))
 y = (1, 2, 3, 4)
 print(len(y))
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 443
+mov count: 90
+memory load count: 1
+memory store count: 55
+branch count: 18
+call count: 24
+spill count: 0
+
+actual output:
 2
 4
 [!!memory report!!]: allocs=2 frees=2 allocated_bytes=20 freed_bytes=20

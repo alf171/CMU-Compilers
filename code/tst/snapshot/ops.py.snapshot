@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 x = 11
 y = 5
@@ -12,11 +12,26 @@ print(x * y)
 print(x / y)
 # mod
 print(x % y)
+# left shift
+print(x << 3)
+# right shift
+print(x >> 2)
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 452
+mov count: 95
+memory load count: 1
+memory store count: 51
+branch count: 18
+call count: 29
+spill count: 0
+
+actual output:
 16
 6
 55
 2
 1
-[!!memory report!!]: allocs=5 frees=5 allocated_bytes=50 freed_bytes=50
+88
+2
+[!!memory report!!]: allocs=7 frees=7 allocated_bytes=70 freed_bytes=70

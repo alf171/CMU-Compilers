@@ -214,7 +214,7 @@ fn emitFunction(
                                 };
 
                                 switch (elem_type) {
-                                    .int => try emitStackStore(out, src, offset, ScratchReg2, alloc),
+                                    .i64, .i32 => try emitStackStore(out, src, offset, ScratchReg2, alloc),
                                     .bool, .char => try emitStackStoreByte(out, src, offset, ScratchReg2, alloc),
                                     else => return error.NotImpl,
                                 }
@@ -222,49 +222,6 @@ fn emitFunction(
                             }
                             // array_base = x29 - end
                             try out.print(alloc, "\tleaq -{d}(%rbp), %{s}\n", .{ base_offset, dst });
-                        },
-                        .list_len_set => |lls| {
-                            const src = try abi.regFor(lls.list.operand, colors, .gp);
-                            const len = try abi.regFor(lls.len, colors, .gp);
-                            try out.print(alloc, "\tmovq %{s}, (%{s})\n", .{ len, src });
-                        },
-                        .list_store => |ls| {
-                            const elem_type = try getElementType(ls.list.type);
-                            switch (elem_type) {
-                                // index = (index + 1) << 3
-                                .list, .tuple => {
-                                    const dst = try abi.regFor(ls.list.operand, colors, .gp);
-                                    std.debug.assert(ls.src == .operand);
-                                    const src = try abi.regFor(ls.src.operand.operand, colors, .gp);
-                                    const index = try abi.regFor(ls.index, colors, .gp);
-                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ ScratchReg, index });
-                                    try out.print(alloc, "\tshlq $3, %{s}\n", .{ScratchReg});
-                                    try out.print(alloc, "\taddq $8, %{s}\n", .{ScratchReg});
-                                    try out.print(alloc, "\tmovq %{s}, (%{s}, %{s})\n", .{ src, dst, ScratchReg });
-                                },
-                                .char => {
-                                    const dst = try abi.regFor(ls.list.operand, colors, .gp);
-                                    const index = try abi.regFor(ls.index, colors, .gp);
-                                    switch (ls.src) {
-                                        .constant => |constant| {
-                                            switch (constant) {
-                                                .char => |c| {
-                                                    try out.print(alloc, "\tmovq ${d}, 8(%{s},%{s},8)\n", .{ c, dst, index });
-                                                },
-                                                else => return error.NotImpl,
-                                            }
-                                        },
-                                        .operand => |o| {
-                                            const src = try abi.regFor(o.operand, colors, .gp);
-                                            try out.print(alloc, "\tmovq %{s}, 8(%{s},%{s},8)\n", .{ src, dst, index });
-                                        },
-                                    }
-                                },
-                                else => |e| {
-                                    std.debug.print("cant handle {s}\n", .{@tagName(e)});
-                                    return error.UnexpectedType;
-                                },
-                            }
                         },
                         .select => |s| {
                             const dst = try abi.regFor(s.dst, colors, .gp);

@@ -97,24 +97,10 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
                     tl.tuple.operand = try resolveOperand(tl.tuple.operand, copyMap);
                     tl.index = try resolveOperand(tl.index, copyMap);
                 },
-                .list_load => |*ll| {
-                    ll.list.operand = try resolveOperand(ll.list.operand, copyMap);
-                    ll.index = try resolveOperand(ll.index, copyMap);
-                },
                 .tuple_store => |*ts| {
                     ts.tuple.operand = try resolveOperand(ts.tuple.operand, copyMap);
                     ts.index = try resolveOperand(ts.index, copyMap);
                     ts.src = try resolveOperand(ts.src, copyMap);
-                },
-                .list_store => |*ls| {
-                    ls.list.operand = try resolveOperand(ls.list.operand, copyMap);
-                    ls.index = try resolveOperand(ls.index, copyMap);
-                    switch (ls.src) {
-                        .operand => |*op| {
-                            op.operand = try resolveOperand(op.operand, copyMap);
-                        },
-                        .constant => {},
-                    }
                 },
                 .select => |*s| {
                     s.condition = try resolveOperand(s.condition, copyMap);
@@ -126,6 +112,10 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
         },
         .print => |*pi| {
             pi.src.operand = try resolveOperand(pi.src.operand, copyMap);
+        },
+        .list_load => |*ll| {
+            ll.list.operand = try resolveOperand(ll.list.operand, copyMap);
+            ll.index = try resolveOperand(ll.index, copyMap);
         },
         .list_literal => |*ll| {
             for (ll.elements) |*elem| {
@@ -163,8 +153,9 @@ fn resolveOperand(op: Operand, copyMap: *HashMap(Operand, ValueRef)) !Operand {
 }
 
 fn resolve(init: ValueRef, copyMap: *HashMap(Operand, ValueRef)) !ValueRef {
+    if (init == .constant) return init;
+
     var cur: ValueRef = init;
-    std.debug.assert(cur != .constant);
     while (copyMap.get(cur.operand.operand)) |next| {
         switch (next) {
             .operand => |cur_op| cur = .{ .operand = cur_op },
@@ -194,7 +185,7 @@ test "basic block copy prop" {
     // print(t2)
     try instructions.append(alloc, Instruction{ .print = .{ .src = .{
         .operand = .{ .temp = .{ .id = 2, .function_id = 0 } },
-        .type = .{ .int = .i64 },
+        .type = .i64,
     } } });
 
     try run(&program, alloc);
@@ -215,7 +206,7 @@ test "basic block copy prop" {
     try std.testing.expectEqualDeep(new_instructions[2], Instruction{ .print = .{
         .src = .{
             .operand = .{ .temp = .{ .id = 0, .function_id = 0 } },
-            .type = .{ .int = .i64 },
+            .type = .i64,
         },
     } });
 }

@@ -244,7 +244,7 @@ test "spill reg function" {
         .blocks = blocks,
         .entry_block = 0,
         .params = &.{},
-        .return_type = .{ .int = .i64 },
+        .return_type = .i64,
         .next_temp = 2,
         .next_mem = 0,
     };

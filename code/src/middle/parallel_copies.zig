@@ -98,7 +98,7 @@ test "cycle" {
         .entry_block = 0,
         .next_temp = 4,
         .next_mem = 0,
-        .return_type = .{ .int = .i64 },
+        .return_type = .i64,
     };
 
     try function.blocks.append(alloc, Block{

@@ -55,17 +55,20 @@ pub const Instruction = union(enum) {
         then_block: BlockId,
         else_block: BlockId,
     },
+    // TODO: move into MIR
     // stack based fixed size array
     tuple_literal: struct {
         dst: TypedOperand,
         elements: []ValueRef,
     },
+    // TODO: move into MIR
     // dst <- array[index]
     tuple_load: struct {
         dst: Operand,
         tuple: TypedOperand,
         index: Operand,
     },
+    // TODO: move into MIR
     // TODO: remove since tuples are immutable
     // array[index] <- src
     tuple_store: struct {
@@ -73,22 +76,18 @@ pub const Instruction = union(enum) {
         index: Operand,
         src: Operand,
     },
-    // dst <- list[index]
-    list_load: struct {
-        dst: Operand,
-        list: TypedOperand,
-        index: Operand,
+    // dst <- *(src + offset)
+    load_offset: struct {
+        dst: TypedOperand,
+        src: TypedOperand,
+        offset: ValueRef,
     },
-    // list[index] <- src
-    list_store: struct {
-        list: TypedOperand,
-        index: Operand,
-        src: ValueRef,
-    },
-    // skips += 8 offset needed for init
-    list_len_set: struct {
-        list: TypedOperand,
-        len: Operand,
+    // *(dst + offset) <- src
+    store_offset: struct {
+        dst: TypedOperand,
+        /// offset in bytes
+        offset: ValueRef,
+        src: TypedOperand,
     },
     select: struct {
         dst: Operand,
@@ -130,6 +129,23 @@ pub const Instruction = union(enum) {
                 sl.src.print();
                 debugPrint("\n", .{});
             },
+            .store_offset => |so| {
+                debugPrint("*(", .{});
+                so.dst.operand.print();
+                debugPrint(" + ", .{});
+                so.offset.print();
+                debugPrint(") <- ", .{});
+                so.src.operand.print();
+                debugPrint("\n", .{});
+            },
+            .load_offset => |lo| {
+                lo.dst.operand.print();
+                debugPrint(" <- *(", .{});
+                lo.src.operand.print();
+                debugPrint(" + ", .{});
+                lo.offset.print();
+                debugPrint(")\n", .{});
+            },
             .load_local => |ll| {
                 ll.dst.print();
                 debugPrint(" <- \"{s}\"\n", .{ll.local.name});
@@ -170,21 +186,6 @@ pub const Instruction = union(enum) {
                 }
                 debugPrint("]\n", .{});
             },
-            .list_store => |ls| {
-                ls.list.operand.print();
-                debugPrint("[", .{});
-                ls.index.print();
-                debugPrint("] <- ", .{});
-                ls.src.print();
-                debugPrint("\n", .{});
-            },
-            .list_len_set => |lls| {
-                debugPrint("len(", .{});
-                lls.list.operand.print();
-                debugPrint(") <- ", .{});
-                lls.len.print();
-                debugPrint("\n", .{});
-            },
             .tuple_store => |ts| {
                 ts.tuple.operand.print();
                 debugPrint("(", .{});
@@ -192,14 +193,6 @@ pub const Instruction = union(enum) {
                 debugPrint(") <- ", .{});
                 ts.src.print();
                 debugPrint("\n", .{});
-            },
-            .list_load => |al| {
-                al.dst.print();
-                debugPrint(" <- ", .{});
-                al.list.operand.print();
-                debugPrint("[", .{});
-                al.index.print();
-                debugPrint("]\n", .{});
             },
             .tuple_load => |tl| {
                 tl.dst.print();
@@ -231,6 +224,24 @@ pub const Instruction = union(enum) {
             .store_local => |*sl| {
                 if (sl.src.equal(old)) sl.src = new;
             },
+            .store_offset => |*so| {
+                if (so.src.operand.equal(old)) so.src.operand = new;
+                switch (so.offset) {
+                    .operand => |*top| {
+                        if (top.operand.equal(old)) top.operand = new;
+                    },
+                    .constant => {},
+                }
+            },
+            .load_offset => |*lo| {
+                if (lo.src.operand.equal(old)) lo.src.operand = new;
+                switch (lo.offset) {
+                    .operand => |*top| {
+                        if (top.operand.equal(old)) top.operand = new;
+                    },
+                    .constant => {},
+                }
+            },
             .binop => |*bop| {
                 switch (bop.lhs) {
                     .operand => |*lop| {
@@ -251,23 +262,6 @@ pub const Instruction = union(enum) {
             },
             .move => |*mov| {
                 if (mov.src.equal(old)) mov.src = new;
-            },
-            .list_load => |*ll| {
-                if (ll.list.operand.equal(old)) ll.list.operand = new;
-                if (ll.index.equal(old)) ll.index = new;
-            },
-            .list_store => |*ls| {
-                if (ls.list.operand.equal(old)) ls.list.operand = new;
-                if (ls.index.equal(old)) ls.index = new;
-                switch (ls.src) {
-                    .operand => |*op| {
-                        if (op.operand.equal(old)) op.operand = new;
-                    },
-                    .constant => {},
-                }
-            },
-            .list_len_set => |*lls| {
-                if (lls.len.equal(old)) lls.len = new;
             },
             .compare => |*c| {
                 if (c.lhs.operand.equal(old)) c.lhs.operand = new;
@@ -327,9 +321,6 @@ pub const Instruction = union(enum) {
             .move => |*mov| {
                 if (mov.dst.operand.equal(old)) mov.dst.operand = new;
             },
-            .list_load => |*ll| {
-                if (ll.dst.equal(old)) ll.dst = new;
-            },
             .compare => |*c| {
                 if (c.dst.operand.equal(old)) c.dst.operand = new;
             },
@@ -341,6 +332,9 @@ pub const Instruction = union(enum) {
             },
             .tuple_literal => |*tl| {
                 if (tl.dst.operand.equal(old)) tl.dst.operand = new;
+            },
+            .load_offset => |*lo| {
+                if (lo.dst.operand.equal(old)) lo.dst.operand = new;
             },
             .select => |*s| {
                 if (s.dst.equal(old)) s.dst = new;
@@ -364,8 +358,8 @@ pub const Instruction = union(enum) {
             .compare => |c| .{ .operand = c.dst.operand },
             .tuple_literal => |tl| .{ .operand = tl.dst.operand },
             .tuple_load => |tl| .{ .operand = tl.dst },
-            .list_load => |ll| .{ .operand = ll.dst },
-            .list_store, .list_len_set => null,
+            .store_offset => null,
+            .load_offset => |lo| .{ .operand = lo.dst.operand },
             .select => |s| .{ .operand = s.dst },
             .branch => null,
             .jump => null,
@@ -383,6 +377,25 @@ pub const Instruction = union(enum) {
         switch (instruction) {
             .store_local => |sl| {
                 try res.append(alloc, .{ .operand = sl.src });
+            },
+            .store_offset => |so| {
+                try res.append(alloc, .{ .operand = so.dst.operand });
+                switch (so.offset) {
+                    .operand => |top| {
+                        try res.append(alloc, .{ .operand = top.operand });
+                    },
+                    else => {},
+                }
+                try res.append(alloc, .{ .operand = so.src.operand });
+            },
+            .load_offset => |lo| {
+                switch (lo.offset) {
+                    .operand => |top| {
+                        try res.append(alloc, .{ .operand = top.operand });
+                    },
+                    else => {},
+                }
+                try res.append(alloc, .{ .operand = lo.src.operand });
             },
             .load_local => |ll| {
                 try res.append(alloc, .{ .local = ll.local.id });
@@ -430,24 +443,6 @@ pub const Instruction = union(enum) {
                 try res.append(alloc, .{ .operand = ts.tuple.operand });
                 try res.append(alloc, .{ .operand = ts.index });
                 try res.append(alloc, .{ .operand = ts.src });
-            },
-            .list_load => |il| {
-                try res.append(alloc, .{ .operand = il.list.operand });
-                try res.append(alloc, .{ .operand = il.index });
-            },
-            .list_store => |ls| {
-                try res.append(alloc, .{ .operand = ls.list.operand });
-                try res.append(alloc, .{ .operand = ls.index });
-                switch (ls.src) {
-                    .operand => |top| {
-                        try res.append(alloc, .{ .operand = top.operand });
-                    },
-                    .constant => {},
-                }
-            },
-            .list_len_set => |lls| {
-                try res.append(alloc, .{ .operand = lls.list.operand });
-                try res.append(alloc, .{ .operand = lls.len });
             },
             .select => |s| {
                 try res.append(alloc, .{ .operand = s.condition });

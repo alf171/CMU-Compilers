@@ -51,16 +51,17 @@ fn rewriteFunction(function: *Function, producers: *HashMap(Operand, LazyProduce
                                 .dst = ll.dst,
                                 .lhs = .{ .operand = .{
                                     .operand = range.start,
-                                    .type = .{ .int = .i64 },
+                                    .type = .i64,
                                 } },
                                 .op = .add,
                                 .rhs = .{ .operand = .{
                                     .operand = ll.index,
-                                    .type = .{ .int = .i64 },
+                                    .type = .i64,
                                 } },
                             } } });
                         },
                     }
+                    instruction.deinit(alloc);
                 },
                 .len => |l| {
                     const producer = producers.get(l.value.operand) orelse {
@@ -73,16 +74,17 @@ fn rewriteFunction(function: *Function, producers: *HashMap(Operand, LazyProduce
                                 .dst = l.dst,
                                 .lhs = .{ .operand = .{
                                     .operand = range.end,
-                                    .type = .{ .int = .i64 },
+                                    .type = .i64,
                                 } },
                                 .op = .sub,
                                 .rhs = .{ .operand = .{
                                     .operand = range.start,
-                                    .type = .{ .int = .i64 },
+                                    .type = .i64,
                                 } },
                             } } });
                         },
                     }
+                    instruction.deinit(alloc);
                 },
                 else => {
                     try new_instructions.append(alloc, instruction.*);
@@ -108,14 +110,14 @@ test "range behaves lazily" {
     const range: TypedOperand = .{
         .operand = program.main.nextTemp(),
         .type = .{ .lazy = .{ .value = try ownedPointer(.{ .iterable = .{
-            .element = try ownedPointer(.{ .int = .i64 }, alloc),
+            .element = try ownedPointer(.i64, alloc),
         } }, alloc) } },
     };
     try block0.instructions.append(alloc, .{
         .range = .{
             .dst = range,
-            .start = .{ .operand = start, .type = .{ .int = .i64 } },
-            .end = .{ .operand = end, .type = .{ .int = .i64 } },
+            .start = .{ .operand = start, .type = .i64 },
+            .end = .{ .operand = end, .type = .i64 },
         },
     });
     const n = program.main.nextTemp();
@@ -131,7 +133,7 @@ test "range behaves lazily" {
     try block0.instructions.append(alloc, .{
         .lazy_load = .{
             .dst = .{ .operand = i, .type = .any },
-            .lazy = range,
+            .lazy = try range.clone(alloc),
             .index = index,
         },
     });

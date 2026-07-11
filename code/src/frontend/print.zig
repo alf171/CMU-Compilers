@@ -42,7 +42,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 .args = try alloc.dupe(TypedOperand, &.{p.src}),
                             } });
                         },
-                        .int => {
+                        .i64, .i32 => {
                             try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
                                 .callee = .{ .direct = "print_int" },

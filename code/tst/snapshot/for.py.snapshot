@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 sum = 0
 i = 3
@@ -9,6 +9,15 @@ for m in range(i):
 
 print(sum)
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 472
+mov count: 99
+memory load count: 1
+memory store count: 54
+branch count: 24
+call count: 23
+spill count: 0
+
+actual output:
 18
 [!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

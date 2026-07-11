@@ -49,7 +49,7 @@ pub const TempId = u16;
 /// we only permit 255 spills per program
 pub const MemoryId = u8;
 
-pub const BinOp = enum { add, sub, mul, div, mod, unknown };
+pub const BinOp = enum { add, sub, mul, div, mod, lshift, rshift, unknown };
 
 pub const UnaryOp = enum { neg };
 
@@ -80,6 +80,7 @@ pub const ConstValue = union(enum) {
 };
 
 pub const ValueRef = union(enum) {
+    /// TODO: rename to top
     operand: TypedOperand,
     constant: ConstValue,
 

@@ -202,6 +202,11 @@ pub const TypedOperand = struct {
     pub fn equal(self: @This(), other: @This()) bool {
         return self.operand.equal(other.operand);
     }
+
+    /// clone type since it can be heap allocated
+    pub fn clone(self: @This(), alloc: std.mem.Allocator) !@This() {
+        return .{ .operand = self.operand, .type = try self.type.clone(alloc) };
+    }
 };
 
 pub const AllocLine = struct {

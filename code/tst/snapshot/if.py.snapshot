@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 def f() -> None:
     x = 1
@@ -18,7 +18,16 @@ def f() -> None:
 
 f()
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 472
+mov count: 98
+memory load count: 1
+memory store count: 56
+branch count: 23
+call count: 25
+spill count: 0
+
+actual output:
 2
 1
 [!!memory report!!]: allocs=2 frees=2 allocated_bytes=20 freed_bytes=20

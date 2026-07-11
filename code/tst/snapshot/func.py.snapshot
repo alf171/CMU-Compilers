@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 from typing import Callable
 
@@ -16,6 +16,15 @@ f_temp = f
 y = g(f_temp, False)
 print(y)
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 488
+mov count: 102
+memory load count: 1
+memory store count: 53
+branch count: 25
+call count: 24
+spill count: 0
+
+actual output:
 4
 [!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

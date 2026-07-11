@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 x: int = 0
 
@@ -8,7 +8,16 @@ while x < 3:
 
 print(x)
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 443
+mov count: 92
+memory load count: 1
+memory store count: 51
+branch count: 21
+call count: 24
+spill count: 0
+
+actual output:
 1
 2
 3

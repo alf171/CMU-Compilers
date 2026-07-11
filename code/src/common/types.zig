@@ -4,10 +4,8 @@ const std = @import("std");
 // things like range dont know their size at comptime
 pub const TypeInfo = union(enum) {
     void,
-    int: union(enum) {
-        i64,
-        i32,
-    },
+    i64,
+    i32,
     float,
     bool,
     char,
@@ -82,7 +80,17 @@ pub const TypeInfo = union(enum) {
                     .returns = try ownedPointer(try c.returns.*.clone(alloc), alloc),
                 } };
             },
-            .void, .int, .bool, .char, .float => return self,
+            .lazy => |l| {
+                return .{ .lazy = .{
+                    .value = try ownedPointer(try l.value.*.clone(alloc), alloc),
+                } };
+            },
+            .iterable => |i| {
+                return .{ .iterable = .{
+                    .element = try ownedPointer(try i.element.*.clone(alloc), alloc),
+                } };
+            },
+            .void, .i64, .i32, .bool, .char, .float => return self,
             else => |e| {
                 std.debug.print("clone does support {s}\n", .{@tagName(e)});
                 return error.NotImpl;
@@ -92,13 +100,9 @@ pub const TypeInfo = union(enum) {
 
     pub fn sizeOfType(self: @This()) !usize {
         return switch (self) {
+            .i64, .list, .tuple => 8,
+            .i32 => 4,
             .bool, .char => 1,
-            .int => |i| switch (i) {
-                .i64 => 8,
-                .i32 => 4,
-            },
-            .list => 8,
-            .tuple => 8,
             else => error.NotImpl,
         };
     }

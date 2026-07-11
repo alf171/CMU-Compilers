@@ -54,6 +54,13 @@ block0:
   print_int(reg0)
 ```
 - [ ] copy prop here
+```
+  temp23 <- 1
+  *(temp0 + temp22) <- temp23
+:into:
+  *(temp0 + temp22) <- 1
+```
+- [ ] another copy prop chance
 - [ ] rewrite tuple len into a constant op
 
 ### Linker

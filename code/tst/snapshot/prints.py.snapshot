@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 a = "foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz"
 b: i32 = 123
@@ -12,7 +12,16 @@ print(c)
 print(d)
 print(e)
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 945
+mov count: 219
+memory load count: 1
+memory store count: 177
+branch count: 18
+call count: 30
+spill count: 0
+
+actual output:
 foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz
 123
 False

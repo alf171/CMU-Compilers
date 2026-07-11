@@ -10,3 +10,7 @@ print(x * y)
 print(x / y)
 # mod
 print(x % y)
+# left shift
+print(x << 3)
+# right shift
+print(x >> 2)

@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 
 
@@ -7,6 +7,15 @@ def f(a: int, b: int, c: int, d: int, e:int ,f: int, g: int, h: int) -> int:
 
 print(f(1,2,3,4,5,6,7,8))
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 474
+mov count: 108
+memory load count: 1
+memory store count: 49
+branch count: 20
+call count: 24
+spill count: 0
+
+actual output:
 36
 [!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

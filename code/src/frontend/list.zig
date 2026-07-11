@@ -1,6 +1,7 @@
 const std = @import("std");
 const HashMap = std.AutoHashMap;
 const Operand = @import("common").alloc.Operand;
+const ListStore = @import("common").mir.ListStore;
 const ValueRef = @import("common").ir.ValueRef;
 const TypedOperand = @import("common").alloc.TypedOperand;
 const Function = @import("common").ir.Function;
@@ -32,7 +33,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         .value = .{ .i64 = @intCast(byte_count) },
                     } } });
                     const args = try alloc.dupe(TypedOperand, &.{
-                        .{ .operand = size_temp, .type = .{ .int = .i64 } },
+                        .{ .operand = size_temp, .type = .i64 },
                     });
                     try new_instructions.append(alloc, .{ .function_call = .{
                         .dst = ll.dst,
@@ -41,15 +42,16 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     } });
                     // store list size
                     {
-                        const size = function.nextTemp();
+                        const src = function.nextTemp();
                         try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                            .dst = size,
+                            .dst = src,
                             .value = .{ .i64 = @intCast(ll.elements.len) },
                         } } });
                         try new_instructions.append(alloc, .{
-                            .lir = .{ .list_len_set = .{
-                                .list = ll.dst,
-                                .len = size,
+                            .lir = .{ .store_offset = .{
+                                .dst = ll.dst,
+                                .offset = .{ .constant = .{ .i64 = 0 } },
+                                .src = .{ .operand = src, .type = .i64 },
                             } },
                         });
                     }
@@ -73,16 +75,53 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             .dst = index,
                             .value = .{ .i64 = @intCast(i) },
                         } } });
-
-                        try new_instructions.append(alloc, .{
-                            .lir = .{ .list_store = .{
-                                .list = ll.dst,
-                                .index = index,
-                                .src = src,
-                            } },
-                        });
+                        try rewriteListStore(function, .{
+                            .list = ll.dst,
+                            .index = index,
+                            .src = src,
+                        }, &new_instructions, alloc);
                     }
                     instruction.deinit(alloc);
+                },
+                .list_store => |ls| {
+                    try rewriteListStore(function, ls, &new_instructions, alloc);
+                },
+                .list_load => |ll| {
+                    // dst <- list[index]
+                    const scaled: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
+                    const offset: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
+                    const elem_type = try getElementType(ll.list.type);
+                    const elem_size = try elem_type.sizeOfType();
+                    // scaled = index
+                    if (elem_size == 1) {
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                            .dst = scaled,
+                            .src = ll.index,
+                        } } });
+                    }
+                    // scaled = index * element_size
+                    else {
+                        try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
+                            .dst = scaled,
+                            .op = .mul,
+                            .lhs = .{ .operand = .{ .operand = ll.index, .type = .i64 } },
+                            .rhs = .{ .constant = .{ .i64 = @intCast(elem_size) } },
+                        } } });
+                    }
+                    // offset = scaled + 8
+                    try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
+                        .dst = offset,
+                        .op = .add,
+                        .lhs = .{ .operand = scaled },
+                        .rhs = .{ .constant = .{ .i64 = 8 } },
+                    } } });
+                    try new_instructions.append(alloc, .{ .lir = .{
+                        .load_offset = .{
+                            .dst = .{ .operand = ll.dst, .type = elem_type },
+                            .src = ll.list,
+                            .offset = .{ .operand = offset },
+                        },
+                    } });
                 },
                 else => try new_instructions.append(alloc, instruction.*),
             }
@@ -90,4 +129,57 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
         block.instructions.deinit(alloc);
         block.instructions = new_instructions;
     }
+}
+
+fn rewriteListStore(
+    function: *Function,
+    ls: ListStore,
+    new_instructions: *std.ArrayList(Instruction),
+    alloc: std.mem.Allocator,
+) !void {
+    const scaled: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
+    const offset: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
+    const elem_type = try getElementType(ls.list.type);
+    const elem_size = try elem_type.sizeOfType();
+    // scaled = index
+    if (elem_size == 1) {
+        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+            .dst = scaled,
+            .src = ls.index,
+        } } });
+    }
+    // scaled = index * element_size
+    else {
+        try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
+            .dst = scaled,
+            .op = .mul,
+            .lhs = .{ .operand = .{ .operand = ls.index, .type = .i64 } },
+            .rhs = .{ .constant = .{ .i64 = @intCast(elem_size) } },
+        } } });
+    }
+    // offset = scaled + 8
+    try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
+        .dst = offset,
+        .op = .add,
+        .lhs = .{ .operand = scaled },
+        .rhs = .{ .constant = .{ .i64 = 8 } },
+    } } });
+
+    const src = switch (ls.src) {
+        .operand => |top| top,
+        .constant => |c| blk: {
+            const tmp = function.nextTemp();
+            try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
+                .dst = tmp,
+                .value = c,
+            } } });
+            break :blk TypedOperand{ .operand = tmp, .type = elem_type };
+        },
+    };
+
+    try new_instructions.append(alloc, .{ .lir = .{ .store_offset = .{
+        .dst = ls.list,
+        .offset = .{ .operand = offset },
+        .src = src,
+    } } });
 }

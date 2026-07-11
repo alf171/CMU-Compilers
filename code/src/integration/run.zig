@@ -54,19 +54,21 @@ pub fn main(init: std.process.Init) !void {
     var should_optim = false;
     var should_dump_ir = false;
     var should_dump_stats = false;
+    var use_escape_codes = true;
     var target: Target = .ARM;
     for (args[3..]) |arg| {
         if (std.mem.eql(u8, arg, "--run")) should_run = true;
         if (std.mem.eql(u8, arg, "--optim")) should_optim = true;
         if (std.mem.eql(u8, arg, "--dump-ir")) should_dump_ir = true;
         if (std.mem.eql(u8, arg, "--dump-stats")) should_dump_stats = true;
+        if (std.mem.eql(u8, arg, "--omit-escape-codes")) use_escape_codes = false;
         // allow caller to decide their platform
         if (std.mem.eql(u8, arg, "--platform=arm")) target = .ARM;
         if (std.mem.eql(u8, arg, "--platform=x86")) target = .X86;
     }
 
     // walk user program
-    var ir_program = try walkAstWithRuntime(input_file, should_optim, io, alloc);
+    var ir_program = try walkAstWithRuntime(input_file, should_optim, use_escape_codes, io, alloc);
     defer ir_program.deinit(alloc);
 
     // rewrite layer
@@ -88,7 +90,11 @@ pub fn main(init: std.process.Init) !void {
 
     // dump ir after optim pass
     if (should_dump_ir) {
-        std.debug.print("\n{s}post phi elimination:{s}\n", .{ underline_code, reset_code });
+        std.debug.print("\n", .{});
+        if (use_escape_codes) std.debug.print("{s}", .{underline_code});
+        std.debug.print("post phi elimination:", .{});
+        if (use_escape_codes) std.debug.print("{s}", .{reset_code});
+        std.debug.print("\n", .{});
         try ir_program.print();
     }
 
@@ -120,7 +126,11 @@ pub fn main(init: std.process.Init) !void {
 
     // dump colored graph
     if (should_dump_ir) {
-        std.debug.print("\n{s}post register alloc:{s}\n", .{ underline_code, reset_code });
+        std.debug.print("\n", .{});
+        if (use_escape_codes) std.debug.print("{s}", .{underline_code});
+        std.debug.print("post register allocation:", .{});
+        if (use_escape_codes) std.debug.print("{s}", .{reset_code});
+        std.debug.print("\n", .{});
         try ir_program.print();
     }
 
@@ -129,7 +139,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (should_dump_stats) {
         const stats = metrics.get(asm_text, result.spill_rounds);
-        stats.print();
+        stats.print(use_escape_codes);
     }
 
     try file_writer.interface.writeAll(asm_text);
@@ -160,7 +170,12 @@ pub fn main(init: std.process.Init) !void {
         defer alloc.free(run_result.stdout);
         defer alloc.free(run_result.stderr);
 
-        std.debug.print("\n{s}actual output:{s}\n{s}", .{ underline_code, reset_code, run_result.stdout });
+        std.debug.print("\n", .{});
+        if (use_escape_codes) std.debug.print("{s}", .{underline_code});
+        std.debug.print("actual output:", .{});
+        if (use_escape_codes) std.debug.print("{s}", .{reset_code});
+        std.debug.print("\n", .{});
+        std.debug.print("{s}", .{run_result.stdout});
     }
 }
 

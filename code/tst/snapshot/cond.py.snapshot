@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 a: int = 5
 b: int = 10
@@ -6,7 +6,16 @@ print(a < b)
 print(a == b)
 print(a != b)
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 440
+mov count: 91
+memory load count: 1
+memory store count: 51
+branch count: 18
+call count: 25
+spill count: 0
+
+actual output:
 True
 False
 True

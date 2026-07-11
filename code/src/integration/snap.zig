@@ -9,7 +9,7 @@ pub fn run(
     io: std.Io,
 ) !void {
     std.debug.print("running {s}", .{file_name});
-    const result = try runCommand(alloc, io, &.{ compiler_path, file_name, "/tmp/out.s", "--run" });
+    const result = try runCommand(alloc, io, &.{ compiler_path, file_name, "/tmp/out.s", "--run", "--dump-stats", "--omit-escape-codes" });
     defer alloc.free(result.stdout);
     defer alloc.free(result.stderr);
 

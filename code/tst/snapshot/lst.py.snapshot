@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 
 items: list[int] = [1, 2, 3]
@@ -8,7 +8,16 @@ print(items[0])
 print(items[1])
 print(items[2])
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 476
+mov count: 100
+memory load count: 4
+memory store count: 55
+branch count: 18
+call count: 26
+spill count: 0
+
+actual output:
 1
 2
 0

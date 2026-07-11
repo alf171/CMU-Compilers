@@ -21,7 +21,7 @@ pub const Program = struct {
                 .blocks = blocks,
                 .entry_block = 0,
                 .params = try alloc.alloc(Param, 0),
-                .return_type = .{ .int = .i64 },
+                .return_type = .i64,
                 .next_temp = 0,
                 .next_mem = 0,
             },

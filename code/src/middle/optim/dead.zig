@@ -73,7 +73,6 @@ fn hasSideEffects(instruction: Instruction) bool {
                 .jump,
                 .branch,
                 .tuple_store,
-                .list_store,
                 => true,
                 else => false,
             };

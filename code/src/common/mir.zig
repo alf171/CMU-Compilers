@@ -25,6 +25,12 @@ pub const LoopPhi = struct {
     dst: TypedOperand,
 };
 
+pub const ListStore = struct {
+    list: TypedOperand,
+    index: Operand,
+    src: ValueRef,
+};
+
 pub const Instruction = union(enum) {
     print: struct {
         src: TypedOperand,
@@ -73,6 +79,14 @@ pub const Instruction = union(enum) {
         dst: TypedOperand,
         elements: []ValueRef,
     },
+    // dst <- list[index]
+    list_load: struct {
+        dst: Operand,
+        list: TypedOperand,
+        index: Operand,
+    },
+    // list[index] <- src
+    list_store: ListStore,
     // dst <- lazy[index]
     lazy_load: struct {
         dst: TypedOperand,
@@ -173,6 +187,22 @@ pub const Instruction = union(enum) {
                 }
                 debugPrint("]\n", .{});
             },
+            .list_load => |al| {
+                al.dst.print();
+                debugPrint(" <- ", .{});
+                al.list.operand.print();
+                debugPrint("[", .{});
+                al.index.print();
+                debugPrint("]\n", .{});
+            },
+            .list_store => |ls| {
+                ls.list.operand.print();
+                debugPrint("[", .{});
+                ls.index.print();
+                debugPrint("] <- ", .{});
+                ls.src.print();
+                debugPrint("\n", .{});
+            },
             .function_ref => |fr| {
                 fr.dst.operand.print();
                 debugPrint(" <- {s}\n", .{fr.function_name});
@@ -248,6 +278,20 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
+            .list_load => |*ll| {
+                if (ll.list.operand.equal(old)) ll.list.operand = new;
+                if (ll.index.equal(old)) ll.index = new;
+            },
+            .list_store => |*ls| {
+                if (ls.list.operand.equal(old)) ls.list.operand = new;
+                if (ls.index.equal(old)) ls.index = new;
+                switch (ls.src) {
+                    .operand => |*op| {
+                        if (op.operand.equal(old)) op.operand = new;
+                    },
+                    .constant => {},
+                }
+            },
             .function_call => |*fc| {
                 switch (fc.callee) {
                     .direct => {},
@@ -281,6 +325,9 @@ pub const Instruction = union(enum) {
             .list_literal => |*ll| {
                 if (ll.dst.operand.equal(old)) ll.dst.operand = new;
             },
+            .list_load => |*ll| {
+                if (ll.dst.equal(old)) ll.dst = new;
+            },
             .function_param => |*fp| {
                 if (fp.dst.operand.equal(old)) fp.dst.operand = new;
             },
@@ -307,6 +354,8 @@ pub const Instruction = union(enum) {
             .range => |r| .{ .operand = r.dst.operand },
             .len => |l| .{ .operand = l.dst.operand },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
+            .list_load => |ll| .{ .operand = ll.dst },
+            .list_store => null,
             .print => null,
             .function_ref => |fr| .{ .operand = fr.dst.operand },
             .function_param => |fp| .{ .operand = fp.dst.operand },
@@ -347,6 +396,20 @@ pub const Instruction = union(enum) {
                         .operand => |op| try res.append(alloc, .{ .operand = op.operand }),
                         .constant => {},
                     }
+                }
+            },
+            .list_load => |il| {
+                try res.append(alloc, .{ .operand = il.list.operand });
+                try res.append(alloc, .{ .operand = il.index });
+            },
+            .list_store => |ls| {
+                try res.append(alloc, .{ .operand = ls.list.operand });
+                try res.append(alloc, .{ .operand = ls.index });
+                switch (ls.src) {
+                    .operand => |top| {
+                        try res.append(alloc, .{ .operand = top.operand });
+                    },
+                    .constant => {},
                 }
             },
             .function_ref => {},

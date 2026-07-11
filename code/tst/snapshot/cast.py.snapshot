@@ -1,4 +1,4 @@
-[4mrunning program:[0m
+running program:
 
 # cast float -> int
 print(float(0))
@@ -8,7 +8,16 @@ print(int(5.1))
 print(int(-5.9))
 
 
-[4mactual output:[0m
+performance report:
+number of asm lines: 448
+mov count: 90
+memory load count: 1
+memory store count: 49
+branch count: 18
+call count: 26
+spill count: 0
+
+actual output:
 0.00000
 -3.00000
 5

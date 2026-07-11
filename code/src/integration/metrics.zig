@@ -12,9 +12,12 @@ pub const Metrics = struct {
     calls: usize,
     spill_count: usize,
 
-    pub fn print(self: @This()) void {
-        std.debug.print("\n{s}performance report:{s}\n", .{ underline_code, reset_code });
-        std.debug.print("number of asm lines: {d}\n", .{self.line_count});
+    pub fn print(self: @This(), use_escape_codes: bool) void {
+        std.debug.print("\n", .{});
+        if (use_escape_codes) std.debug.print("{s}", .{underline_code});
+        std.debug.print("performance report:", .{});
+        if (use_escape_codes) std.debug.print("{s}", .{reset_code});
+        std.debug.print("\nnumber of asm lines: {d}\n", .{self.line_count});
         std.debug.print("mov count: {d}\n", .{self.mov_count});
         std.debug.print("memory load count: {d}\n", .{self.memory_load_count});
         std.debug.print("memory store count: {d}\n", .{self.memory_store_count});
