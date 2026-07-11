@@ -125,18 +125,6 @@ fn emitFunction(
                 },
                 .lir => |l| {
                     switch (l) {
-                        .constant => |c| {
-                            const dst = try abi.regFor(c.dst, colors, .gp);
-                            switch (c.value) {
-                                .i64 => |i| {
-                                    try out.print(alloc, "\tmovq ${d}, %{s}\n", .{ i, dst });
-                                },
-                                else => |e| {
-                                    std.debug.print("cant handle {s}\n", .{@tagName(e)});
-                                    return error.NotImpl;
-                                },
-                            }
-                        },
                         .move => |m| {
                             switch (m.src) {
                                 .constant => |c| {

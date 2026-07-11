@@ -156,9 +156,9 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
                 std.debug.assert(elt != null);
                 if (getExprKind(elt) != .Name) return error.UnsupportedTarget;
                 const index = irBuilder.nextTemp();
-                try irBuilder.emit(.{ .lir = .{ .constant = .{
-                    .dst = index,
-                    .value = .{ .i64 = @intCast(i) },
+                try irBuilder.emit(.{ .lir = .{ .move = .{
+                    .dst = .{ .operand = index, .type = .i64 },
+                    .src = .{ .constant = .{ .i64 = @intCast(i) } },
                 } } }, alloc);
 
                 const elem_dst = irBuilder.nextTemp();
@@ -267,17 +267,26 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             if (std.mem.eql(u8, value_type, "int")) {
                 const value = ConstValue{ .i64 = c.PyLong_AsLong(value_obj) };
                 const dst = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{ .dst = dst, .value = value } } }, alloc);
+                try irBuilder.emit(Instruction{ .lir = .{ .move = .{
+                    .dst = .{ .operand = dst, .type = .i64 },
+                    .src = .{ .constant = value },
+                } } }, alloc);
                 return TypedOperand{ .operand = dst, .type = .i64 };
             } else if (std.mem.eql(u8, value_type, "float")) {
-                const value = ConstValue{ .float = c.PyFloat_AsDouble(value_obj) };
+                const value: ConstValue = .{ .float = c.PyFloat_AsDouble(value_obj) };
                 const dst = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{ .dst = dst, .value = value } } }, alloc);
+                try irBuilder.emit(Instruction{ .lir = .{ .move = .{
+                    .dst = .{ .operand = dst, .type = .float },
+                    .src = .{ .constant = value },
+                } } }, alloc);
                 return TypedOperand{ .operand = dst, .type = .float };
             } else if (std.mem.eql(u8, value_type, "bool")) {
-                const value = ConstValue{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
+                const value: ConstValue = .{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
                 const dst = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{ .dst = dst, .value = value } } }, alloc);
+                try irBuilder.emit(Instruction{ .lir = .{ .move = .{
+                    .dst = .{ .operand = dst, .type = .bool },
+                    .src = .{ .constant = value },
+                } } }, alloc);
                 return TypedOperand{ .operand = dst, .type = .bool };
             } else if (std.mem.eql(u8, value_type, "str")) {
                 const raw = c.PyUnicode_AsUTF8(value_obj);
@@ -551,10 +560,10 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                         switch (buf.type) {
                             .list => {
                                 // gross but we need to increment past the book keeping size value
-                                const eight = irBuilder.nextTemp();
-                                try irBuilder.emit(.{ .lir = .{ .constant = .{
+                                const eight: TypedOperand = .{ .operand = irBuilder.nextTemp(), .type = .i64 };
+                                try irBuilder.emit(.{ .lir = .{ .move = .{
                                     .dst = eight,
-                                    .value = .{ .i64 = 8 },
+                                    .src = .{ .constant = .{ .i64 = 8 } },
                                 } } }, alloc);
                                 const data = irBuilder.nextTemp();
                                 // need ptr type?
@@ -562,7 +571,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                                     .dst = .{ .operand = data, .type = .ptr },
                                     .lhs = .{ .top = buf },
                                     .op = .add,
-                                    .rhs = .{ .top = .{ .operand = eight, .type = .i64 } },
+                                    .rhs = .{ .top = eight },
                                 } } }, alloc);
                                 try irBuilder.emit(.{
                                     .function_call = .{
@@ -609,9 +618,9 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                         const bounds = switch (c.PyList_Size(args)) {
                             1 => blk: {
                                 const start = irBuilder.nextTemp();
-                                try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
-                                    .dst = start,
-                                    .value = .{ .i64 = 0 },
+                                try irBuilder.emit(Instruction{ .lir = .{ .move = .{
+                                    .dst = .{ .operand = start, .type = .i64 },
+                                    .src = .{ .constant = .{ .i64 = 0 } },
                                 } } }, alloc);
 
                                 const endItem = c.PyList_GetItem(args, 0);
@@ -939,9 +948,9 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
     std.debug.assert(expr.type.isIterable());
 
     const index0 = irBuilder.nextTemp();
-    try irBuilder.emit(Instruction{ .lir = .{ .constant = .{
-        .dst = index0,
-        .value = .{ .i64 = 0 },
+    try irBuilder.emit(Instruction{ .lir = .{ .move = .{
+        .dst = .{ .operand = index0, .type = .i64 },
+        .src = .{ .constant = .{ .i64 = 0 } },
     } } }, alloc);
 
     const callback = struct {
@@ -1007,9 +1016,9 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
             try walkStmtList(body_.stmt_list, irBuilder_, alloc_);
             // index += 1
             const one = irBuilder_.nextTemp();
-            try irBuilder_.emit(Instruction{ .lir = .{ .constant = .{
-                .dst = one,
-                .value = .{ .i64 = 1 },
+            try irBuilder_.emit(Instruction{ .lir = .{ .move = .{
+                .dst = .{ .operand = one, .type = .i64 },
+                .src = .{ .constant = .{ .i64 = 1 } },
             } } }, alloc_);
 
             const index_next: TypedOperand = .{ .operand = irBuilder_.nextTemp(), .type = .i64 };
@@ -1425,9 +1434,9 @@ test "while loop" {
     const exit = program.main.blocks.items[3].instructions.items;
 
     try std.testing.expectEqualDeep(
-        Instruction{ .lir = .{ .constant = .{
-            .dst = .{ .temp = .{ .id = 0, .function_id = 0 } },
-            .value = .{ .i64 = 0 },
+        Instruction{ .lir = .{ .move = .{
+            .dst = .{ .operand = .{ .temp = .{ .id = 0, .function_id = 0 } }, .type = .i64 },
+            .src = .{ .constant = .{ .i64 = 0 } },
         } } },
         entry[0],
     );

@@ -28,9 +28,9 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     const elem_type = try getElementType(ll.dst.type);
                     const byte_count = 8 + ll.elements.len * try elem_type.sizeOfType();
                     const size_temp = function.nextTemp();
-                    try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                        .dst = size_temp,
-                        .value = .{ .i64 = @intCast(byte_count) },
+                    try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                        .dst = .{ .operand = size_temp, .type = .i64 },
+                        .src = .{ .constant = .{ .i64 = @intCast(byte_count) } },
                     } } });
                     const args = try alloc.dupe(TypedOperand, &.{
                         .{ .operand = size_temp, .type = .i64 },
@@ -43,9 +43,9 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     // store list size
                     {
                         const src = function.nextTemp();
-                        try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                            .dst = src,
-                            .value = .{ .i64 = @intCast(ll.elements.len) },
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                            .dst = .{ .operand = src, .type = .i64 },
+                            .src = .{ .constant = .{ .i64 = @intCast(ll.elements.len) } },
                         } } });
                         try new_instructions.append(alloc, .{
                             .lir = .{ .store_offset = .{
@@ -71,9 +71,9 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             },
                         };
                         const index = function.nextTemp();
-                        try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                            .dst = index,
-                            .value = .{ .i64 = @intCast(i) },
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                            .dst = .{ .operand = index, .type = .i64 },
+                            .src = .{ .constant = .{ .i64 = @intCast(i) } },
                         } } });
                         try rewriteListStore(function, .{
                             .list = ll.dst,
@@ -172,9 +172,9 @@ fn rewriteListStore(
         .top => |top| top,
         .constant => |c| blk: {
             const tmp = function.nextTemp();
-            try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                .dst = tmp,
-                .value = c,
+            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                .dst = .{ .operand = tmp, .type = c.toType() },
+                .src = .{ .constant = c },
             } } });
             break :blk TypedOperand{ .operand = tmp, .type = elem_type };
         },

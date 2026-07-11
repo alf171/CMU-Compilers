@@ -111,12 +111,12 @@ test "basic block elim" {
     // t1 = t0
     try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
         .dst = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any },
-        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
+        .src = .{ .top = .{ .operand = .{ .temp = .{ .id = 0, .function_id = 0 } }, .type = .any } },
     } } });
     // t2 = t0
     try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
         .dst = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any },
-        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
+        .src = .{ .top = .{ .operand = .{ .temp = .{ .id = 0, .function_id = 0 } }, .type = .any } },
     } } });
     // print(t0)
     try instructions.append(alloc, Instruction{ .print = .{ .src = .{

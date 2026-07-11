@@ -14,7 +14,7 @@ print(e)
 
 performance report:
 number of asm lines: 874
-mov count: 198
+mov count: 343
 memory load count: 1
 memory store count: 157
 branch count: 18

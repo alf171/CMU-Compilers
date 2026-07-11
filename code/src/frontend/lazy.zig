@@ -102,9 +102,15 @@ test "range behaves lazily" {
     defer program.deinit(alloc);
     const block0 = &program.main.blocks.items[0];
     const start = program.main.nextTemp();
-    try block0.instructions.append(alloc, .{ .lir = .{ .constant = .{ .dst = start, .value = .{ .i64 = 3 } } } });
+    try block0.instructions.append(alloc, .{ .lir = .{ .move = .{
+        .dst = .{ .operand = start, .type = .i64 },
+        .src = .{ .constant = .{ .i64 = 3 } },
+    } } });
     const end = program.main.nextTemp();
-    try block0.instructions.append(alloc, .{ .lir = .{ .constant = .{ .dst = end, .value = .{ .i64 = 5 } } } });
+    try block0.instructions.append(alloc, .{ .lir = .{ .move = .{
+        .dst = .{ .operand = end, .type = .i64 },
+        .src = .{ .constant = .{ .i64 = 5 } },
+    } } });
 
     // we are hardcoding what walk.zig currently passes through here
     const range: TypedOperand = .{
@@ -129,7 +135,10 @@ test "range behaves lazily" {
     });
     const i = program.main.nextTemp();
     const index = program.main.nextTemp();
-    try block0.instructions.append(alloc, .{ .lir = .{ .constant = .{ .dst = index, .value = .{ .i64 = 1 } } } });
+    try block0.instructions.append(alloc, .{ .lir = .{ .move = .{
+        .dst = .{ .operand = index, .type = .i64 },
+        .src = .{ .constant = .{ .i64 = 1 } },
+    } } });
     try block0.instructions.append(alloc, .{
         .lazy_load = .{
             .dst = .{ .operand = i, .type = .any },
@@ -141,16 +150,19 @@ test "range behaves lazily" {
     const rewritten = &program.main.blocks.items[0];
     try std.testing.expectEqual(5, rewritten.instructions.items.len);
     // start <- 3
-    try std.testing.expect(rewritten.instructions.items[0].lir == .constant);
+    try std.testing.expect(rewritten.instructions.items[0].lir == .move);
+    try std.testing.expect(rewritten.instructions.items[0].lir.move.src == .constant);
     // end <- 5
-    try std.testing.expect(rewritten.instructions.items[1].lir == .constant);
+    try std.testing.expect(rewritten.instructions.items[1].lir == .move);
+    try std.testing.expect(rewritten.instructions.items[1].lir.move.src == .constant);
     // n <- sub end, start
     try std.testing.expect(rewritten.instructions.items[2] == .lir);
     try std.testing.expect(rewritten.instructions.items[2].lir == .binop);
     try std.testing.expectEqual(.sub, rewritten.instructions.items[2].lir.binop.op);
     // index <- 1
     try std.testing.expect(rewritten.instructions.items[3] == .lir);
-    try std.testing.expect(rewritten.instructions.items[3].lir == .constant);
+    try std.testing.expect(rewritten.instructions.items[3].lir == .move);
+    try std.testing.expect(rewritten.instructions.items[3].lir.move.src == .constant);
     // x <- add start, index
     try std.testing.expect(rewritten.instructions.items[4] == .lir);
     try std.testing.expect(rewritten.instructions.items[4].lir == .binop);

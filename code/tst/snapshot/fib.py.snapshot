@@ -12,7 +12,7 @@ print(fib(35))
 
 performance report:
 number of asm lines: 414
-mov count: 79
+mov count: 104
 memory load count: 1
 memory store count: 34
 branch count: 28

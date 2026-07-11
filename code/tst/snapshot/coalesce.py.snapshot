@@ -3,7 +3,7 @@ running program: (OPTIM=true)
 
 performance report:
 number of asm lines: 362
-mov count: 70
+mov count: 95
 memory load count: 1
 memory store count: 34
 branch count: 18

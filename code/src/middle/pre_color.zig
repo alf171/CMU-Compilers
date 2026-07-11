@@ -87,7 +87,7 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                     } });
                     // jumps to function
                     try new_instructions.append(alloc, .{ .function_call = .{
-                        .dst = fc.dst,
+                        .dst = null,
                         .callee = fc.callee,
                         .args = args,
                     } });

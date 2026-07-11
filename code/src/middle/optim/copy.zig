@@ -37,30 +37,28 @@ pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
                 .lir => |lir| switch (lir) {
                     .move => |mov| {
                         if (mov.dst.operand == .temp) {
-                            const dst = mov.dst;
                             switch (mov.src) {
+                                .constant => |c| {
+                                    try copyMap.put(mov.dst.operand, .{ .constant = c });
+                                },
                                 .top => |mov_src| {
                                     const src = try resolve(.{ .top = mov_src }, &copyMap);
                                     switch (src) {
-                                        .constant => try copyMap.put(dst.operand, src),
+                                        .constant => try copyMap.put(mov.dst.operand, src),
                                         .top => |top| {
                                             switch (top.operand) {
                                                 .reg => {},
                                                 else => {
-                                                    if (!dst.operand.equal(top.operand)) {
-                                                        try copyMap.put(dst.operand, src);
+                                                    if (!mov.dst.operand.equal(top.operand)) {
+                                                        try copyMap.put(mov.dst.operand, src);
                                                     }
                                                 },
                                             }
                                         },
                                     }
                                 },
-                                else => {},
                             }
                         }
-                    },
-                    .constant => |c| {
-                        try copyMap.put(c.dst, .{ .constant = c.value });
                     },
                     else => {},
                 },
@@ -182,12 +180,12 @@ test "basic block copy prop" {
     // t1 = t0
     try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
         .dst = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any },
-        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
+        .src = .{ .top = .{ .operand = .{ .temp = .{ .id = 0, .function_id = 0 } }, .type = .any } },
     } } });
     // t2 = t1
     try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
         .dst = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any },
-        .src = .{ .temp = .{ .id = 1, .function_id = 0 } },
+        .src = .{ .top = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any } },
     } } });
     // print(t2)
     try instructions.append(alloc, Instruction{ .print = .{ .src = .{
@@ -202,12 +200,16 @@ test "basic block copy prop" {
     // t1 = t0
     try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .lir = .{ .move = .{
         .dst = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any },
-        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
+        .src = .{ .top = .{ .operand = .{
+            .temp = .{ .id = 0, .function_id = 0 },
+        }, .type = .any } },
     } } });
     // t2 = t0
     try std.testing.expectEqualDeep(new_instructions[1], Instruction{ .lir = .{ .move = .{
         .dst = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any },
-        .src = .{ .temp = .{ .id = 0, .function_id = 0 } },
+        .src = .{ .top = .{ .operand = .{
+            .temp = .{ .id = 0, .function_id = 0 },
+        }, .type = .any } },
     } } });
     // print(t0)
     try std.testing.expectEqualDeep(new_instructions[2], Instruction{ .print = .{
@@ -218,39 +220,52 @@ test "basic block copy prop" {
     } });
 }
 
-test "function param regs getting folded" {
+test "constant arg setup gets folded into abi reg" {
     const alloc = std.testing.allocator;
 
     var program = try Program.init(alloc);
     defer program.deinit(alloc);
     var instructions = &program.main.blocks.items[0].instructions;
 
-    // TODO: t0 = 5
+    // t0 = 5
     // r0 = t0
+    // foobar(r0)
     const t0: Operand = .{ .temp = .{ .id = 1, .function_id = 0 } };
     const r0: Operand = .{ .reg = .{ .id = 0, .class = .gp } };
     try instructions.append(alloc, .{ .lir = .{ .move = .{
-        .dst = .{ .operand = t0, .type = .any },
-        .src = r0,
+        .dst = .{ .operand = t0, .type = .i64 },
+        .src = .{ .constant = .{ .i64 = 5 } },
     } } });
-    // foobar(t0)
+    try instructions.append(alloc, .{ .lir = .{ .move = .{
+        .dst = .{ .operand = r0, .type = .i64 },
+        .src = .{ .top = .{ .operand = t0, .type = .i64 } },
+    } } });
     try instructions.append(alloc, .{
         .function_call = .{
             .dst = null,
             .callee = .{ .direct = "foobar" },
             .args = try alloc.dupe(TypedOperand, &[_]TypedOperand{.{
-                .operand = t0,
-                .type = .any,
+                .operand = r0,
+                .type = .i64,
             }}),
         },
     });
     try run(&program, alloc);
     const new_instructions = program.main.blocks.items[0].instructions.items;
-    try std.testing.expectEqual(2, new_instructions.len);
+    try std.testing.expectEqual(3, new_instructions.len);
     try std.testing.expectEqualDeep(Instruction{
-        .lir = .{ .move = .{ .dst = .{ .operand = t0, .type = .any }, .src = r0 } },
+        .lir = .{ .move = .{
+            .dst = .{ .operand = t0, .type = .i64 },
+            .src = .{ .constant = .{ .i64 = 5 } },
+        } },
     }, new_instructions[0]);
-    const call = new_instructions[1].function_call;
+    try std.testing.expectEqualDeep(Instruction{
+        .lir = .{ .move = .{
+            .dst = .{ .operand = r0, .type = .i64 },
+            .src = .{ .constant = .{ .i64 = 5 } },
+        } },
+    }, new_instructions[1]);
+    const call = new_instructions[2].function_call;
     try std.testing.expectEqual(@as(usize, 1), call.args.len);
     try std.testing.expectEqualDeep(r0, call.args[0].operand);
 }

@@ -58,35 +58,11 @@ fn emitFunction(
             switch (instruction) {
                 .lir => |l| {
                     switch (l) {
-                        .constant => |c| {
-                            switch (c.value) {
-                                .i64, .i32 => |value| {
-                                    const dst = try abi.regFor(c.dst, colors, .gp);
-                                    try emitMov(out, dst, value, alloc);
-                                },
-                                .bool => |value| {
-                                    const dst = try abi.regFor(c.dst, colors, .gp);
-                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, @intFromBool(value) });
-                                },
-                                .char => |value| {
-                                    const dst = try abi.regFor(c.dst, colors, .gp);
-                                    try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, value });
-                                },
-                                .float => |value| {
-                                    const dst = try abi.regFor(c.dst, colors, .f);
-                                    const bits: u64 = @bitCast(value);
-                                    const scratch_reg = try abi.scratchReg(0, .gp);
-                                    try emitMovUnsigned(out, scratch_reg, bits, alloc);
-                                    try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, scratch_reg });
-                                },
-                            }
-                        },
                         // str: src, dst (register -> memory)
                         .store_local => |sl| {
                             const src = try abi.regFor(sl.src, colors, .gp);
                             try emitStackStore(out, src, localOffset(sl.local.id), try abi.scratchReg(0, .gp), alloc);
                         },
-                        // str
                         .store_offset => |so| {
                             const dst = try abi.regFor(so.dst.operand, colors, .gp);
                             const src = try abi.regFor(so.src.operand, colors, .gp);
@@ -104,7 +80,6 @@ fn emitFunction(
                                 },
                             }
                         },
-                        // ldr
                         .load_offset => |lo| {
                             const dst = try abi.regFor(lo.dst.operand, colors, .gp);
                             const src = try abi.regFor(lo.src.operand, colors, .gp);
@@ -172,23 +147,19 @@ fn emitFunction(
                                                         else => try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src }),
                                                     }
                                                 },
+                                                // reg <- temp
+                                                .reg => |reg| {
+                                                    switch (reg.class) {
+                                                        .f => try out.print(alloc, "\tfmov ", .{}),
+                                                        .gp => try out.print(alloc, "\tmov ", .{}),
+                                                    }
+                                                    const src = try abi.regForFromIndex(reg.id, reg.class);
+                                                    try out.print(alloc, "{s}, {s}\n", .{ dst, src });
+                                                },
                                                 // temp <- mem
                                                 .mem => |slot| {
                                                     const offset = spillOffset(local_stack_size, slot.id);
                                                     try emitStackLoad(out, dst, offset, try abi.scratchReg(0, .gp), alloc);
-                                                },
-                                                // reg <- temp
-                                                .reg => |reg| {
-                                                    switch (reg.class) {
-                                                        .f => {
-                                                            const src = try abi.regForFromIndex(reg.id, .f);
-                                                            try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, src });
-                                                        },
-                                                        .gp => {
-                                                            const src = try abi.regForFromIndex(reg.id, .gp);
-                                                            try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
-                                                        },
-                                                    }
                                                 },
                                                 .unknown => return error.UnexpectedState,
                                             }
@@ -211,14 +182,13 @@ fn emitFunction(
                                             switch (src_top.operand) {
                                                 // reg <- temp
                                                 .temp => {
+                                                    const dst = try abi.regFor(m.dst.operand, colors, reg.class);
                                                     const src = try abi.regFor(src_top.operand, colors, reg.class);
                                                     switch (reg.class) {
                                                         .f => {
-                                                            const dst = try abi.regForFromIndex(reg.id, .f);
                                                             try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, src });
                                                         },
                                                         .gp => {
-                                                            const dst = try abi.regForFromIndex(reg.id, .gp);
                                                             try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                                                         },
                                                     }

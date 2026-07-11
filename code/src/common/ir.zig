@@ -77,6 +77,16 @@ pub const ConstValue = union(enum) {
             .bool, .char => 1,
         };
     }
+
+    pub fn toType(self: @This()) TypeInfo {
+        return switch (self) {
+            .i64 => .i64,
+            .i32 => .i32,
+            .bool => .bool,
+            .float => .float,
+            .char => .char,
+        };
+    }
 };
 
 pub const ValueRef = union(enum) {

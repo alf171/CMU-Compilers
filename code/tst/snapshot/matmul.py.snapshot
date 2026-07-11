@@ -28,7 +28,7 @@ matmul(
 
 performance report:
 number of asm lines: 1136
-mov count: 310
+mov count: 335
 memory load count: 14
 memory store count: 143
 branch count: 29

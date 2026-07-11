@@ -154,11 +154,16 @@ test "cycle" {
         try std.testing.expectEqual(.lir, std.meta.activeTag(instruction));
         switch (instruction.lir) {
             .move => |m| {
-                if (originally_defined.contains(m.src) and seen_defined_operands.contains(m.src)) {
-                    std.debug.print("using {} again", .{m.src.temp});
-                    return error.ValueUsedTwice;
+                switch (m.src) {
+                    .top => |top| {
+                        if (originally_defined.contains(top.operand) and seen_defined_operands.contains(top.operand)) {
+                            std.debug.print("using {} again", .{top.operand.temp});
+                            return error.ValueUsedTwice;
+                        }
+                        try seen_defined_operands.put(m.dst.operand, {});
+                    },
+                    .constant => {},
                 }
-                try seen_defined_operands.put(m.dst.operand, {});
             },
             else => return error.UnexpectedInstruction,
         }

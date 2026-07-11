@@ -10,7 +10,7 @@ print(int(-5.9))
 
 performance report:
 number of asm lines: 388
-mov count: 72
+mov count: 97
 memory load count: 1
 memory store count: 34
 branch count: 18

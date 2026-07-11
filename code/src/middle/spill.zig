@@ -267,7 +267,7 @@ test "spill reg function" {
     try std.testing.expectEqual(3, new_instructions.len);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .move = .{
         .dst = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any },
-        .src = .{ .mem = .{ .id = 0, .function_id = 0 } },
+        .src = .{ .top = .{ .operand = .{ .mem = .{ .id = 0, .function_id = 0 } }, .type = .any } },
     } } }, new_instructions[0]);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .binop = .{
         .dst = .{ .operand = .{ .temp = .{ .id = 3, .function_id = 0 } }, .type = .any },
@@ -277,6 +277,6 @@ test "spill reg function" {
     } } }, new_instructions[1]);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .move = .{
         .dst = .{ .operand = .{ .mem = .{ .id = 0, .function_id = 0 } }, .type = .any },
-        .src = .{ .temp = .{ .id = 3, .function_id = 0 } },
+        .src = .{ .top = .{ .operand = .{ .temp = .{ .id = 3, .function_id = 0 } }, .type = .any } },
     } } }, new_instructions[2]);
 }

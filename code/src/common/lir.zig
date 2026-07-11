@@ -22,10 +22,6 @@ pub const Instruction = union(enum) {
         dst: Operand,
         local: LocalInfo,
     },
-    constant: struct {
-        dst: Operand,
-        value: ConstValue,
-    },
     binop: struct {
         dst: TypedOperand,
         op: BinOp,
@@ -84,23 +80,6 @@ pub const Instruction = union(enum) {
 
     pub fn printFn(self: @This()) !void {
         switch (self) {
-            .constant => |c| {
-                c.dst.print();
-                switch (c.value) {
-                    .i64, .i32 => |value| {
-                        debugPrint(" <- {d}\n", .{value});
-                    },
-                    .bool => |value| {
-                        debugPrint(" <- {any}\n", .{value});
-                    },
-                    .char => |value| {
-                        debugPrint(" <- {any}\n", .{value});
-                    },
-                    .float => |f| {
-                        debugPrint(" <- {d}\n", .{f});
-                    },
-                }
-            },
             .binop => |binop| {
                 binop.dst.operand.print();
                 debugPrint(" <- {s} ", .{@tagName(binop.op)});
@@ -238,7 +217,6 @@ pub const Instruction = union(enum) {
                 if (c.lhs.operand.equal(old)) c.lhs.operand = new;
                 if (c.rhs.operand.equal(old)) c.rhs.operand = new;
             },
-            .constant => {},
             .select => |*s| {
                 if (s.condition.equal(old)) s.condition = new;
                 switch (s.if_value) {
@@ -276,9 +254,6 @@ pub const Instruction = union(enum) {
             .compare => |*c| {
                 if (c.dst.operand.equal(old)) c.dst.operand = new;
             },
-            .constant => |*c| {
-                if (c.dst.equal(old)) c.dst = new;
-            },
             .load_offset => |*lo| {
                 if (lo.dst.operand.equal(old)) lo.dst.operand = new;
             },
@@ -297,7 +272,6 @@ pub const Instruction = union(enum) {
         return switch (instruction) {
             .store_local => |sl| .{ .local = sl.local.id },
             .load_local => |ll| .{ .operand = ll.dst },
-            .constant => |c| .{ .operand = c.dst },
             .binop => |bop| .{ .operand = bop.dst.operand },
             .move => |m| .{ .operand = m.dst.operand },
             .unaryop => |uop| .{ .operand = uop.dst.operand },
@@ -392,7 +366,6 @@ pub const Instruction = union(enum) {
                     else => {},
                 }
             },
-            .constant => {},
             .jump => {},
             .cast => |c| {
                 try res.append(alloc, .{ .operand = c.src.operand });

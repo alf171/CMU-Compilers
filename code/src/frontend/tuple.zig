@@ -26,9 +26,9 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                 .len => |l| {
                     if (l.value.type == .tuple) {
                         const tuple = l.value.type.tuple;
-                        try new_instructions.append(alloc, .{ .lir = .{ .constant = .{
-                            .dst = l.dst.operand,
-                            .value = .{ .i64 = @intCast(tuple.elements.len) },
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                            .dst = l.dst,
+                            .src = .{ .constant = .{ .i64 = @intCast(tuple.elements.len) } },
                         } } });
                     } else {
                         try new_instructions.append(alloc, instruction.*);
