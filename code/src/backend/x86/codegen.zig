@@ -64,6 +64,9 @@ fn emitFunction(
                         else => return error.NotImpl,
                     }
                 },
+                .function_return => {
+                    try out.print(alloc, "\tjmp {s}_epilogue\n", .{function.name});
+                },
                 .len => |l| {
                     const dst = try abi.regFor(l.dst.operand, colors, .gp);
                     const src = try abi.regFor(l.value.operand, colors, .gp);
@@ -153,6 +156,11 @@ fn emitFunction(
                                                     const src = try abi.regForFromIndex(reg.id, .gp);
                                                     try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
                                                 },
+                                                .mem => |mem| {
+                                                    const dst = try abi.regFor(m.dst, colors);
+                                                    const offset = spillOffset(local_stack_size, mem.id);
+                                                    try out.print(alloc, "\tmovq -{d}(%rbp), %{s}\n", .{ offset, dst });
+                                                },
                                                 else => |e| {
                                                     std.debug.print("cant handle {s}\n", .{@tagName(e)});
                                                     return error.NotImpl;
@@ -172,6 +180,19 @@ fn emitFunction(
                                                 },
                                             }
                                         },
+                                        .mem => |mem| {
+                                            switch (m.src) {
+                                                .temp => {
+                                                    const src = try abi.regFor(m.src, colors);
+                                                    const offset = spillOffset(local_stack_size, mem.id);
+                                                    try out.print(alloc, "\tmovq %{s}, -{d}(%rbp)\n", .{ src, offset });
+                                                },
+                                                else => |e| {
+                                                    std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                                    return error.NotImpl;
+                                                },
+                                            }
+                                        },
                                         else => |e| {
                                             std.debug.print("cant handle {s}\n", .{@tagName(e)});
                                             return error.NotImpl;
@@ -183,23 +204,55 @@ fn emitFunction(
                         .binop => |bop| {
                             const dst = try abi.regFor(bop.dst.operand, colors, .gp);
                             const lhs = try valueToReg(bop.lhs, out, ScratchReg, colors, abi, alloc);
-                            if (!std.mem.eql(u8, dst, lhs)) {
-                                try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
-                            }
 
-                            const rhs = if (valueAsImm(bop.rhs)) |imm| try std.fmt.allocPrint(alloc, "${d}", .{imm}) else blk: {
+                            const rhs_reg = if (valueAsImm(bop.rhs)) |imm| try std.fmt.allocPrint(alloc, "${d}", .{imm}) else blk: {
                                 const reg = try abi.regFor(bop.rhs.top.operand, colors, .gp);
                                 break :blk try std.fmt.allocPrint(alloc, "%{s}", .{reg});
                             };
                             switch (bop.op) {
                                 .add => {
-                                    try out.print(alloc, "\taddq {s}, %{s}\n", .{ rhs, dst });
+                                    if (!std.mem.eql(u8, dst, lhs)) {
+                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
+                                    }
+                                    try out.print(alloc, "\taddq {s}, %{s}\n", .{ rhs_reg, dst });
+                                },
+                                .sub => {
+                                    if (!std.mem.eql(u8, dst, lhs)) {
+                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
+                                    }
+                                    try out.print(alloc, "\tsubq {s}, %{s}\n", .{ rhs_reg, dst });
+                                },
+                                .mul => {
+                                    const rhs = try abi.regFor(bop.rhs.operand.operand, colors);
+                                    if (bop.rhs == .operand) {
+                                        if (std.mem.eql(u8, dst, lhs)) {
+                                            try out.print(alloc, "\timulq {s}, %{s}\n", .{ rhs_reg, dst });
+                                        } else if (std.mem.eql(u8, dst, rhs)) {
+                                            try out.print(alloc, "\timulq %{s}, %{s}\n", .{ lhs, dst });
+                                        } else {
+                                            try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
+                                            try out.print(alloc, "\timulq %{s}, %{s}\n", .{ rhs_reg, dst });
+                                        }
+                                    } else {
+                                        if (std.mem.eql(u8, dst, lhs)) {
+                                            try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
+                                            try out.print(alloc, "\timulq %{s}, %{s}\n", .{ rhs, dst });
+                                        } else {
+                                            try out.print(alloc, "\timulq %{s}, %{s}\n", .{ rhs, dst });
+                                        }
+                                    }
                                 },
                                 .div => {
+                                    if (!std.mem.eql(u8, dst, lhs)) {
+                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
+                                    }
                                     // FIXME: this is wrong
                                     try out.print(alloc, "\tmovq $0, %{s}\n", .{dst});
                                 },
                                 .mod => {
+                                    if (!std.mem.eql(u8, dst, lhs)) {
+                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
+                                    }
                                     // FIXME: this is wrong
                                     try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
                                 },
