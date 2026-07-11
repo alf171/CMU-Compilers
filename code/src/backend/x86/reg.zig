@@ -13,7 +13,7 @@ const gp_function_param_regs = [_][]const u8{ "rdi", "rsi", "rdx", "rcx", "r8", 
 const gp_callee_save_regs = [_][]const u8{ "rbx", "r12", "r13", "r14", "r15" };
 
 /// general purpose caller save registers
-const gp_caller_save_regs = [_][]const u8{ "rax", "r10", "r11" };
+const gp_caller_save_regs = [_][]const u8{"rax"};
 
 const fp_scratch_reg = "xmm14";
 const fp_scratch_reg_2 = "xmm15";

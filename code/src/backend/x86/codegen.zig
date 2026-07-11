@@ -222,7 +222,14 @@ fn emitFunction(
                                 .top => |top| {
                                     std.debug.assert(top.type == .i64);
                                     const offset = try abi.regFor(top.operand, colors, .gp);
-                                    try out.print(alloc, "\tmovq %{s}, (%{s},%{s})\n", .{ src, dst, offset });
+                                    switch (so.src.type) {
+                                        .i32 => {
+                                            try out.print(alloc, "\tmovl %{s}, (%{s},%{s})\n", .{ reg32(src), dst, offset });
+                                        },
+                                        else => {
+                                            try out.print(alloc, "\tmovq %{s}, (%{s},%{s})\n", .{ src, dst, offset });
+                                        },
+                                    }
                                 },
                             }
                         },
@@ -235,8 +242,14 @@ fn emitFunction(
 
                             switch (bop.op) {
                                 .add => {
-                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
-                                    try out.print(alloc, "\taddq %{s}, %{s}\n", .{ rhs, dst });
+                                    if (std.mem.eql(u8, dst, rhs)) {
+                                        try out.print(alloc, "\taddq %{s}, %{s}\n", .{ lhs, dst });
+                                    } else if (!std.mem.eql(u8, dst, lhs)) {
+                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
+                                        try out.print(alloc, "\taddq %{s}, %{s}\n", .{ rhs, dst });
+                                    } else {
+                                        try out.print(alloc, "\taddq %{s}, %{s}\n", .{ rhs, dst });
+                                    }
                                 },
                                 .sub => {
                                     if (!std.mem.eql(u8, dst, lhs)) {
@@ -278,18 +291,20 @@ fn emitFunction(
                                     }
                                 },
                                 .div => {
-                                    if (!std.mem.eql(u8, dst, lhs)) {
-                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
-                                    }
-                                    // FIXME: this is wrong
-                                    try out.print(alloc, "\tmovq $0, %{s}\n", .{dst});
+                                    // HACK: hardcode %rax due to x86 req
+                                    try out.print(alloc, "\tmovq %{s}, %rax\n", .{lhs});
+                                    try out.print(alloc, "\tcqto\n", .{});
+                                    try out.print(alloc, "\tidivq %{s}\n", .{rhs});
+                                    // x86 magic :)
+                                    try out.print(alloc, "\tmovq %rax, %{s}\n", .{dst});
                                 },
                                 .mod => {
-                                    if (!std.mem.eql(u8, dst, lhs)) {
-                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
-                                    }
-                                    // FIXME: this is wrong
-                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
+                                    // HACK: hardcode %rax due to x86 req
+                                    try out.print(alloc, "\tmovq %{s}, %rax\n", .{lhs});
+                                    try out.print(alloc, "\tcqto\n", .{});
+                                    try out.print(alloc, "\tidivq %{s}\n", .{rhs});
+                                    // x86 magic :)
+                                    try out.print(alloc, "\tmovq %rdx, %{s}\n", .{dst});
                                 },
                                 else => |e| {
                                     std.debug.print("cant handle {s}\n", .{@tagName(e)});
@@ -302,9 +317,8 @@ fn emitFunction(
                             const lhs = try abi.regFor(c.lhs.operand, colors, .gp);
                             const rhs = try abi.regFor(c.rhs.operand, colors, .gp);
                             try out.print(alloc, "\tcmpq %{s}, %{s}\n", .{ rhs, lhs });
-                            // HACK: use lower 8 bits of %rax
-                            try out.print(alloc, "\t{s} %al\n", .{condForCmp(c.op)});
-                            try out.print(alloc, "\tmovzbq %al, %{s}\n", .{dst});
+                            try out.print(alloc, "\t{s} %r10b\n", .{condForCmp(c.op)});
+                            try out.print(alloc, "\tmovzbq %r10b, %{s}\n", .{dst});
                         },
                         .jump => |j| {
                             try out.print(alloc, "\tjmp {s}_L{d}\n", .{ function.name, j.target });
@@ -370,6 +384,32 @@ fn emitFunction(
                                     else => return error.UnsupportedCast,
                                 },
                                 else => return error.UnsupportedCast,
+                            }
+                        },
+                        .load_offset => |lo| {
+                            const dst = try abi.regFor(lo.dst.operand, colors, .gp);
+                            const src = try abi.regFor(lo.src.operand, colors, .gp);
+                            switch (lo.offset) {
+                                .constant => |c| switch (c) {
+                                    .i64 => |offset| {
+                                        try out.print(alloc, "\tmovq {d}(%{s}), %{s}\n", .{ offset, src, dst });
+                                    },
+                                    else => return error.NotImpl,
+                                },
+                                .top => |top| {
+                                    const offset = try abi.regFor(top.operand, colors, .gp);
+                                    switch (lo.dst.type) {
+                                        .float => {
+                                            try out.print(alloc, "\tmovsd (%{s},%{s}), %{s}\n", .{ offset, src, dst });
+                                        },
+                                        .i32 => {
+                                            try out.print(alloc, "\tmovslq (%{s},%{s}), %{s}\n", .{ offset, src, dst });
+                                        },
+                                        else => {
+                                            try out.print(alloc, "\tmovq (%{s},%{s}), %{s}\n", .{ offset, src, dst });
+                                        },
+                                    }
+                                },
                             }
                         },
                         else => |e| {
@@ -614,6 +654,22 @@ pub fn valueToReg(
             }
         },
     }
+}
+
+fn reg32(reg: []const u8) []const u8 {
+    if (std.mem.eql(u8, reg, "rsi")) return "esi";
+    if (std.mem.eql(u8, reg, "rdi")) return "edi";
+    if (std.mem.eql(u8, reg, "rdx")) return "edx";
+    if (std.mem.eql(u8, reg, "rcx")) return "ecx";
+    if (std.mem.eql(u8, reg, "rax")) return "eax";
+    if (std.mem.eql(u8, reg, "rbx")) return "ebx";
+    if (std.mem.eql(u8, reg, "r8")) return "r8d";
+    if (std.mem.eql(u8, reg, "r9")) return "r9d";
+    if (std.mem.eql(u8, reg, "r12")) return "r12d";
+    if (std.mem.eql(u8, reg, "r13")) return "r13d";
+    if (std.mem.eql(u8, reg, "r14")) return "r14d";
+    if (std.mem.eql(u8, reg, "r15")) return "r15d";
+    unreachable;
 }
 
 test "testing" {}

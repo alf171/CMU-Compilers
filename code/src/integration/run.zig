@@ -186,7 +186,11 @@ pub fn runCommand(alloc: std.mem.Allocator, io: std.Io, argv: []const []const u8
         .stderr_limit = .limited(1 << 20),
     });
     if (result.term != .exited or result.term.exited != 0) {
-        std.debug.print("command failed : {s}\nstderr:\n{s}\n", .{ argv[0], result.stderr });
+        std.debug.print(
+            "command failed: {s}\nterm: {any}\nstdout:\n{s}\nstderr:\n{s}\n",
+            .{ argv[0], result.term, result.stdout, result.stderr },
+        );
+
         alloc.free(result.stdout);
         alloc.free(result.stderr);
         return error.CommandFailed;

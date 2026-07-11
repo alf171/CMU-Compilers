@@ -170,6 +170,7 @@ pub const Instruction = union(enum) {
                 if (sl.src.equal(old)) sl.src = new;
             },
             .store_offset => |*so| {
+                if (so.dst.operand.equal(old)) so.dst.operand = new;
                 if (so.src.operand.equal(old)) so.src.operand = new;
                 switch (so.offset) {
                     .top => |*top| {
