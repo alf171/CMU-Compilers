@@ -36,18 +36,27 @@ pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
                 },
                 .lir => |lir| switch (lir) {
                     .move => |mov| {
-                        const dst = mov.dst;
-                        const src = try resolve(.{ .operand = .{
-                            .operand = mov.src,
-                            .type = .any,
-                        } }, &copyMap);
-                        switch (src) {
-                            .constant => try copyMap.put(dst.operand, src),
-                            .operand => |op| {
-                                if (!dst.operand.equal(op.operand)) {
-                                    try copyMap.put(dst.operand, src);
-                                }
-                            },
+                        if (mov.dst.operand == .temp) {
+                            const dst = mov.dst;
+                            switch (mov.src) {
+                                .top => |mov_src| {
+                                    const src = try resolve(.{ .top = mov_src }, &copyMap);
+                                    switch (src) {
+                                        .constant => try copyMap.put(dst.operand, src),
+                                        .top => |top| {
+                                            switch (top.operand) {
+                                                .reg => {},
+                                                else => {
+                                                    if (!dst.operand.equal(top.operand)) {
+                                                        try copyMap.put(dst.operand, src);
+                                                    }
+                                                },
+                                            }
+                                        },
+                                    }
+                                },
+                                else => {},
+                            }
                         }
                     },
                     .constant => |c| {
@@ -74,7 +83,7 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
                     c.rhs.operand = try resolveOperand(c.rhs.operand, copyMap);
                 },
                 .move => |*m| {
-                    m.src = try resolveOperand(m.src, copyMap);
+                    m.src = try resolve(m.src, copyMap);
                 },
                 .unaryop => |*uo| {
                     uo.src = try resolveOperand(uo.src, copyMap);
@@ -84,23 +93,6 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
                 },
                 .store_local => |*sl| {
                     sl.src = try resolveOperand(sl.src, copyMap);
-                },
-                .tuple_literal => |*tl| {
-                    for (tl.elements) |*elem| {
-                        switch (elem.*) {
-                            .operand => |*op| op.*.operand = try resolveOperand(op.*.operand, copyMap),
-                            .constant => {},
-                        }
-                    }
-                },
-                .tuple_load => |*tl| {
-                    tl.tuple.operand = try resolveOperand(tl.tuple.operand, copyMap);
-                    tl.index = try resolveOperand(tl.index, copyMap);
-                },
-                .tuple_store => |*ts| {
-                    ts.tuple.operand = try resolveOperand(ts.tuple.operand, copyMap);
-                    ts.index = try resolveOperand(ts.index, copyMap);
-                    ts.src = try resolveOperand(ts.src, copyMap);
                 },
                 .select => |*s| {
                     s.condition = try resolveOperand(s.condition, copyMap);
@@ -113,6 +105,23 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
         .print => |*pi| {
             pi.src.operand = try resolveOperand(pi.src.operand, copyMap);
         },
+        .tuple_literal => |*tl| {
+            for (tl.elements) |*elem| {
+                switch (elem.*) {
+                    .top => |*top| top.*.operand = try resolveOperand(top.*.operand, copyMap),
+                    .constant => {},
+                }
+            }
+        },
+        .tuple_load => |*tl| {
+            tl.tuple.operand = try resolveOperand(tl.tuple.operand, copyMap);
+            tl.index = try resolveOperand(tl.index, copyMap);
+        },
+        .tuple_store => |*ts| {
+            ts.tuple.operand = try resolveOperand(ts.tuple.operand, copyMap);
+            ts.index = try resolveOperand(ts.index, copyMap);
+            ts.src = try resolveOperand(ts.src, copyMap);
+        },
         .list_load => |*ll| {
             ll.list.operand = try resolveOperand(ll.list.operand, copyMap);
             ll.index = try resolveOperand(ll.index, copyMap);
@@ -120,7 +129,7 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
         .list_literal => |*ll| {
             for (ll.elements) |*elem| {
                 switch (elem.*) {
-                    .operand => |*op| op.*.operand = try resolveOperand(op.*.operand, copyMap),
+                    .top => |*top| top.*.operand = try resolveOperand(top.*.operand, copyMap),
                     .constant => {},
                 }
             }
@@ -128,9 +137,7 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
         .function_call => |*fc| {
             switch (fc.callee) {
                 .direct => {},
-                .indirect => |*ind| {
-                    ind.*.operand = try resolveOperand(ind.*.operand, copyMap);
-                },
+                .indirect => {},
             }
             for (fc.args) |*arg| {
                 arg.*.operand = try resolveOperand(arg.*.operand, copyMap);
@@ -145,7 +152,7 @@ fn resolveOperand(op: Operand, copyMap: *HashMap(Operand, ValueRef)) !Operand {
     var cur = op;
     while (copyMap.get(cur)) |next| {
         switch (next) {
-            .operand => |cur_op| cur = cur_op.operand,
+            .top => |top| cur = top.operand,
             .constant => return op,
         }
     }
@@ -156,9 +163,9 @@ fn resolve(init: ValueRef, copyMap: *HashMap(Operand, ValueRef)) !ValueRef {
     if (init == .constant) return init;
 
     var cur: ValueRef = init;
-    while (copyMap.get(cur.operand.operand)) |next| {
+    while (copyMap.get(cur.top.operand)) |next| {
         switch (next) {
-            .operand => |cur_op| cur = .{ .operand = cur_op },
+            .top => |top| cur = .{ .top = top },
             .constant => |cur_const| return .{ .constant = cur_const },
         }
     }

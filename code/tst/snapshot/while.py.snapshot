@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 x: int = 0
 
@@ -9,10 +9,10 @@ while x < 3:
 print(x)
 
 performance report:
-number of asm lines: 443
-mov count: 92
+number of asm lines: 376
+mov count: 72
 memory load count: 1
-memory store count: 51
+memory store count: 34
 branch count: 21
 call count: 24
 spill count: 0

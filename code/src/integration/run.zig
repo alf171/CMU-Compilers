@@ -79,14 +79,14 @@ pub fn main(init: std.process.Init) !void {
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
 
+    const platform = try getPlatform(target);
+    try precolor.apply(&ir_program, platform.abi, alloc);
+    try parallel_copies.lower(&ir_program, alloc);
+
     // run optimization passses
     if (should_optim) {
         try copy.run(&ir_program, alloc);
     }
-
-    const platform = try getPlatform(target);
-    try precolor.apply(&ir_program, platform.abi, alloc);
-    try parallel_copies.lower(&ir_program, alloc);
 
     // dump ir after optim pass
     if (should_dump_ir) {

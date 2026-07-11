@@ -22,6 +22,8 @@ pub const TypeInfo = union(enum) {
     lazy: struct {
         value: *const TypeInfo,
     },
+    // struct currently not needed
+    ptr,
     // model a function in type system
     callable: struct {
         params: []const TypeInfo,
@@ -64,6 +66,9 @@ pub const TypeInfo = union(enum) {
 
     pub fn clone(self: @This(), alloc: std.mem.Allocator) !@This() {
         switch (self) {
+            .tuple => |t| {
+                return .{ .tuple = .{ .elements = t.elements } };
+            },
             .list => |l| {
                 return .{ .list = .{
                     .element = try ownedPointer(try l.element.*.clone(alloc), alloc),
@@ -100,10 +105,13 @@ pub const TypeInfo = union(enum) {
 
     pub fn sizeOfType(self: @This()) !usize {
         return switch (self) {
-            .i64, .list, .tuple => 8,
+            .i64, .list, .tuple, .ptr => 8,
             .i32 => 4,
             .bool, .char => 1,
-            else => error.NotImpl,
+            else => |e| {
+                std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                return error.NotImpl;
+            },
         };
     }
 

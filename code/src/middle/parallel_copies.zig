@@ -46,26 +46,28 @@ fn lowerFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             } };
                             try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                                 .dst = .{ .operand = temp, .type = .any },
-                                .src = copy.dst.operand,
+                                .src = .{ .top = copy.dst },
                             } } });
                             try used.put(copy.dst.operand, temp);
                             function.next_temp += 1;
                             // emit the original instruction too
                             const src = if (used.get(copy.src)) |entry| entry orelse copy.src else copy.src;
-                            try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
+                            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                                 .dst = copy.dst,
-                                .src = src,
+                                .src = .{ .top = .{ .operand = src, .type = copy.dst.type } },
                             } } });
                         } else if (used.get(copy.src)) |entry| {
                             const temp = entry orelse copy.src;
-                            try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
+                            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                                 .dst = copy.dst,
-                                .src = temp,
+                                .src = .{ .top = .{ .operand = temp, .type = copy.dst.type } },
                             } } });
                         } else {
-                            try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
+                            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                                 .dst = copy.dst,
-                                .src = copy.src,
+                                .src = .{
+                                    .top = .{ .operand = copy.src, .type = copy.dst.type },
+                                },
                             } } });
                         }
                     }

@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 # (M, N) @ (N, K) => (M, K)
 M: list[list[i32]] = [[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12, 13, 14, 15], [16, 17, 18, 19, 20], [21, 22, 23, 24, 25]]
@@ -27,10 +27,10 @@ matmul(
 )
 
 performance report:
-number of asm lines: 1265
-mov count: 279
+number of asm lines: 1136
+mov count: 310
 memory load count: 14
-memory store count: 166
+memory store count: 143
 branch count: 29
 call count: 46
 spill count: 0

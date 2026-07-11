@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 a: int = 5
 b: int = 10
@@ -7,10 +7,10 @@ print(a == b)
 print(a != b)
 
 performance report:
-number of asm lines: 440
-mov count: 91
+number of asm lines: 376
+mov count: 73
 memory load count: 1
-memory store count: 51
+memory store count: 34
 branch count: 18
 call count: 25
 spill count: 0

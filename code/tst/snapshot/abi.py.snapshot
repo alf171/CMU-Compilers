@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 
 
@@ -8,10 +8,10 @@ def f(a: int, b: int, c: int, d: int, e:int ,f: int, g: int, h: int) -> int:
 print(f(1,2,3,4,5,6,7,8))
 
 performance report:
-number of asm lines: 474
-mov count: 108
+number of asm lines: 406
+mov count: 82
 memory load count: 1
-memory store count: 49
+memory store count: 34
 branch count: 20
 call count: 24
 spill count: 0

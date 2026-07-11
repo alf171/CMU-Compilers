@@ -117,6 +117,9 @@ pub const Abi = struct {
                 const reg_id = node.register orelse return error.MissingColor;
                 return try regForFromIndex(self, reg_id, reg_type);
             },
+            .reg => |reg| {
+                return try regForFromIndex(self, reg.id, reg.class);
+            },
             else => return error.UnsupportedOperand,
         }
     }

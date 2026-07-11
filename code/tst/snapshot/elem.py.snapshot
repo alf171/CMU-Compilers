@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 x: int = 2
 y: int = 3
@@ -7,10 +7,10 @@ z: int = x + y
 print(z)
 
 performance report:
-number of asm lines: 432
-mov count: 89
+number of asm lines: 366
+mov count: 72
 memory load count: 1
-memory store count: 52
+memory store count: 34
 branch count: 18
 call count: 23
 spill count: 0

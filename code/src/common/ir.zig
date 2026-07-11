@@ -80,13 +80,12 @@ pub const ConstValue = union(enum) {
 };
 
 pub const ValueRef = union(enum) {
-    /// TODO: rename to top
-    operand: TypedOperand,
+    top: TypedOperand,
     constant: ConstValue,
 
     pub fn print(self: @This()) void {
         switch (self) {
-            .operand => |op| op.operand.print(),
+            .top => |top| top.operand.print(),
             .constant => |c| c.print(),
         }
     }

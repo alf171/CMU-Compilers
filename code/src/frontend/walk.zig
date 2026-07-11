@@ -131,17 +131,17 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
 
             switch (container.type) {
                 .tuple => {
-                    try irBuilder.emit(Instruction{ .lir = .{ .tuple_store = .{
+                    try irBuilder.emit(Instruction{ .tuple_store = .{
                         .tuple = container,
                         .index = slice.operand,
                         .src = rhs_value.operand,
-                    } } }, alloc);
+                    } }, alloc);
                 },
                 .list => {
                     try irBuilder.emit(Instruction{ .list_store = .{
                         .list = container,
                         .index = slice.operand,
-                        .src = .{ .operand = rhs_value },
+                        .src = .{ .top = rhs_value },
                     } }, alloc);
                 },
                 else => return error.UnexpectedType,
@@ -162,11 +162,11 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
                 } } }, alloc);
 
                 const elem_dst = irBuilder.nextTemp();
-                try irBuilder.emit(.{ .lir = .{ .tuple_load = .{
+                try irBuilder.emit(.{ .tuple_load = .{
                     .dst = elem_dst,
                     .tuple = rhs_value,
                     .index = index,
-                } } }, alloc);
+                } }, alloc);
 
                 const id_obj = c.PyObject_GetAttrString(elt, "id");
                 std.debug.assert(id_obj != null);
@@ -242,8 +242,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             const instruction = Instruction{ .lir = .{ .binop = .{
                 .dst = .{ .operand = dst, .type = lhs.type },
                 .op = op,
-                .lhs = .{ .operand = lhs },
-                .rhs = .{ .operand = rhs },
+                .lhs = .{ .top = lhs },
+                .rhs = .{ .top = rhs },
             } } };
             try irBuilder.emit(instruction, alloc);
             return TypedOperand{ .operand = dst, .type = lhs.type };
@@ -349,7 +349,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                     },
                     else => {
                         const expr = try walkExpr(elem, irBuilder, expected_elem_type, alloc);
-                        try result.append(alloc, .{ .operand = expr });
+                        try result.append(alloc, .{ .top = expr });
                         // HACK: do this elsewhere
                         if (i == 0) elem_type = expr.type;
                     },
@@ -384,7 +384,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 std.debug.assert(elem_obj != null);
                 const elem_op = try walkExpr(elem_obj, irBuilder, null, alloc);
                 elements[i] = ValueRef{
-                    .operand = elem_op,
+                    .top = elem_op,
                 };
                 element_types[i] = try elem_op.type.clone(alloc);
             }
@@ -395,11 +395,9 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 .type = .{ .tuple = .{ .elements = element_types } },
             };
             try irBuilder.emit(.{
-                .lir = .{
-                    .tuple_literal = .{
-                        .dst = typed_dst,
-                        .elements = elements,
-                    },
+                .tuple_literal = .{
+                    .dst = typed_dst,
+                    .elements = elements,
                 },
             }, alloc);
             return typed_dst;
@@ -431,11 +429,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 },
                 .tuple => {
                     const dst = irBuilder.nextTemp();
-                    try irBuilder.emit(Instruction{ .lir = .{ .tuple_load = .{
+                    try irBuilder.emit(.{ .tuple_load = .{
                         .dst = dst,
                         .tuple = value,
                         .index = index.operand,
-                    } } }, alloc);
+                    } }, alloc);
                     // any isnt right here but there's some complexity here since at comptime we dont know our type due to the homogenuous types not being ensured
                     return TypedOperand{
                         .operand = dst,
@@ -559,11 +557,12 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                                     .value = .{ .i64 = 8 },
                                 } } }, alloc);
                                 const data = irBuilder.nextTemp();
+                                // need ptr type?
                                 try irBuilder.emit(.{ .lir = .{ .binop = .{
-                                    .dst = .{ .operand = data, .type = .any },
-                                    .lhs = .{ .operand = buf },
+                                    .dst = .{ .operand = data, .type = .ptr },
+                                    .lhs = .{ .top = buf },
                                     .op = .add,
-                                    .rhs = .{ .operand = .{ .operand = eight, .type = .i64 } },
+                                    .rhs = .{ .top = .{ .operand = eight, .type = .i64 } },
                                 } } }, alloc);
                                 try irBuilder.emit(.{
                                     .function_call = .{
@@ -655,11 +654,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                             .operand = irBuilder.nextTemp(),
                             .type = .i64,
                         };
-                        try irBuilder.emit(Instruction{ .cast = .{
+                        try irBuilder.emit(.{ .lir = .{ .cast = .{
                             .dst = dst.operand,
                             .dst_target_type = .i64,
                             .src = value,
-                        } }, alloc);
+                        } } }, alloc);
                         return dst;
                     },
                     .Float => {
@@ -671,11 +670,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                             .operand = irBuilder.nextTemp(),
                             .type = .float,
                         };
-                        try irBuilder.emit(Instruction{ .cast = .{
+                        try irBuilder.emit(.{ .lir = .{ .cast = .{
                             .dst = dst.operand,
                             .dst_target_type = .float,
                             .src = value,
-                        } }, alloc);
+                        } } }, alloc);
                         return dst;
                     },
                 }
@@ -755,8 +754,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             try irBuilder.emit(.{ .lir = .{ .select = .{
                 .dst = dst,
                 .condition = condition.operand,
-                .if_value = .{ .operand = if_value },
-                .else_value = .{ .operand = else_value },
+                .if_value = .{ .top = if_value },
+                .else_value = .{ .top = else_value },
             } } }, alloc);
 
             return .{
@@ -960,11 +959,11 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 body_.iterator;
             switch (iterable.type) {
                 .tuple => {
-                    try irBuilder_.emit(.{ .lir = .{ .tuple_load = .{
+                    try irBuilder_.emit(.{ .tuple_load = .{
                         .dst = value,
                         .tuple = iterable,
                         .index = index.operand,
-                    } } }, alloc_);
+                    } }, alloc_);
                 },
                 .list => {
                     try irBuilder_.emit(.{ .list_load = .{
@@ -974,15 +973,15 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                     } }, alloc_);
                 },
                 .iterable => {
-                    try irBuilder_.emit(.{ .lir = .{ .tuple_load = .{
+                    try irBuilder_.emit(.{ .tuple_load = .{
                         .dst = value,
                         .tuple = iterable,
                         .index = index.operand,
-                    } } }, alloc_);
+                    } }, alloc_);
                 },
                 .lazy => {
                     try irBuilder_.emit(.{ .lazy_load = .{
-                        .dst = .{ .operand = value, .type = .any },
+                        .dst = .{ .operand = value, .type = .ptr },
                         .lazy = try iterable.clone(alloc_),
                         .index = index.operand,
                     } }, alloc_);
@@ -1016,9 +1015,9 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
             const index_next: TypedOperand = .{ .operand = irBuilder_.nextTemp(), .type = .i64 };
             try irBuilder_.emit(Instruction{ .lir = .{ .binop = .{
                 .dst = index_next,
-                .lhs = .{ .operand = index },
+                .lhs = .{ .top = index },
                 .op = .add,
-                .rhs = .{ .operand = .{ .operand = one, .type = .i64 } },
+                .rhs = .{ .top = .{ .operand = one, .type = .i64 } },
             } } }, alloc_);
             carries[0].next = index_next;
         }

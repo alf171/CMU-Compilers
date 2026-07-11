@@ -57,7 +57,8 @@ fn appendBlocks(
                         .store_local => |sl| {
                             try locals.put(sl.local.id, sl.src);
                         },
-                        .load_local, .move => line.move = true,
+                        .move => |m| line.move = m.src == .top,
+                        .load_local => line.move = true,
                         else => {},
                     }
                 },

@@ -54,7 +54,7 @@ fn spillRegInFunction(
                             }
                             try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                                 .dst = .{ .operand = t1, .type = .any },
-                                .src = spill_slot.?,
+                                .src = .{ .top = .{ .operand = spill_slot.?, .type = .any } },
                             } } });
                             try instruction.replaceUses(spilled, t1);
                             continue;
@@ -74,7 +74,7 @@ fn spillRegInFunction(
                         }
                         try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
                             .dst = .{ .operand = spill_slot.?, .type = .any },
-                            .src = t2,
+                            .src = .{ .top = .{ .operand = t2, .type = .any } },
                         } } });
                         continue;
                     }
@@ -229,9 +229,9 @@ test "spill reg function" {
     const B = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
     try instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
         .dst = .{ .operand = A, .type = .any },
-        .lhs = .{ .operand = .{ .operand = A, .type = .any } },
+        .lhs = .{ .top = .{ .operand = A, .type = .any } },
         .op = .add,
-        .rhs = .{ .operand = .{ .operand = B, .type = .any } },
+        .rhs = .{ .top = .{ .operand = B, .type = .any } },
     } } });
     try blocks.append(alloc, BasicBlock{
         .id = 0,
@@ -271,9 +271,9 @@ test "spill reg function" {
     } } }, new_instructions[0]);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .binop = .{
         .dst = .{ .operand = .{ .temp = .{ .id = 3, .function_id = 0 } }, .type = .any },
-        .lhs = .{ .operand = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any } },
+        .lhs = .{ .top = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any } },
         .op = .add,
-        .rhs = .{ .operand = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any } },
+        .rhs = .{ .top = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any } },
     } } }, new_instructions[1]);
     try std.testing.expectEqualDeep(Instruction{ .lir = .{ .move = .{
         .dst = .{ .operand = .{ .mem = .{ .id = 0, .function_id = 0 } }, .type = .any },

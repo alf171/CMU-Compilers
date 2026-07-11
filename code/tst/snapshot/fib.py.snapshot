@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 def fib(n: int) -> int:
     if (n == 0):
@@ -11,10 +11,10 @@ def fib(n: int) -> int:
 print(fib(35))
 
 performance report:
-number of asm lines: 479
-mov count: 100
+number of asm lines: 414
+mov count: 79
 memory load count: 1
-memory store count: 49
+memory store count: 34
 branch count: 28
 call count: 26
 spill count: 0

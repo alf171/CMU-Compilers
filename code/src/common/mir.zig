@@ -87,16 +87,29 @@ pub const Instruction = union(enum) {
     },
     // list[index] <- src
     list_store: ListStore,
+    // stack based fixed size array
+    tuple_literal: struct {
+        dst: TypedOperand,
+        elements: []ValueRef,
+    },
+    // dst <- array[index]
+    tuple_load: struct {
+        dst: Operand,
+        tuple: TypedOperand,
+        index: Operand,
+    },
+    // TODO: remove since tuples are immutable
+    // array[index] <- src
+    tuple_store: struct {
+        tuple: TypedOperand,
+        index: Operand,
+        src: Operand,
+    },
     // dst <- lazy[index]
     lazy_load: struct {
         dst: TypedOperand,
         lazy: TypedOperand,
         index: Operand,
-    },
-    cast: struct {
-        dst: Operand,
-        dst_target_type: TypeInfo,
-        src: TypedOperand,
     },
     // deglate to LIR impl
     lir: LirInstruction,
@@ -117,6 +130,10 @@ pub const Instruction = union(enum) {
             },
             .function_call => |fc| {
                 alloc.free(fc.args);
+            },
+            .tuple_literal => |tl| {
+                tl.dst.type.deinit(alloc);
+                alloc.free(tl.elements);
             },
             .list_literal => |ll| {
                 ll.dst.type.deinit(alloc);
@@ -176,6 +193,31 @@ pub const Instruction = union(enum) {
                     if (i != 0) debugPrint(", ", .{});
                     copy.src.print();
                 }
+                debugPrint(")\n", .{});
+            },
+            .tuple_literal => |tl| {
+                tl.dst.operand.print();
+                debugPrint(" <- [", .{});
+                for (tl.elements, 0..) |elem, i| {
+                    if (i != 0) debugPrint(", ", .{});
+                    elem.print();
+                }
+                debugPrint("]\n", .{});
+            },
+            .tuple_store => |ts| {
+                ts.tuple.operand.print();
+                debugPrint("(", .{});
+                ts.index.print();
+                debugPrint(") <- ", .{});
+                ts.src.print();
+                debugPrint("\n", .{});
+            },
+            .tuple_load => |tl| {
+                tl.dst.print();
+                debugPrint(" <- ", .{});
+                tl.tuple.operand.print();
+                debugPrint("(", .{});
+                tl.index.print();
                 debugPrint(")\n", .{});
             },
             .list_literal => |al| {
@@ -244,12 +286,6 @@ pub const Instruction = union(enum) {
                 ll.index.print();
                 debugPrint("]\n", .{});
             },
-            .cast => |c| {
-                c.dst.print();
-                debugPrint(" <- ({s})", .{@tagName(c.dst_target_type)});
-                c.src.operand.print();
-                debugPrint("\n", .{});
-            },
             // delegate to lir
             .lir => |l| try l.printFn(),
             else => |term| {
@@ -268,11 +304,30 @@ pub const Instruction = union(enum) {
             .len => |*l| {
                 if (l.value.operand.equal(old)) l.value.operand = new;
             },
+            .tuple_load => |*tl| {
+                if (tl.tuple.operand.equal(old)) tl.tuple.operand = new;
+                if (tl.index.equal(old)) tl.index = new;
+            },
+            .tuple_literal => |*tl| {
+                for (tl.elements) |*elem| {
+                    switch (elem.*) {
+                        .top => |*top| {
+                            if (top.operand.equal(old)) top.*.operand = new;
+                        },
+                        .constant => {},
+                    }
+                }
+            },
+            .tuple_store => |*ts| {
+                if (ts.tuple.operand.equal(old)) ts.tuple.operand = new;
+                if (ts.index.equal(old)) ts.index = new;
+                if (ts.src.equal(old)) ts.src = new;
+            },
             .list_literal => |*ll| {
                 for (ll.elements) |*elem| {
                     switch (elem.*) {
-                        .operand => |*op| {
-                            if (op.operand.equal(old)) op.*.operand = new;
+                        .top => |*top| {
+                            if (top.operand.equal(old)) top.*.operand = new;
                         },
                         .constant => {},
                     }
@@ -286,8 +341,8 @@ pub const Instruction = union(enum) {
                 if (ls.list.operand.equal(old)) ls.list.operand = new;
                 if (ls.index.equal(old)) ls.index = new;
                 switch (ls.src) {
-                    .operand => |*op| {
-                        if (op.operand.equal(old)) op.operand = new;
+                    .top => |*top| {
+                        if (top.operand.equal(old)) top.operand = new;
                     },
                     .constant => {},
                 }
@@ -322,6 +377,12 @@ pub const Instruction = union(enum) {
             .len => |*l| {
                 if (l.dst.operand.equal(old)) l.dst.operand = new;
             },
+            .tuple_load => |*tl| {
+                if (tl.dst.equal(old)) tl.dst = new;
+            },
+            .tuple_literal => |*tl| {
+                if (tl.dst.operand.equal(old)) tl.dst.operand = new;
+            },
             .list_literal => |*ll| {
                 if (ll.dst.operand.equal(old)) ll.dst.operand = new;
             },
@@ -353,6 +414,8 @@ pub const Instruction = union(enum) {
             .phi => |pi| .{ .operand = pi.dst.operand },
             .range => |r| .{ .operand = r.dst.operand },
             .len => |l| .{ .operand = l.dst.operand },
+            .tuple_literal => |tl| .{ .operand = tl.dst.operand },
+            .tuple_load => |tl| .{ .operand = tl.dst },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
             .list_load => |ll| .{ .operand = ll.dst },
             .list_store => null,
@@ -361,7 +424,6 @@ pub const Instruction = union(enum) {
             .function_param => |fp| .{ .operand = fp.dst.operand },
             .function_call => |fc| if (fc.dst) |op| .{ .operand = op.operand } else null,
             .function_return => null,
-            .cast => |c| .{ .operand = c.dst },
             .lir => |l| try l.getDefines(),
             else => |e| {
                 debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});
@@ -390,10 +452,27 @@ pub const Instruction = union(enum) {
             .len => |l| {
                 try res.append(alloc, .{ .operand = l.value.operand });
             },
+            .tuple_literal => |tl| {
+                for (tl.elements) |elem| {
+                    switch (elem) {
+                        .top => |top| try res.append(alloc, .{ .operand = top.operand }),
+                        .constant => {},
+                    }
+                }
+            },
+            .tuple_load => |tl| {
+                try res.append(alloc, .{ .operand = tl.tuple.operand });
+                try res.append(alloc, .{ .operand = tl.index });
+            },
+            .tuple_store => |ts| {
+                try res.append(alloc, .{ .operand = ts.tuple.operand });
+                try res.append(alloc, .{ .operand = ts.index });
+                try res.append(alloc, .{ .operand = ts.src });
+            },
             .list_literal => |ll| {
                 for (ll.elements) |elem| {
                     switch (elem) {
-                        .operand => |op| try res.append(alloc, .{ .operand = op.operand }),
+                        .top => |top| try res.append(alloc, .{ .operand = top.operand }),
                         .constant => {},
                     }
                 }
@@ -406,7 +485,7 @@ pub const Instruction = union(enum) {
                 try res.append(alloc, .{ .operand = ls.list.operand });
                 try res.append(alloc, .{ .operand = ls.index });
                 switch (ls.src) {
-                    .operand => |top| {
+                    .top => |top| {
                         try res.append(alloc, .{ .operand = top.operand });
                     },
                     .constant => {},
@@ -429,9 +508,6 @@ pub const Instruction = union(enum) {
                 if (fc.value) |op| {
                     try res.append(alloc, .{ .operand = op });
                 }
-            },
-            .cast => |c| {
-                try res.append(alloc, .{ .operand = c.src.operand });
             },
             .lir => |l| {
                 var seen = try l.getUses(alloc);

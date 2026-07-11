@@ -16,6 +16,7 @@ pub fn apply(ir_program: *IrProgram, abi: Abi, alloc: std.mem.Allocator) !void {
     }
 }
 
+// FIXME: bad ownership
 pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !void {
     for (function.blocks.items) |*block| {
         var new_instructions = std.ArrayList(Instruction).empty;
@@ -25,13 +26,15 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
             switch (instruction.*) {
                 .function_param => |fp| {
                     const id = try abi.getIndexForType(fp.index, fp.dst.type);
-                    try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                        .dst = fp.dst,
-                        .src = .{ .reg = .{
-                            .id = id,
-                            .class = abi.regFromType(fp.dst.type),
-                        } },
-                    } } });
+                    try new_instructions.append(alloc, .{ .lir = .{ .move = .{ .dst = fp.dst, .src = .{ .top = .{
+                        .operand = .{
+                            .reg = .{
+                                .id = id,
+                                .class = abi.regFromType(fp.dst.type),
+                            },
+                        },
+                        .type = fp.dst.type,
+                    } } } } });
                     instruction.deinit(alloc);
                 },
                 .function_return => |fr| {
@@ -40,13 +43,15 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                             .id = 0,
                             .class = abi.regFromType(function.return_type),
                         } };
-                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                            .dst = .{
-                                .operand = reg,
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{ .dst = .{
+                            .operand = reg,
+                            .type = function.return_type,
+                        }, .src = .{
+                            .top = .{
+                                .operand = src_op,
                                 .type = function.return_type,
                             },
-                            .src = src_op,
-                        } } });
+                        } } } });
                         // emits branch with proper coloring
                         try new_instructions.append(alloc, .{ .function_return = .{ .value = reg } });
                         instruction.deinit(alloc);
@@ -66,7 +71,10 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                             .class = abi.regFromType(arg.type),
                         } };
                         copies[i] = .{
-                            .dst = .{ .operand = reg, .type = arg.type },
+                            .dst = .{
+                                .operand = reg,
+                                .type = arg.type,
+                            },
                             .src = arg.operand,
                         };
                         args[i] = .{
@@ -84,13 +92,18 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                         .args = args,
                     } });
                     if (fc.dst) |dst| {
-                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                            .dst = dst,
-                            .src = Operand{ .reg = .{
-                                .id = abi.getFunctionReturnIdx(dst.type),
-                                .class = abi.regFromType(dst.type),
-                            } },
-                        } } });
+                        try new_instructions.append(alloc, .{ .lir = .{
+                            .move = .{
+                                .dst = dst,
+                                .src = .{ .top = .{
+                                    .operand = .{ .reg = .{
+                                        .id = abi.getFunctionReturnIdx(dst.type),
+                                        .class = abi.regFromType(dst.type),
+                                    } },
+                                    .type = dst.type,
+                                } },
+                            },
+                        } });
                     }
                     instruction.deinit(alloc);
                 },

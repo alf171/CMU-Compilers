@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 x = range(3, 5)
 print(len(x))
@@ -7,10 +7,10 @@ y = (1, 2, 3, 4)
 print(len(y))
 
 performance report:
-number of asm lines: 443
-mov count: 90
+number of asm lines: 368
+mov count: 72
 memory load count: 1
-memory store count: 55
+memory store count: 34
 branch count: 18
 call count: 24
 spill count: 0

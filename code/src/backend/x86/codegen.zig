@@ -77,6 +77,52 @@ fn emitFunction(
                         },
                     }
                 },
+                .tuple_literal => |tl| {
+                    const dst = try abi.regFor(tl.dst.operand, colors, .gp);
+
+                    const tuple_type = switch (tl.dst.type) {
+                        .tuple => |tuple| tuple.elements,
+                        else => return error.WrongType,
+                    };
+
+                    // get our overall size
+                    var tuple_size: usize = 0;
+                    for (tuple_type) |cur_type| {
+                        tuple_size += try cur_type.sizeOfType();
+                    }
+                    const tuple_slots = std.mem.alignForward(usize, tuple_size, 8) / 8;
+                    const base_slot = next_array_location;
+                    next_array_location += tuple_slots;
+
+                    // array[i] = sp - end + adjust(i)
+                    const base_offset = arrayOffset(local_count, base_slot + tuple_slots - 1);
+                    var cur_offset: usize = 0;
+                    for (tl.elements, 0..) |elem, i| {
+                        const src = switch (elem) {
+                            .top => |top| try abi.regFor(top.operand, colors, .gp),
+                            .constant => |c| blk: {
+                                try emitConstantToReg(out, ScratchReg, c, alloc);
+                                break :blk ScratchReg;
+                            },
+                        };
+
+                        const offset = base_offset - cur_offset;
+
+                        const elem_type = switch (tl.dst.type) {
+                            .tuple => |tuple| tuple.elements[i],
+                            else => return error.WrongType,
+                        };
+
+                        switch (elem_type) {
+                            .i64, .i32 => try emitStackStore(out, src, offset, ScratchReg2, alloc),
+                            .bool, .char => try emitStackStoreByte(out, src, offset, ScratchReg2, alloc),
+                            else => return error.NotImpl,
+                        }
+                        cur_offset += try elem_type.sizeOfType();
+                    }
+                    // array_base = x29 - end
+                    try out.print(alloc, "\tleaq -{d}(%rbp), %{s}\n", .{ base_offset, dst });
+                },
                 .lir => |l| {
                     switch (l) {
                         .constant => |c| {
@@ -92,41 +138,57 @@ fn emitFunction(
                             }
                         },
                         .move => |m| {
-                            switch (m.dst.operand) {
-                                .temp => {
-                                    switch (m.src) {
+                            switch (m.src) {
+                                .constant => |c| {
+                                    const dst = try abi.regFor(m.dst.operand, colors, .gp);
+                                    switch (c) {
+                                        .i64 => |i| {
+                                            try out.print(alloc, "\tmovq ${d}, %{s}\n", .{ i, dst });
+                                        },
+                                        else => |e| {
+                                            std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                            return error.NotImpl;
+                                        },
+                                    }
+                                },
+                                .top => |src_top| {
+                                    switch (m.dst.operand) {
                                         .temp => {
-                                            const dst = try abi.regFor(m.dst.operand, colors, .gp);
-                                            const src = try abi.regFor(m.src, colors, .gp);
-                                            try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
+                                            switch (src_top.operand) {
+                                                .temp => {
+                                                    const dst = try abi.regFor(m.dst.operand, colors, .gp);
+                                                    const src = try abi.regFor(src_top.operand, colors, .gp);
+                                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
+                                                },
+                                                .reg => |reg| {
+                                                    const dst = try abi.regFor(m.dst.operand, colors, .gp);
+                                                    const src = try abi.regForFromIndex(reg.id, .gp);
+                                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
+                                                },
+                                                else => |e| {
+                                                    std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                                    return error.NotImpl;
+                                                },
+                                            }
                                         },
                                         .reg => |reg| {
-                                            const dst = try abi.regFor(m.dst.operand, colors, .gp);
-                                            const src = try abi.regForFromIndex(reg.id, .gp);
-                                            try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
+                                            switch (src_top.operand) {
+                                                .temp => {
+                                                    const dst = try abi.regForFromIndex(reg.id, .gp);
+                                                    const src = try abi.regFor(src_top.operand, colors, .gp);
+                                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
+                                                },
+                                                else => |e| {
+                                                    std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                                    return error.NotImpl;
+                                                },
+                                            }
                                         },
                                         else => |e| {
                                             std.debug.print("cant handle {s}\n", .{@tagName(e)});
                                             return error.NotImpl;
                                         },
                                     }
-                                },
-                                .reg => |reg| {
-                                    switch (m.src) {
-                                        .temp => {
-                                            const dst = try abi.regForFromIndex(reg.id, .gp);
-                                            const src = try abi.regFor(m.src, colors, .gp);
-                                            try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
-                                        },
-                                        else => |e| {
-                                            std.debug.print("cant handle {s}\n", .{@tagName(e)});
-                                            return error.NotImpl;
-                                        },
-                                    }
-                                },
-                                else => |e| {
-                                    std.debug.print("cant handle {s}\n", .{@tagName(e)});
-                                    return error.NotImpl;
                                 },
                             }
                         },
@@ -138,7 +200,7 @@ fn emitFunction(
                             }
 
                             const rhs = if (valueAsImm(bop.rhs)) |imm| try std.fmt.allocPrint(alloc, "${d}", .{imm}) else blk: {
-                                const reg = try abi.regFor(bop.rhs.operand.operand, colors, .gp);
+                                const reg = try abi.regFor(bop.rhs.top.operand, colors, .gp);
                                 break :blk try std.fmt.allocPrint(alloc, "%{s}", .{reg});
                             };
                             switch (bop.op) {
@@ -176,52 +238,6 @@ fn emitFunction(
                             try out.print(alloc, "\tcmpq $0, %{s}\n", .{cond});
                             try out.print(alloc, "\tjne {s}_L{d}\n", .{ function.name, b.then_block });
                             try out.print(alloc, "\tjmp {s}_L{d}\n", .{ function.name, b.else_block });
-                        },
-                        .tuple_literal => |tl| {
-                            const dst = try abi.regFor(tl.dst.operand, colors, .gp);
-
-                            const tuple_type = switch (tl.dst.type) {
-                                .tuple => |tuple| tuple.elements,
-                                else => return error.WrongType,
-                            };
-
-                            // get our overall size
-                            var tuple_size: usize = 0;
-                            for (tuple_type) |cur_type| {
-                                tuple_size += try cur_type.sizeOfType();
-                            }
-                            const tuple_slots = std.mem.alignForward(usize, tuple_size, 8) / 8;
-                            const base_slot = next_array_location;
-                            next_array_location += tuple_slots;
-
-                            // array[i] = sp - end + adjust(i)
-                            const base_offset = arrayOffset(local_count, base_slot + tuple_slots - 1);
-                            var cur_offset: usize = 0;
-                            for (tl.elements, 0..) |elem, i| {
-                                const src = switch (elem) {
-                                    .operand => try abi.regFor(elem.operand.operand, colors, .gp),
-                                    .constant => |c| blk: {
-                                        try emitConstantToReg(out, ScratchReg, c, alloc);
-                                        break :blk ScratchReg;
-                                    },
-                                };
-
-                                const offset = base_offset - cur_offset;
-
-                                const elem_type = switch (tl.dst.type) {
-                                    .tuple => |tuple| tuple.elements[i],
-                                    else => return error.WrongType,
-                                };
-
-                                switch (elem_type) {
-                                    .i64, .i32 => try emitStackStore(out, src, offset, ScratchReg2, alloc),
-                                    .bool, .char => try emitStackStoreByte(out, src, offset, ScratchReg2, alloc),
-                                    else => return error.NotImpl,
-                                }
-                                cur_offset += try elem_type.sizeOfType();
-                            }
-                            // array_base = x29 - end
-                            try out.print(alloc, "\tleaq -{d}(%rbp), %{s}\n", .{ base_offset, dst });
                         },
                         .select => |s| {
                             const dst = try abi.regFor(s.dst, colors, .gp);
@@ -379,12 +395,7 @@ fn countArraySlots(blocks: *const ArrayList(Block)) usize {
     for (blocks.items) |block| {
         for (block.instructions.items) |instruction| {
             switch (instruction) {
-                .lir => |l| {
-                    switch (l) {
-                        .tuple_literal => |al| slots += al.elements.len,
-                        else => {},
-                    }
-                },
+                .tuple_literal => |al| slots += al.elements.len,
                 else => {},
             }
         }
@@ -462,7 +473,7 @@ pub fn valueToReg(
     alloc: std.mem.Allocator,
 ) ![]const u8 {
     switch (value) {
-        .operand => |op| return abi.regFor(op.operand, colors, .gp),
+        .top => |top| return abi.regFor(top.operand, colors, .gp),
         .constant => |c| {
             switch (c) {
                 .i32, .i64 => |i| {

@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 a = "foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz"
 b: i32 = 123
@@ -13,10 +13,10 @@ print(d)
 print(e)
 
 performance report:
-number of asm lines: 945
-mov count: 219
+number of asm lines: 874
+mov count: 198
 memory load count: 1
-memory store count: 177
+memory store count: 157
 branch count: 18
 call count: 30
 spill count: 0

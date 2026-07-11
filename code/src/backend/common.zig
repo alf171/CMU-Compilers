@@ -9,6 +9,6 @@ pub fn valueAsImm(value: ValueRef) ?i64 {
             .i64, .i32 => |i| @intCast(i),
             else => null,
         },
-        .operand => null,
+        .top => null,
     };
 }

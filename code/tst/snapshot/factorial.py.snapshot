@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 def factorial(n: int) -> int:
     if (n == 0):
@@ -8,10 +8,10 @@ def factorial(n: int) -> int:
 print(factorial(15))
 
 performance report:
-number of asm lines: 463
-mov count: 97
+number of asm lines: 400
+mov count: 77
 memory load count: 1
-memory store count: 49
+memory store count: 34
 branch count: 24
 call count: 25
 spill count: 0

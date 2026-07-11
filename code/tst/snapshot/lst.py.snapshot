@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 
 items: list[int] = [1, 2, 3]
@@ -9,10 +9,10 @@ print(items[1])
 print(items[2])
 
 performance report:
-number of asm lines: 476
-mov count: 100
+number of asm lines: 412
+mov count: 88
 memory load count: 4
-memory store count: 55
+memory store count: 39
 branch count: 18
 call count: 26
 spill count: 0
