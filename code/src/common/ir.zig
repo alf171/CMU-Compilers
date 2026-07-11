@@ -87,6 +87,16 @@ pub const ConstValue = union(enum) {
             .char => .char,
         };
     }
+
+    pub fn valueAsIntImm(self: @This()) !i64 {
+        return switch (self) {
+            .i64 => |v| v,
+            .i32 => |v| @intCast(v),
+            .bool => |v| @intFromBool(v),
+            .char => |v| @intCast(v),
+            .float => return error.BadState,
+        };
+    }
 };
 
 pub const ValueRef = union(enum) {

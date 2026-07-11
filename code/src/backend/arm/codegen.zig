@@ -12,7 +12,6 @@ const getElementType = common.types.getElementType;
 const ColoredGraph = @import("middle").color.ColoredGraph;
 const Abi = @import("../abi.zig").Abi;
 const RegisterType = @import("common").ir.RegisterType;
-const valueAsImm = @import("../common.zig").valueAsImm;
 
 pub fn emit(program: *const Program, colors: *const ColoredGraph, abi: Abi, alloc: std.mem.Allocator) ![]u8 {
     var out = ArrayList(u8).empty;
@@ -228,7 +227,8 @@ fn emitFunction(
                                         .float => try out.print(alloc, "\tfadd ", .{}),
                                         else => try out.print(alloc, "\tadd ", .{}),
                                     }
-                                    if (valueAsImm(binop.rhs)) |rhs_imm| {
+                                    if (binop.rhs == .constant) {
+                                        const rhs_imm = try binop.rhs.constant.valueAsIntImm();
                                         try out.print(alloc, "{s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
                                     } else {
                                         const rhs = try abi.regFor(binop.rhs.top.operand, colors, .gp);
@@ -240,7 +240,8 @@ fn emitFunction(
                                         .float => try out.print(alloc, "\tfsub ", .{}),
                                         else => try out.print(alloc, "\tsub ", .{}),
                                     }
-                                    if (valueAsImm(binop.rhs)) |rhs_imm| {
+                                    if (binop.rhs == .constant) {
+                                        const rhs_imm = try binop.rhs.constant.valueAsIntImm();
                                         try out.print(alloc, "{s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
                                     } else {
                                         const rhs = try abi.regFor(binop.rhs.top.operand, colors, abi.regFromType(binop.rhs.top.type));
