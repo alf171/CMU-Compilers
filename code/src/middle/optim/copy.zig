@@ -73,8 +73,8 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
         .lir => |*l| {
             switch (l.*) {
                 .binop => |*bop| {
-                    bop.lhs = try resolve(bop.lhs, copyMap);
-                    bop.rhs = try resolve(bop.rhs, copyMap);
+                    bop.lhs.operand = try resolveOperand(bop.lhs.operand, copyMap);
+                    bop.rhs.operand = try resolveOperand(bop.rhs.operand, copyMap);
                 },
                 .compare => |*c| {
                     c.lhs.operand = try resolveOperand(c.lhs.operand, copyMap);

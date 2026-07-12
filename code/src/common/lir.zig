@@ -25,8 +25,8 @@ pub const Instruction = union(enum) {
     binop: struct {
         dst: TypedOperand,
         op: BinOp,
-        lhs: ValueRef,
-        rhs: ValueRef,
+        lhs: TypedOperand,
+        rhs: TypedOperand,
     },
     move: struct {
         dst: TypedOperand,
@@ -83,9 +83,9 @@ pub const Instruction = union(enum) {
             .binop => |binop| {
                 binop.dst.operand.print();
                 debugPrint(" <- {s} ", .{@tagName(binop.op)});
-                binop.lhs.print();
+                binop.lhs.operand.print();
                 debugPrint(", ", .{});
-                binop.rhs.print();
+                binop.rhs.operand.print();
                 debugPrint("\n", .{});
             },
             .store_local => |sl| {
@@ -189,21 +189,11 @@ pub const Instruction = union(enum) {
                 }
             },
             .binop => |*bop| {
-                switch (bop.lhs) {
-                    .top => |*lop| {
-                        if (lop.operand.equal(old)) {
-                            lop.operand = new;
-                        }
-                    },
-                    else => {},
+                if (bop.lhs.operand.equal(old)) {
+                    bop.lhs.operand = new;
                 }
-                switch (bop.rhs) {
-                    .top => |*top| {
-                        if (top.operand.equal(old)) {
-                            top.operand = new;
-                        }
-                    },
-                    else => {},
+                if (bop.rhs.operand.equal(old)) {
+                    bop.rhs.operand = new;
                 }
             },
             .move => |*mov| {
@@ -321,18 +311,8 @@ pub const Instruction = union(enum) {
                 try res.append(alloc, .{ .local = ll.local.id });
             },
             .binop => |bop| {
-                switch (bop.lhs) {
-                    .top => |top| {
-                        try res.append(alloc, .{ .operand = top.operand });
-                    },
-                    else => {},
-                }
-                switch (bop.rhs) {
-                    .top => |top| {
-                        try res.append(alloc, .{ .operand = top.operand });
-                    },
-                    else => {},
-                }
+                try res.append(alloc, .{ .operand = bop.lhs.operand });
+                try res.append(alloc, .{ .operand = bop.rhs.operand });
             },
             .move => |m| {
                 switch (m.src) {

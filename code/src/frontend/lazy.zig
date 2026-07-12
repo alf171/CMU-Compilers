@@ -49,15 +49,15 @@ fn rewriteFunction(function: *Function, producers: *HashMap(Operand, LazyProduce
                         .range => |range| {
                             try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
                                 .dst = ll.dst,
-                                .lhs = .{ .top = .{
+                                .lhs = .{
                                     .operand = range.start,
                                     .type = .i64,
-                                } },
+                                },
                                 .op = .add,
-                                .rhs = .{ .top = .{
+                                .rhs = .{
                                     .operand = ll.index,
                                     .type = .i64,
-                                } },
+                                },
                             } } });
                         },
                     }
@@ -72,15 +72,15 @@ fn rewriteFunction(function: *Function, producers: *HashMap(Operand, LazyProduce
                         .range => |range| {
                             try new_instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
                                 .dst = l.dst,
-                                .lhs = .{ .top = .{
+                                .lhs = .{
                                     .operand = range.end,
                                     .type = .i64,
-                                } },
+                                },
                                 .op = .sub,
-                                .rhs = .{ .top = .{
+                                .rhs = .{
                                     .operand = range.start,
                                     .type = .i64,
-                                } },
+                                },
                             } } });
                         },
                     }

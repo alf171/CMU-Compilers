@@ -104,19 +104,29 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     }
                     // scaled = index * element_size
                     else {
+                        const element_size: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                            .dst = element_size,
+                            .src = .{ .constant = .{ .i64 = @intCast(elem_size) } },
+                        } } });
                         try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
                             .dst = scaled,
                             .op = .mul,
-                            .lhs = .{ .top = .{ .operand = ll.index, .type = .i64 } },
-                            .rhs = .{ .constant = .{ .i64 = @intCast(elem_size) } },
+                            .lhs = .{ .operand = ll.index, .type = .i64 },
+                            .rhs = element_size,
                         } } });
                     }
                     // offset = scaled + 8
+                    const eight: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
+                    try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                        .dst = eight,
+                        .src = .{ .constant = .{ .i64 = 8 } },
+                    } } });
                     try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
                         .dst = offset,
                         .op = .add,
-                        .lhs = .{ .top = scaled },
-                        .rhs = .{ .constant = .{ .i64 = 8 } },
+                        .lhs = scaled,
+                        .rhs = eight,
                     } } });
                     try new_instructions.append(alloc, .{ .lir = .{
                         .load_offset = .{
@@ -153,19 +163,29 @@ fn rewriteListStore(
     }
     // scaled = index * element_size
     else {
+        const element_size: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
+        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+            .dst = element_size,
+            .src = .{ .constant = .{ .i64 = @intCast(elem_size) } },
+        } } });
         try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
             .dst = scaled,
             .op = .mul,
-            .lhs = .{ .top = .{ .operand = ls.index, .type = .i64 } },
-            .rhs = .{ .constant = .{ .i64 = @intCast(elem_size) } },
+            .lhs = .{ .operand = ls.index, .type = .i64 },
+            .rhs = element_size,
         } } });
     }
     // offset = scaled + 8
+    const eight: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
+    try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+        .dst = eight,
+        .src = .{ .constant = .{ .i64 = 8 } },
+    } } });
     try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
         .dst = offset,
         .op = .add,
-        .lhs = .{ .top = scaled },
-        .rhs = .{ .constant = .{ .i64 = 8 } },
+        .lhs = scaled,
+        .rhs = eight,
     } } });
 
     const src = switch (ls.src) {

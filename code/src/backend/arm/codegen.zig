@@ -218,88 +218,46 @@ fn emitFunction(
                         },
                         .binop => |binop| {
                             const dst = try abi.regFor(binop.dst.operand, colors, abi.regFromType(binop.dst.type));
-                            const lhs = try valueToReg(binop.lhs, out, try abi.scratchReg(1, .gp), colors, abi, alloc);
+                            const lhs = try abi.regFor(binop.lhs.operand, colors, abi.regFromType(binop.lhs.type));
+                            const rhs = try abi.regFor(binop.rhs.operand, colors, abi.regFromType(binop.rhs.type));
 
                             switch (binop.op) {
-                                // can use imm
                                 .add => {
                                     switch (binop.dst.type) {
                                         .float => try out.print(alloc, "\tfadd ", .{}),
                                         else => try out.print(alloc, "\tadd ", .{}),
                                     }
-                                    if (binop.rhs == .constant) {
-                                        const rhs_imm = try binop.rhs.constant.valueAsIntImm();
-                                        try out.print(alloc, "{s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
-                                    } else {
-                                        const rhs = try abi.regFor(binop.rhs.top.operand, colors, .gp);
-                                        try out.print(alloc, "{s}, {s}, {s}\n", .{ dst, lhs, rhs });
-                                    }
+                                    try out.print(alloc, "{s}, {s}, {s}\n", .{ dst, lhs, rhs });
                                 },
                                 .sub => {
                                     switch (binop.dst.type) {
                                         .float => try out.print(alloc, "\tfsub ", .{}),
                                         else => try out.print(alloc, "\tsub ", .{}),
                                     }
-                                    if (binop.rhs == .constant) {
-                                        const rhs_imm = try binop.rhs.constant.valueAsIntImm();
-                                        try out.print(alloc, "{s}, {s}, #{d}\n", .{ dst, lhs, rhs_imm });
-                                    } else {
-                                        const rhs = try abi.regFor(binop.rhs.top.operand, colors, abi.regFromType(binop.rhs.top.type));
-                                        try out.print(alloc, "{s}, {s}, {s}\n", .{ dst, lhs, rhs });
-                                    }
+                                    try out.print(alloc, "{s}, {s}, {s}\n", .{ dst, lhs, rhs });
                                 },
-                                // cant use imm
                                 .mul => {
-                                    const reg_type = abi.regFromType(binop.dst.type);
-                                    const rhs_reg = try valueToReg(binop.rhs, out, try abi.scratchReg(0, reg_type), colors, abi, alloc);
                                     switch (binop.dst.type) {
-                                        .float => try out.print(alloc, "\tfmul {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg }),
-                                        else => try out.print(alloc, "\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg }),
+                                        .float => try out.print(alloc, "\tfmul {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
+                                        else => try out.print(alloc, "\tmul {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
                                     }
                                 },
                                 .div => {
-                                    const rhs_reg = try valueToReg(binop.rhs, out, try abi.scratchReg(0, .gp), colors, abi, alloc);
                                     switch (binop.dst.type) {
-                                        .float => try out.print(alloc, "\tfdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg }),
-                                        else => try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs_reg }),
+                                        .float => try out.print(alloc, "\tfdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
+                                        else => try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ dst, lhs, rhs }),
                                     }
                                 },
                                 .mod => {
                                     const scratch_reg = try abi.scratchReg(0, .gp);
-                                    const scratch_reg_2 = try abi.scratchReg(1, .gp);
-                                    const rhs_reg = try valueToReg(binop.rhs, out, scratch_reg_2, colors, abi, alloc);
-                                    try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ scratch_reg, lhs, rhs_reg });
-                                    try out.print(alloc, "\tmsub {s}, {s}, {s}, {s}\n", .{ dst, scratch_reg, rhs_reg, lhs });
+                                    try out.print(alloc, "\tsdiv {s}, {s}, {s}\n", .{ scratch_reg, lhs, rhs });
+                                    try out.print(alloc, "\tmsub {s}, {s}, {s}, {s}\n", .{ dst, scratch_reg, rhs, lhs });
                                 },
                                 .lshift => {
-                                    switch (binop.rhs) {
-                                        .constant => |c| {
-                                            const i = switch (c) {
-                                                .i64, .i32 => |b| b,
-                                                else => error.NotImpl,
-                                            };
-                                            try out.print(alloc, "\tlsl {s}, {s}, {d}\n", .{ dst, lhs, try i });
-                                        },
-                                        .top => |top| {
-                                            const rhs = try abi.regFor(top.operand, colors, .gp);
-                                            try out.print(alloc, "\tlsl {s}, {s}, {s}\n", .{ dst, lhs, rhs });
-                                        },
-                                    }
+                                    try out.print(alloc, "\tlsl {s}, {s}, {s}\n", .{ dst, lhs, rhs });
                                 },
                                 .rshift => {
-                                    switch (binop.rhs) {
-                                        .constant => |c| {
-                                            const i = switch (c) {
-                                                .i64, .i32 => |b| b,
-                                                else => error.NotImpl,
-                                            };
-                                            try out.print(alloc, "\tlsr {s}, {s}, {d}\n", .{ dst, lhs, try i });
-                                        },
-                                        .top => |top| {
-                                            const rhs = try abi.regFor(top.operand, colors, .gp);
-                                            try out.print(alloc, "\tlsr {s}, {s}, {s}\n", .{ dst, lhs, rhs });
-                                        },
-                                    }
+                                    try out.print(alloc, "\tlsr {s}, {s}, {s}\n", .{ dst, lhs, rhs });
                                 },
                                 else => |op| {
                                     std.debug.print("op is not supported {s}\n", .{@tagName(op)});

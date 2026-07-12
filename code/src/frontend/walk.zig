@@ -242,8 +242,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             const instruction = Instruction{ .lir = .{ .binop = .{
                 .dst = .{ .operand = dst, .type = lhs.type },
                 .op = op,
-                .lhs = .{ .top = lhs },
-                .rhs = .{ .top = rhs },
+                .lhs = lhs,
+                .rhs = rhs,
             } } };
             try irBuilder.emit(instruction, alloc);
             return TypedOperand{ .operand = dst, .type = lhs.type };
@@ -569,9 +569,9 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                                 // need ptr type?
                                 try irBuilder.emit(.{ .lir = .{ .binop = .{
                                     .dst = .{ .operand = data, .type = .ptr },
-                                    .lhs = .{ .top = buf },
+                                    .lhs = buf,
                                     .op = .add,
-                                    .rhs = .{ .top = eight },
+                                    .rhs = eight,
                                 } } }, alloc);
                                 try irBuilder.emit(.{
                                     .function_call = .{
@@ -1024,9 +1024,9 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
             const index_next: TypedOperand = .{ .operand = irBuilder_.nextTemp(), .type = .i64 };
             try irBuilder_.emit(Instruction{ .lir = .{ .binop = .{
                 .dst = index_next,
-                .lhs = .{ .top = index },
+                .lhs = index,
                 .op = .add,
-                .rhs = .{ .top = .{ .operand = one, .type = .i64 } },
+                .rhs = .{ .operand = one, .type = .i64 },
             } } }, alloc_);
             carries[0].next = index_next;
         }

@@ -234,60 +234,46 @@ fn emitFunction(
                             }
                         },
                         .binop => |bop| {
-                            const scratch_reg = try abi.scratchReg(0, abi.regFromType(bop.dst.type));
-                            const scratch_reg_2 = try abi.scratchReg(1, abi.regFromType(bop.dst.type));
                             const dst = try abi.regFor(bop.dst.operand, colors, abi.regFromType(bop.dst.type));
-                            const lhs = try valueToReg(bop.lhs, out, scratch_reg, colors, abi, alloc);
-                            const rhs = try valueToReg(bop.rhs, out, scratch_reg_2, colors, abi, alloc);
+                            const lhs = try abi.regFor(bop.lhs.operand, colors, abi.regFromType(bop.lhs.type));
+                            const rhs = try abi.regFor(bop.rhs.operand, colors, abi.regFromType(bop.rhs.type));
 
                             switch (bop.op) {
                                 .add => {
+                                    const add_inst = if (bop.dst.type == .float) "addsd" else "addq";
                                     if (std.mem.eql(u8, dst, rhs)) {
-                                        try out.print(alloc, "\taddq %{s}, %{s}\n", .{ lhs, dst });
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ add_inst, lhs, dst });
                                     } else if (!std.mem.eql(u8, dst, lhs)) {
                                         try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
-                                        try out.print(alloc, "\taddq %{s}, %{s}\n", .{ rhs, dst });
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ add_inst, rhs, dst });
                                     } else {
-                                        try out.print(alloc, "\taddq %{s}, %{s}\n", .{ rhs, dst });
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ add_inst, rhs, dst });
                                     }
                                 },
                                 .sub => {
-                                    if (!std.mem.eql(u8, dst, lhs)) {
-                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
-                                    }
-                                    switch (bop.dst.type) {
-                                        .float => try out.print(alloc, "\tsubsd %{s}, %{s}\n", .{ rhs, dst }),
-                                        else => try out.print(alloc, "\tsubq %{s}, %{s}\n", .{ rhs, dst }),
+                                    const sub_inst = if (bop.dst.type == .float) "subsd" else "subq";
+                                    const mov_inst = if (bop.dst.type == .float) "movsd" else "movq";
+                                    if (std.mem.eql(u8, dst, rhs)) {
+                                        const scratch_reg = try abi.scratchReg(0, abi.regFromType(bop.dst.type));
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ mov_inst, rhs, scratch_reg });
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ mov_inst, lhs, dst });
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ sub_inst, scratch_reg, dst });
+                                    } else if (!std.mem.eql(u8, dst, lhs)) {
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ mov_inst, lhs, dst });
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ sub_inst, rhs, dst });
+                                    } else {
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ sub_inst, rhs, dst });
                                     }
                                 },
                                 .mul => {
-                                    if (bop.rhs == .top) {
-                                        if (std.mem.eql(u8, dst, lhs)) {
-                                            try out.print(alloc, "\timulq %{s}, %{s}\n", .{ rhs, dst });
-                                        } else if (std.mem.eql(u8, dst, rhs)) {
-                                            try out.print(alloc, "\timulq %{s}, %{s}\n", .{ lhs, dst });
-                                        } else {
-                                            try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
-                                            try out.print(alloc, "\timulq %{s}, %{s}\n", .{ rhs, dst });
-                                        }
+                                    const mult_inst = if (bop.dst.type == .float) "mulsd" else "imulq";
+                                    if (std.mem.eql(u8, dst, lhs)) {
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ mult_inst, rhs, dst });
+                                    } else if (std.mem.eql(u8, dst, rhs)) {
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ mult_inst, lhs, dst });
                                     } else {
-                                        switch (bop.rhs.constant) {
-                                            .i64 => |i| {
-                                                try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
-                                                try out.print(alloc, "\timulq ${d}, %{s}\n", .{ i, dst });
-                                            },
-                                            .float => |f| {
-                                                const gp_scratch_reg = try abi.scratchReg(0, .gp);
-                                                const bits: u64 = @bitCast(f);
-                                                try out.print(alloc, "\tmovabsq ${d}, %{s}\n", .{ bits, gp_scratch_reg });
-                                                try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ gp_scratch_reg, dst });
-                                                try out.print(alloc, "\tmulsd %{s}, %{s}\n", .{ lhs, dst });
-                                            },
-                                            else => |e| {
-                                                std.debug.print("cant handle {s}\n", .{@tagName(e)});
-                                                return error.NotImpl;
-                                            },
-                                        }
+                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, dst });
+                                        try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ mult_inst, rhs, dst });
                                     }
                                 },
                                 .div => {
