@@ -29,6 +29,15 @@ pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
         for (block.instructions.items) |*instruction| {
             try rewriteUses(instruction, &copyMap);
 
+            if (instruction.getDefines()) |define| {
+                switch (define) {
+                    .operand => |op| {
+                        try invalidateCopiesDependingOn(op, &copyMap, alloc);
+                    },
+                    .local => {},
+                }
+            }
+
             switch (instruction.*) {
                 // naive impl: barrier needed since function param regs could be dirty
                 .function_call => {
@@ -170,6 +179,41 @@ fn resolve(init: ValueRef, copyMap: *HashMap(Operand, ValueRef)) !ValueRef {
     return cur;
 }
 
+fn invalidateCopiesDependingOn(operand: Operand, copyMap: *HashMap(Operand, ValueRef), alloc: std.mem.Allocator) !void {
+    var removals = ArrayList(Operand).init(alloc);
+    defer removals.deinit();
+
+    var it = copyMap.iterator();
+    while (it.next()) |entry| {
+        const cur_op = entry.key_ptr.*;
+        if (cur_op.equal(operand) or try dependsOn(entry.value_ptr.*, operand, copyMap, alloc)) {
+            try removals.append(cur_op);
+        }
+    }
+
+    for (removals.items) |remove| {
+        _ = copyMap.remove(remove);
+    }
+}
+fn dependsOn(value: ValueRef, operand: Operand, copyMap: *HashMap(Operand, ValueRef), alloc: std.mem.Allocator) !bool {
+    var visited = HashMap(Operand, void).init(alloc);
+    defer visited.deinit();
+    var current = value;
+
+    while (current == .top) {
+        const current_op = current.top.operand;
+
+        if (current_op.equal(operand)) {
+            return true;
+        }
+        if (visited.contains(current_op)) return false;
+        try visited.put(current_op, {});
+
+        current = copyMap.get(current_op) orelse return false;
+    }
+    return false;
+}
+
 test "basic block copy prop" {
     const alloc = std.testing.allocator;
 
@@ -268,4 +312,67 @@ test "constant arg setup gets folded into abi reg" {
     const call = new_instructions[2].function_call;
     try std.testing.expectEqual(@as(usize, 1), call.args.len);
     try std.testing.expectEqualDeep(r0, call.args[0].operand);
+}
+
+test "dont follow a redef" {
+    const alloc = std.testing.allocator;
+
+    var program = try Program.init(alloc);
+    defer program.deinit(alloc);
+    var instructions = &program.main.blocks.items[0].instructions;
+
+    const x: TypedOperand = .{ .operand = .{ .temp = .{ .id = 0, .function_id = 0 } }, .type = .any };
+    const temp: TypedOperand = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any };
+    const y: TypedOperand = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any };
+
+    // temp = x
+    try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
+        .dst = temp,
+        .src = .{ .top = x },
+    } } });
+    // x = y
+    try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
+        .dst = x,
+        .src = .{ .top = y },
+    } } });
+    // y = temp
+    try instructions.append(alloc, Instruction{ .lir = .{ .move = .{
+        .dst = y,
+        .src = .{ .top = temp },
+    } } });
+
+    try run(&program, alloc);
+    const new_instructions = program.main.blocks.items[0].instructions.items;
+    try std.testing.expectEqual(3, new_instructions.len);
+
+    // temp = x
+    try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .lir = .{ .move = .{
+        .dst = temp,
+        .src = .{ .top = x },
+    } } });
+    // x = y
+    try std.testing.expectEqualDeep(new_instructions[1], Instruction{ .lir = .{ .move = .{
+        .dst = x,
+        .src = .{ .top = y },
+    } } });
+    // y = temp
+    try std.testing.expectEqualDeep(new_instructions[2], Instruction{ .lir = .{ .move = .{
+        .dst = y,
+        .src = .{ .top = temp },
+    } } });
+}
+
+test "dependOn handles cycles" {
+    const alloc = std.testing.allocator;
+    var copyMap = HashMap(Operand, ValueRef).init(alloc);
+    defer copyMap.deinit();
+    const x: TypedOperand = .{ .operand = .{ .temp = .{ .id = 0, .function_id = 0 } }, .type = .any };
+    const y: TypedOperand = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any };
+    const z: TypedOperand = .{ .operand = .{ .temp = .{ .id = 2, .function_id = 0 } }, .type = .any };
+
+    try copyMap.put(x.operand, .{ .top = y });
+    try copyMap.put(y.operand, .{ .top = x });
+
+    const depends = try dependsOn(.{ .top = x }, z.operand, &copyMap, alloc);
+    try std.testing.expect(!depends);
 }
