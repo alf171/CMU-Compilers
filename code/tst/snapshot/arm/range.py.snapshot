@@ -7,8 +7,8 @@ y = (1, 2, 3, 4)
 print(len(y))
 
 performance report:
-number of asm lines: 368
-mov count: 97
+number of asm lines: 406
+mov count: 68
 memory load count: 1
 memory store count: 34
 branch count: 18

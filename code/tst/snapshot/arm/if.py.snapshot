@@ -1,4 +1,4 @@
-running program:
+running program: (OPTIM=true)
 
 def f() -> None:
     x = 1
@@ -19,10 +19,10 @@ def f() -> None:
 f()
 
 performance report:
-number of asm lines: 472
-mov count: 98
+number of asm lines: 436
+mov count: 73
 memory load count: 1
-memory store count: 56
+memory store count: 34
 branch count: 23
 call count: 25
 spill count: 0

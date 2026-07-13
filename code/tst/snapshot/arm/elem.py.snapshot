@@ -7,8 +7,8 @@ z: int = x + y
 print(z)
 
 performance report:
-number of asm lines: 366
-mov count: 97
+number of asm lines: 404
+mov count: 68
 memory load count: 1
 memory store count: 34
 branch count: 18

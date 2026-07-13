@@ -9,8 +9,8 @@ while x < 3:
 print(x)
 
 performance report:
-number of asm lines: 376
-mov count: 97
+number of asm lines: 414
+mov count: 69
 memory load count: 1
 memory store count: 34
 branch count: 21

@@ -13,8 +13,8 @@ print(d)
 print(e)
 
 performance report:
-number of asm lines: 874
-mov count: 343
+number of asm lines: 1031
+mov count: 195
 memory load count: 1
 memory store count: 157
 branch count: 18

@@ -10,8 +10,8 @@ for m in range(i):
 print(sum)
 
 performance report:
-number of asm lines: 394
-mov count: 98
+number of asm lines: 433
+mov count: 68
 memory load count: 1
 memory store count: 34
 branch count: 24

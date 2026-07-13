@@ -17,8 +17,8 @@ y = g(f_temp, False)
 print(y)
 
 performance report:
-number of asm lines: 419
-mov count: 108
+number of asm lines: 456
+mov count: 80
 memory load count: 1
 memory store count: 34
 branch count: 25
