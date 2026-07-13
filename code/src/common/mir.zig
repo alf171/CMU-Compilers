@@ -81,7 +81,7 @@ pub const Instruction = union(enum) {
     },
     // dst <- list[index]
     list_load: struct {
-        dst: Operand,
+        dst: TypedOperand,
         list: TypedOperand,
         index: Operand,
     },
@@ -94,7 +94,7 @@ pub const Instruction = union(enum) {
     },
     // dst <- array[index]
     tuple_load: struct {
-        dst: Operand,
+        dst: TypedOperand,
         tuple: TypedOperand,
         index: Operand,
     },
@@ -117,6 +117,7 @@ pub const Instruction = union(enum) {
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         switch (self.*) {
+            .parallel_copy => {},
             .phi => |phi| {
                 alloc.free(phi.inputs);
             },
@@ -213,7 +214,7 @@ pub const Instruction = union(enum) {
                 debugPrint("\n", .{});
             },
             .tuple_load => |tl| {
-                tl.dst.print();
+                tl.dst.operand.print();
                 debugPrint(" <- ", .{});
                 tl.tuple.operand.print();
                 debugPrint("(", .{});
@@ -230,7 +231,7 @@ pub const Instruction = union(enum) {
                 debugPrint("]\n", .{});
             },
             .list_load => |al| {
-                al.dst.print();
+                al.dst.operand.print();
                 debugPrint(" <- ", .{});
                 al.list.operand.print();
                 debugPrint("[", .{});
@@ -295,7 +296,7 @@ pub const Instruction = union(enum) {
         }
     }
 
-    pub fn replaceUses(self: *@This(), old: Operand, new: Operand) !void {
+    pub fn replaceUses(self: *@This(), old: Operand, new: Operand) void {
         switch (self.*) {
             .range => |*r| {
                 if (r.start.operand.equal(old)) r.start.operand = new;
@@ -360,11 +361,11 @@ pub const Instruction = union(enum) {
             },
             // delegate to lir
             .lir => |*l| {
-                try l.replaceUses(old, new);
+                l.replaceUses(old, new);
             },
             else => |e| {
                 debugPrint("uses cant handle {s}\n", .{@tagName(e)});
-                return error.OperandReplaceNotImpl;
+                unreachable;
             },
         }
     }
@@ -378,7 +379,7 @@ pub const Instruction = union(enum) {
                 if (l.dst.operand.equal(old)) l.dst.operand = new;
             },
             .tuple_load => |*tl| {
-                if (tl.dst.equal(old)) tl.dst = new;
+                if (tl.dst.operand.equal(old)) tl.dst.operand = new;
             },
             .tuple_literal => |*tl| {
                 if (tl.dst.operand.equal(old)) tl.dst.operand = new;
@@ -387,7 +388,7 @@ pub const Instruction = union(enum) {
                 if (ll.dst.operand.equal(old)) ll.dst.operand = new;
             },
             .list_load => |*ll| {
-                if (ll.dst.equal(old)) ll.dst = new;
+                if (ll.dst.operand.equal(old)) ll.dst.operand = new;
             },
             .function_param => |*fp| {
                 if (fp.dst.operand.equal(old)) fp.dst.operand = new;
@@ -409,25 +410,25 @@ pub const Instruction = union(enum) {
         }
     }
 
-    pub fn getDefines(instruction: Instruction) !?SeenValue {
+    pub fn getDefines(instruction: Instruction) ?SeenValue {
         return switch (instruction) {
             .phi => |pi| .{ .operand = pi.dst.operand },
             .range => |r| .{ .operand = r.dst.operand },
             .len => |l| .{ .operand = l.dst.operand },
             .tuple_literal => |tl| .{ .operand = tl.dst.operand },
-            .tuple_load => |tl| .{ .operand = tl.dst },
+            .tuple_load => |tl| .{ .operand = tl.dst.operand },
             .list_literal => |ll| .{ .operand = ll.dst.operand },
-            .list_load => |ll| .{ .operand = ll.dst },
+            .list_load => |ll| .{ .operand = ll.dst.operand },
             .list_store => null,
             .print => null,
             .function_ref => |fr| .{ .operand = fr.dst.operand },
             .function_param => |fp| .{ .operand = fp.dst.operand },
             .function_call => |fc| if (fc.dst) |op| .{ .operand = op.operand } else null,
             .function_return => null,
-            .lir => |l| try l.getDefines(),
+            .lir => |l| l.getDefines(),
             else => |e| {
                 debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});
-                return error.NotImpl;
+                unreachable;
             },
         };
     }
@@ -518,7 +519,7 @@ pub const Instruction = union(enum) {
             },
             else => |e| {
                 debugPrint("getUses cant handle {s}\n", .{@tagName(e)});
-                return error.NotImpl;
+                unreachable;
             },
         }
         return res;

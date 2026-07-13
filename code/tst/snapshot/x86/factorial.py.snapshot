@@ -1,0 +1,21 @@
+running program: (OPTIM=true)
+
+def factorial(n: int) -> int:
+    if (n == 0):
+        return 1
+    return n * factorial(n - 1)
+
+print(factorial(15))
+
+performance report:
+number of asm lines: 502
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+1307674368000
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

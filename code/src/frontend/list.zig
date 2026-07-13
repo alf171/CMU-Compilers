@@ -130,7 +130,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     } } });
                     try new_instructions.append(alloc, .{ .lir = .{
                         .load_offset = .{
-                            .dst = .{ .operand = ll.dst, .type = elem_type },
+                            .dst = ll.dst,
                             .src = ll.list,
                             .offset = .{ .top = offset },
                         },

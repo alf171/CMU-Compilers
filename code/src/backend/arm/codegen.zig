@@ -441,7 +441,7 @@ fn emitFunction(
                     try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, base_offset });
                 },
                 .tuple_load => |tl| {
-                    const dst = try abi.regFor(tl.dst, colors, .gp);
+                    const dst = try abi.regFor(tl.dst.operand, colors, .gp);
                     const index = try abi.regFor(tl.index, colors, .gp);
                     const tuple = try abi.regFor(tl.tuple.operand, colors, .gp);
 

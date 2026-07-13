@@ -1,0 +1,24 @@
+running program: (OPTIM=true)
+
+
+items: list[int] = [1, 2, 3]
+items[2] = 0
+
+print(items[0])
+print(items[1])
+print(items[2])
+
+performance report:
+number of asm lines: 511
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+1
+2
+0
+[!!memory report!!]: allocs=4 frees=4 allocated_bytes=62 freed_bytes=62

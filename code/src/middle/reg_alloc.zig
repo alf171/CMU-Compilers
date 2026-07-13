@@ -65,7 +65,7 @@ fn appendBlocks(
                 else => {},
             }
             // get defines
-            const maybeDefines = try instruction.getDefines();
+            const maybeDefines = instruction.getDefines();
             if (maybeDefines) |defines| {
                 switch (defines) {
                     .operand => |operand| try line.defines.ops.put(operand, {}),

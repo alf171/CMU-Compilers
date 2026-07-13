@@ -1,0 +1,25 @@
+running program: (OPTIM=true)
+
+# cast float -> int
+print(float(0))
+print(float(-3))
+# cast int -> float
+print(int(5.1))
+print(int(-5.9))
+
+
+performance report:
+number of asm lines: 477
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+0.00000
+-.00000
+5
+5
+[!!memory report!!]: allocs=6 frees=6 allocated_bytes=60 freed_bytes=60

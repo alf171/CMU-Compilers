@@ -161,7 +161,15 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
                     .src = .{ .constant = .{ .i64 = @intCast(i) } },
                 } } }, alloc);
 
-                const elem_dst = irBuilder.nextTemp();
+                const elem_type = switch (rhs_value.type) {
+                    .tuple => |tuple| tuple.elements[i],
+                    else => return error.ExpectTuple,
+                };
+                const elem_dst: TypedOperand = .{
+                    .operand = irBuilder.nextTemp(),
+                    .type = elem_type,
+                };
+
                 try irBuilder.emit(.{ .tuple_load = .{
                     .dst = elem_dst,
                     .tuple = rhs_value,
@@ -174,13 +182,8 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
 
                 const local = try irBuilder.getOrCreateLocal(std.mem.span(id), null, alloc);
 
-                const elem_type = switch (rhs_value.type) {
-                    .tuple => |tuple| tuple.elements[i],
-                    else => return error.ExpectTuple,
-                };
-
                 try irBuilder.local_values.put(local, .{
-                    .operand = elem_dst,
+                    .operand = elem_dst.operand,
                     .type = elem_type,
                 });
                 try irBuilder.emit(.{ .lir = .{ .store_local = .{
@@ -189,7 +192,7 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
                         .name = try alloc.dupe(u8, std.mem.span(id)),
                         .type = elem_type,
                     },
-                    .src = elem_dst,
+                    .src = elem_dst.operand,
                 } } }, alloc);
             }
         },
@@ -428,26 +431,23 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 .list => |list| {
                     const elem_type = list.element.*;
 
-                    const dst = irBuilder.nextTemp();
+                    const dst: TypedOperand = .{ .operand = irBuilder.nextTemp(), .type = elem_type };
                     try irBuilder.emit(Instruction{ .list_load = .{
                         .dst = dst,
                         .list = value,
                         .index = index.operand,
                     } }, alloc);
-                    return TypedOperand{ .operand = dst, .type = elem_type };
+                    return dst;
                 },
                 .tuple => {
-                    const dst = irBuilder.nextTemp();
+                    const dst: TypedOperand = .{ .operand = irBuilder.nextTemp(), .type = .any };
                     try irBuilder.emit(.{ .tuple_load = .{
                         .dst = dst,
                         .tuple = value,
                         .index = index.operand,
                     } }, alloc);
                     // any isnt right here but there's some complexity here since at comptime we dont know our type due to the homogenuous types not being ensured
-                    return TypedOperand{
-                        .operand = dst,
-                        .type = .any,
-                    };
+                    return dst;
                 },
                 else => return error.IndexIntoNonList,
             }
@@ -969,21 +969,21 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
             switch (iterable.type) {
                 .tuple => {
                     try irBuilder_.emit(.{ .tuple_load = .{
-                        .dst = value,
+                        .dst = .{ .operand = value, .type = .any },
                         .tuple = iterable,
                         .index = index.operand,
                     } }, alloc_);
                 },
                 .list => {
                     try irBuilder_.emit(.{ .list_load = .{
-                        .dst = value,
+                        .dst = .{ .operand = value, .type = .any },
                         .list = iterable,
                         .index = index.operand,
                     } }, alloc_);
                 },
                 .iterable => {
                     try irBuilder_.emit(.{ .tuple_load = .{
-                        .dst = value,
+                        .dst = .{ .operand = value, .type = .any },
                         .tuple = iterable,
                         .index = index.operand,
                     } }, alloc_);

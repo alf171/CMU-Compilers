@@ -279,7 +279,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
                 return;
             }
 
-            std.debug.assert(!define.equal(uses));
+            if (define.equal(uses)) return;
             try igraph.defineNodeIfDoesntExist(define, allocator);
             try igraph.nodes.getPtr(define).?.moves.put(uses, {});
             try igraph.defineNodeIfDoesntExist(uses, allocator);

@@ -79,6 +79,8 @@ pub fn build(b: *std.Build) void {
     integration_test.root_module.addImport("middle", middle_mod);
     integration_test.root_module.addImport("backend", backend_mod);
 
+    snapshot_test.root_module.addImport("backend", backend_mod);
+
     const python_exe = b.option(
         []const u8,
         "python-exe",

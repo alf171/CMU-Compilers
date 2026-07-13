@@ -1,0 +1,21 @@
+running program: (OPTIM=true)
+
+x = range(3, 5)
+print(len(x))
+
+y = (1, 2, 3, 4)
+print(len(y))
+
+performance report:
+number of asm lines: 463
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+2
+4
+[!!memory report!!]: allocs=2 frees=2 allocated_bytes=20 freed_bytes=20

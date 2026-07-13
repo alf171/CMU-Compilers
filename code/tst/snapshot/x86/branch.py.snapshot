@@ -1,0 +1,28 @@
+running program: (OPTIM=true)
+
+a = 5
+x = 0
+
+if a < 10: #or False:
+    x = 1
+    y = 100
+    z = 200
+    print(y + z)
+else:
+    x = 2
+
+print(x)
+
+performance report:
+number of asm lines: 477
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+300
+1
+[!!memory report!!]: allocs=2 frees=2 allocated_bytes=20 freed_bytes=20

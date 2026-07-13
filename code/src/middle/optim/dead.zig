@@ -43,7 +43,7 @@ fn runFunction(function: *Function, alloc_program: *const AllocProgram, alloc: s
             i -= 1;
             const instruction = instructions[i];
 
-            const defines = try instruction.getDefines();
+            const defines = instruction.getDefines();
             var uses = try instruction.getUses(alloc);
 
             // if operand hasn't been used yet, instruction can be removed

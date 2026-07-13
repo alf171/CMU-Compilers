@@ -1,0 +1,30 @@
+running program: (OPTIM=true)
+
+from typing import Callable
+
+def f(c: bool) -> int:
+  if c:
+      x = 1
+  else:
+      x = 2
+  return x
+
+def g(f: Callable[[bool], int], y: bool) -> int:
+    return 2 * f(y)
+
+f_temp = f
+y = g(f_temp, False)
+print(y)
+
+performance report:
+number of asm lines: 519
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+4
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

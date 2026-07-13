@@ -1,0 +1,20 @@
+running program: (OPTIM=true)
+
+x: int = 2
+y: int = 3
+z: int = x + y
+# we should be able to fold into print(x + y)
+print(z)
+
+performance report:
+number of asm lines: 459
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+5
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

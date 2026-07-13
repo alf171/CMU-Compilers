@@ -11,6 +11,14 @@ pub const Target = union(enum) {
     ARM,
     X86,
     UNKNOWN,
+
+    pub fn toString(self: @This()) ![]const u8 {
+        return switch (self) {
+            .ARM => "arm",
+            .X86 => "x86",
+            else => return error.InvalidTarget,
+        };
+    }
 };
 
 /// the contract which each platform will need to define

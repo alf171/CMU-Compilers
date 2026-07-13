@@ -1,0 +1,25 @@
+running program: (OPTIM=true)
+
+x: int = 0
+
+while x < 3:
+  x = x + 1
+  print(x)
+
+print(x)
+
+performance report:
+number of asm lines: 474
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+1
+2
+3
+3
+[!!memory report!!]: allocs=4 frees=4 allocated_bytes=40 freed_bytes=40

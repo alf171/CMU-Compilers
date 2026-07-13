@@ -1,0 +1,22 @@
+running program: (OPTIM=true)
+
+a: int = 5
+b: int = 10
+print(a < b)
+print(a == b)
+print(a != b)
+
+performance report:
+number of asm lines: 471
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+True
+False
+True
+[!!memory report!!]: allocs=6 frees=6 allocated_bytes=87 freed_bytes=87

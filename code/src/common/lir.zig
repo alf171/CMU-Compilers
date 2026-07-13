@@ -164,7 +164,7 @@ pub const Instruction = union(enum) {
         }
     }
 
-    pub fn replaceUses(self: *@This(), old: Operand, new: Operand) !void {
+    pub fn replaceUses(self: *@This(), old: Operand, new: Operand) void {
         switch (self.*) {
             .store_local => |*sl| {
                 if (sl.src.equal(old)) sl.src = new;
@@ -229,7 +229,7 @@ pub const Instruction = union(enum) {
             },
             else => |e| {
                 debugPrint("uses cant handle {s}\n", .{@tagName(e)});
-                return error.OperandReplaceNotImpl;
+                unreachable;
             },
         }
     }
@@ -259,7 +259,7 @@ pub const Instruction = union(enum) {
     }
 
     /// are we generating a new temp for reg coloring
-    pub fn getDefines(instruction: Instruction) !?SeenValue {
+    pub fn getDefines(instruction: Instruction) ?SeenValue {
         return switch (instruction) {
             .store_local => |sl| .{ .local = sl.local.id },
             .load_local => |ll| .{ .operand = ll.dst },
@@ -275,7 +275,7 @@ pub const Instruction = union(enum) {
             .cast => |c| .{ .operand = c.dst },
             else => |e| {
                 std.debug.print("getDefines does not handle {s}\n", .{@tagName(e)});
-                return error.NotImpl;
+                unreachable;
             },
         };
     }

@@ -53,12 +53,19 @@ fn emitFunction(
         try out.print(alloc, "{s}_L{d}:\n", .{ function.name, block.id });
         for (block.instructions.items) |instruction| {
             switch (instruction) {
+                .function_ref => |fr| {
+                    const dst = try abi.regFor(fr.dst.operand, colors, abi.regFromType(fr.dst.type));
+                    try out.print(alloc, "\tleaq {s}(%rip), %{s}\n", .{ fr.function_name, dst });
+                },
                 .function_call => |fc| {
                     switch (fc.callee) {
                         .direct => |function_name| {
                             try out.print(alloc, "\tcallq {s}\n", .{function_name});
                         },
-                        else => return error.NotImpl,
+                        .indirect => |top| {
+                            const fn_op = try abi.regFor(top.operand, colors, abi.regFromType(top.type));
+                            try out.print(alloc, "\tcallq *%{s}\n", .{fn_op});
+                        },
                     }
                 },
                 .function_return => {
@@ -114,10 +121,9 @@ fn emitFunction(
                             else => return error.WrongType,
                         };
 
-                        const scratch_reg_2 = try abi.scratchReg(1, .gp);
                         switch (elem_type) {
-                            .i64, .i32 => try emitStackStore(out, src, offset, scratch_reg_2, alloc),
-                            .bool, .char => try emitStackStoreByte(out, src, offset, scratch_reg_2, alloc),
+                            .i64, .i32 => try emitStackStore(out, src, offset, alloc),
+                            .bool, .char => try emitStackStoreByte(out, src, offset, alloc),
                             else => return error.NotImpl,
                         }
                         cur_offset += try elem_type.sizeOfType();
@@ -132,11 +138,8 @@ fn emitFunction(
                                 .constant => |c| {
                                     const dst = try abi.regFor(m.dst.operand, colors, abi.regFromType(m.dst.type));
                                     switch (c) {
-                                        .i64 => |i| {
-                                            try out.print(alloc, "\tmovq ${d}, %{s}\n", .{ i, dst });
-                                        },
-                                        .char => |char| {
-                                            try out.print(alloc, "\tmovq ${d}, %{s}\n", .{ char, dst });
+                                        .i32, .i64, .char, .bool => {
+                                            try out.print(alloc, "\tmovq ${d}, %{s}\n", .{ try c.valueAsIntImm(), dst });
                                         },
                                         .float => |f| {
                                             const gp_scratch_reg = try abi.scratchReg(0, .gp);
@@ -144,28 +147,20 @@ fn emitFunction(
                                             try out.print(alloc, "\tmovabsq ${d}, %{s}\n", .{ bits, gp_scratch_reg });
                                             try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ gp_scratch_reg, dst });
                                         },
-                                        else => |e| {
-                                            std.debug.print("cant handle {s}\n", .{@tagName(e)});
-                                            return error.NotImpl;
-                                        },
                                     }
                                 },
                                 .top => |src_top| {
+                                    const mov_isnt = if (m.dst.type == .float) "movsd" else "movq";
                                     switch (m.dst.operand) {
                                         .temp => {
                                             switch (src_top.operand) {
-                                                .temp => {
-                                                    const dst = try abi.regFor(m.dst.operand, colors, .gp);
-                                                    const src = try abi.regFor(src_top.operand, colors, .gp);
-                                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
-                                                },
-                                                .reg => |reg| {
-                                                    const dst = try abi.regFor(m.dst.operand, colors, .gp);
-                                                    const src = try abi.regForFromIndex(reg.id, .gp);
-                                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
+                                                .temp, .reg => {
+                                                    const dst = try abi.regFor(m.dst.operand, colors, abi.regFromType(m.dst.type));
+                                                    const src = try abi.regFor(src_top.operand, colors, abi.regFromType(src_top.type));
+                                                    try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ mov_isnt, src, dst });
                                                 },
                                                 .mem => |mem| {
-                                                    const dst = try abi.regFor(m.dst.operand, colors, .gp);
+                                                    const dst = try abi.regFor(m.dst.operand, colors, abi.regFromType(m.dst.type));
                                                     const offset = spillOffset(local_stack_size, mem.id);
                                                     try out.print(alloc, "\tmovq -{d}(%rbp), %{s}\n", .{ offset, dst });
                                                 },
@@ -175,12 +170,12 @@ fn emitFunction(
                                                 },
                                             }
                                         },
-                                        .reg => |reg| {
+                                        .reg => {
                                             switch (src_top.operand) {
                                                 .temp => {
-                                                    const dst = try abi.regForFromIndex(reg.id, .gp);
-                                                    const src = try abi.regFor(src_top.operand, colors, .gp);
-                                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ src, dst });
+                                                    const dst = try abi.regFor(m.dst.operand, colors, abi.regFromType(m.dst.type));
+                                                    const src = try abi.regFor(src_top.operand, colors, abi.regFromType(src_top.type));
+                                                    try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ mov_isnt, src, dst });
                                                 },
                                                 else => |e| {
                                                     std.debug.print("cant handle {s}\n", .{@tagName(e)});
@@ -225,6 +220,9 @@ fn emitFunction(
                                     switch (so.src.type) {
                                         .i32 => {
                                             try out.print(alloc, "\tmovl %{s}, (%{s},%{s})\n", .{ reg32(src), dst, offset });
+                                        },
+                                        .char => {
+                                            try out.print(alloc, "\tmovb %{s}, (%{s},%{s})\n", .{ reg8(src), dst, offset });
                                         },
                                         else => {
                                             try out.print(alloc, "\tmovq %{s}, (%{s},%{s})\n", .{ src, dst, offset });
@@ -277,20 +275,39 @@ fn emitFunction(
                                     }
                                 },
                                 .div => {
-                                    // HACK: hardcode %rax due to x86 req
+                                    try out.print(alloc, "\tpushq %rax\n", .{});
                                     try out.print(alloc, "\tmovq %{s}, %rax\n", .{lhs});
                                     try out.print(alloc, "\tcqto\n", .{});
                                     try out.print(alloc, "\tidivq %{s}\n", .{rhs});
                                     // x86 magic :)
                                     try out.print(alloc, "\tmovq %rax, %{s}\n", .{dst});
+                                    try out.print(alloc, "\tpopq %rax\n", .{});
                                 },
                                 .mod => {
-                                    // HACK: hardcode %rax due to x86 req
+                                    try out.print(alloc, "\tpushq %rax\n", .{});
                                     try out.print(alloc, "\tmovq %{s}, %rax\n", .{lhs});
                                     try out.print(alloc, "\tcqto\n", .{});
                                     try out.print(alloc, "\tidivq %{s}\n", .{rhs});
                                     // x86 magic :)
                                     try out.print(alloc, "\tmovq %rdx, %{s}\n", .{dst});
+                                    try out.print(alloc, "\tpopq %rax\n", .{});
+                                },
+                                .lshift, .rshift => {
+                                    if (bop.lhs.type == .float) {
+                                        return error.InvalidFloat;
+                                    }
+                                    const shift_inst = switch (bop.op) {
+                                        .lshift => "shlq",
+                                        .rshift => "sarq",
+                                        else => unreachable,
+                                    };
+                                    const scratch = try abi.scratchReg(0, .gp);
+                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ lhs, scratch });
+                                    try out.print(alloc, "\tpushq %rcx\n", .{});
+                                    try out.print(alloc, "\tmovq %{s}, %rcx\n", .{rhs});
+                                    try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ shift_inst, reg8("rcx"), scratch });
+                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ scratch, dst });
+                                    try out.print(alloc, "\tpopq %rcx\n", .{});
                                 },
                                 else => |e| {
                                     std.debug.print("cant handle {s}\n", .{@tagName(e)});
@@ -317,6 +334,7 @@ fn emitFunction(
                         },
                         .select => |s| {
                             const scratch_reg = try abi.scratchReg(0, .gp);
+                            // TODO: dont use two scratch regs!
                             const scratch_reg_2 = try abi.scratchReg(1, .gp);
                             const dst = try abi.regFor(s.dst, colors, .gp);
                             const if_reg = try valueToReg(s.if_value, out, scratch_reg, colors, abi, alloc);
@@ -473,10 +491,8 @@ fn emitStackStore(
     out: *ArrayList(u8),
     src: []const u8,
     offset: usize,
-    scratch: []const u8,
     alloc: std.mem.Allocator,
 ) !void {
-    _ = scratch;
     try out.print(alloc, "\tmovq %{s}, -{d}(%rbp)\n", .{ src, offset });
 }
 
@@ -484,11 +500,8 @@ fn emitStackStoreByte(
     out: *ArrayList(u8),
     src: []const u8,
     offset: usize,
-    scratch: []const u8,
     alloc: std.mem.Allocator,
 ) !void {
-    _ = scratch;
-    // TODO: use movb?
     try out.print(alloc, "\tmovq %{s}, -{d}(%rbp)\n", .{ src, offset });
 }
 
@@ -655,6 +668,22 @@ fn reg32(reg: []const u8) []const u8 {
     if (std.mem.eql(u8, reg, "r13")) return "r13d";
     if (std.mem.eql(u8, reg, "r14")) return "r14d";
     if (std.mem.eql(u8, reg, "r15")) return "r15d";
+    unreachable;
+}
+
+fn reg8(reg: []const u8) []const u8 {
+    if (std.mem.eql(u8, reg, "rsi")) return "sil";
+    if (std.mem.eql(u8, reg, "rdi")) return "dil";
+    if (std.mem.eql(u8, reg, "rdx")) return "dl";
+    if (std.mem.eql(u8, reg, "rcx")) return "cl";
+    if (std.mem.eql(u8, reg, "rax")) return "al";
+    if (std.mem.eql(u8, reg, "rbx")) return "bl";
+    if (std.mem.eql(u8, reg, "r8")) return "r8b";
+    if (std.mem.eql(u8, reg, "r9")) return "r9b";
+    if (std.mem.eql(u8, reg, "r12")) return "r12b";
+    if (std.mem.eql(u8, reg, "r13")) return "r13b";
+    if (std.mem.eql(u8, reg, "r14")) return "r14b";
+    if (std.mem.eql(u8, reg, "r15")) return "r15b";
     unreachable;
 }
 

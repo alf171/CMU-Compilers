@@ -1,0 +1,23 @@
+running program: (OPTIM=true)
+
+sum = 0
+i = 3
+for m in range(i):
+    for k in range(3):
+        # TODO: support +=
+        sum = sum + m + k
+
+print(sum)
+
+performance report:
+number of asm lines: 507
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+18
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

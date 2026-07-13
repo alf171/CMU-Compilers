@@ -16,7 +16,6 @@ pub fn apply(ir_program: *IrProgram, abi: Abi, alloc: std.mem.Allocator) !void {
     }
 }
 
-// FIXME: bad ownership
 pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !void {
     for (function.blocks.items) |*block| {
         var new_instructions = std.ArrayList(Instruction).empty;
@@ -40,7 +39,7 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                 .function_return => |fr| {
                     if (fr.value) |src_op| {
                         const reg = Operand{ .reg = .{
-                            .id = 0,
+                            .id = abi.getFunctionReturnIdx(function.return_type),
                             .class = abi.regFromType(function.return_type),
                         } };
                         try new_instructions.append(alloc, .{ .lir = .{ .move = .{ .dst = .{
@@ -54,7 +53,6 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                         } } } });
                         // emits branch with proper coloring
                         try new_instructions.append(alloc, .{ .function_return = .{ .value = reg } });
-                        instruction.deinit(alloc);
                     } else {
                         // emits branch
                         try new_instructions.append(alloc, instruction.*);
@@ -63,8 +61,10 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                 },
                 .function_call => |fc| {
                     var copies = try alloc.alloc(Copy, fc.args.len);
+                    errdefer alloc.free(copies);
                     // place new args to ensure proper coloring / interference
                     var args = try alloc.alloc(TypedOperand, fc.args.len);
+                    errdefer alloc.free(args);
                     for (fc.args, 0..) |arg, i| {
                         const reg = Operand{ .reg = .{
                             .id = @intCast(i),

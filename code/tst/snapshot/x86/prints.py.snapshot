@@ -1,0 +1,30 @@
+running program: (OPTIM=true)
+
+a = "foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz"
+b: i32 = 123
+c: bool = False
+d: str = "FALSE" if c else "TRUE"
+e: float = 1.25
+
+print(a)
+print(b)
+print(c)
+print(d)
+print(e)
+
+performance report:
+number of asm lines: 1088
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+actual output:
+foobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbazfoobarbaz
+123
+False
+TRUE
+1.25000
+[!!memory report!!]: allocs=10 frees=10 allocated_bytes=223 freed_bytes=223
