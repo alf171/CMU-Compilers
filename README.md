@@ -18,6 +18,7 @@
 - ir/coalescing
   - complexity O(nm) where n is nodes and m is their neighbors
   - look at size(nbor(n) U nbor(k)) < register count
+- tuples are fixed size regardless of type `list[int, str, bool]`
 
 ## Reading Materials
 - [phi function vs block args](https://mlir.llvm.org/docs/Rationale/Rationale/#block-arguments-vs-phi-nodes)

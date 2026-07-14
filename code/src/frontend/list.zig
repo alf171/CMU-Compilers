@@ -49,7 +49,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         } } });
                         try new_instructions.append(alloc, .{
                             .lir = .{ .store_offset = .{
-                                .dst = ll.dst,
+                                .dst = try ll.dst.clone(alloc),
                                 .offset = .{ .constant = .{ .i64 = 0 } },
                                 .src = .{ .operand = src, .type = .i64 },
                             } },
@@ -130,9 +130,9 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     } } });
                     try new_instructions.append(alloc, .{ .lir = .{
                         .load_offset = .{
-                            .dst = ll.dst,
-                            .src = ll.list,
-                            .offset = .{ .top = offset },
+                            .dst = try ll.dst.clone(alloc),
+                            .src = try ll.list.clone(alloc),
+                            .offset = .{ .top = try offset.clone(alloc) },
                         },
                     } });
                 },
@@ -201,8 +201,8 @@ fn rewriteListStore(
     };
 
     try new_instructions.append(alloc, .{ .lir = .{ .store_offset = .{
-        .dst = ls.list,
-        .offset = .{ .top = offset },
-        .src = src,
+        .dst = try ls.list.clone(alloc),
+        .offset = .{ .top = try offset.clone(alloc) },
+        .src = try src.clone(alloc),
     } } });
 }

@@ -67,7 +67,13 @@ pub const TypeInfo = union(enum) {
     pub fn clone(self: @This(), alloc: std.mem.Allocator) !@This() {
         switch (self) {
             .tuple => |t| {
-                return .{ .tuple = .{ .elements = t.elements } };
+                const elements = try alloc.alloc(TypeInfo, t.elements.len);
+                errdefer alloc.free(elements);
+
+                for (t.elements, 0..) |elem, i| {
+                    elements[i] = try elem.clone(alloc);
+                }
+                return .{ .tuple = .{ .elements = elements } };
             },
             .list => |l| {
                 return .{ .list = .{
@@ -95,7 +101,7 @@ pub const TypeInfo = union(enum) {
                     .element = try ownedPointer(try i.element.*.clone(alloc), alloc),
                 } };
             },
-            .void, .i64, .i32, .bool, .char, .float => return self,
+            .void, .i64, .i32, .bool, .char, .float, .any => return self,
             else => |e| {
                 std.debug.print("clone does support {s}\n", .{@tagName(e)});
                 return error.NotImpl;

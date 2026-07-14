@@ -124,11 +124,6 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
             tl.tuple.operand = try resolveOperand(tl.tuple.operand, copyMap);
             tl.index = try resolveOperand(tl.index, copyMap);
         },
-        .tuple_store => |*ts| {
-            ts.tuple.operand = try resolveOperand(ts.tuple.operand, copyMap);
-            ts.index = try resolveOperand(ts.index, copyMap);
-            ts.src = try resolveOperand(ts.src, copyMap);
-        },
         .list_load => |*ll| {
             ll.list.operand = try resolveOperand(ll.list.operand, copyMap);
             ll.index = try resolveOperand(ll.index, copyMap);

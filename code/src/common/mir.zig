@@ -98,13 +98,6 @@ pub const Instruction = union(enum) {
         tuple: TypedOperand,
         index: Operand,
     },
-    // TODO: remove since tuples are immutable
-    // array[index] <- src
-    tuple_store: struct {
-        tuple: TypedOperand,
-        index: Operand,
-        src: Operand,
-    },
     // dst <- lazy[index]
     lazy_load: struct {
         dst: TypedOperand,
@@ -135,6 +128,10 @@ pub const Instruction = union(enum) {
             .tuple_literal => |tl| {
                 tl.dst.type.deinit(alloc);
                 alloc.free(tl.elements);
+            },
+            .tuple_load => |tl| {
+                tl.dst.type.deinit(alloc);
+                tl.tuple.type.deinit(alloc);
             },
             .list_literal => |ll| {
                 ll.dst.type.deinit(alloc);
@@ -204,14 +201,6 @@ pub const Instruction = union(enum) {
                     elem.print();
                 }
                 debugPrint("]\n", .{});
-            },
-            .tuple_store => |ts| {
-                ts.tuple.operand.print();
-                debugPrint("(", .{});
-                ts.index.print();
-                debugPrint(") <- ", .{});
-                ts.src.print();
-                debugPrint("\n", .{});
             },
             .tuple_load => |tl| {
                 tl.dst.operand.print();
@@ -318,11 +307,6 @@ pub const Instruction = union(enum) {
                         .constant => {},
                     }
                 }
-            },
-            .tuple_store => |*ts| {
-                if (ts.tuple.operand.equal(old)) ts.tuple.operand = new;
-                if (ts.index.equal(old)) ts.index = new;
-                if (ts.src.equal(old)) ts.src = new;
             },
             .list_literal => |*ll| {
                 for (ll.elements) |*elem| {
@@ -464,11 +448,6 @@ pub const Instruction = union(enum) {
             .tuple_load => |tl| {
                 try res.append(alloc, .{ .operand = tl.tuple.operand });
                 try res.append(alloc, .{ .operand = tl.index });
-            },
-            .tuple_store => |ts| {
-                try res.append(alloc, .{ .operand = ts.tuple.operand });
-                try res.append(alloc, .{ .operand = ts.index });
-                try res.append(alloc, .{ .operand = ts.src });
             },
             .list_literal => |ll| {
                 for (ll.elements) |elem| {

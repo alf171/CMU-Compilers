@@ -17,11 +17,20 @@ const Line = common.alloc.AllocLine;
 const Operands = common.alloc.Operands;
 const Operand = common.alloc.Operand;
 
-pub fn spillRegInIr(program: *IrProgram, _: *const AllocProgram, spilled: Operand, alloc: std.mem.Allocator) !void {
-    try spillRegInFunction(&program.main, spilled, alloc);
+// only run spill logic for the function in question since `Operand`s are function local
+pub fn spillRegInIr(program: *IrProgram, spilled: Operand, alloc: std.mem.Allocator) !void {
+    const spill_function_id = switch (spilled) {
+        .temp => |t| t.function_id,
+        else => return error.InvalidSpill,
+    };
+    if (program.main.id == spill_function_id) {
+        try spillRegInFunction(&program.main, spilled, alloc);
+    }
 
     for (program.functions.items) |*function| {
-        try spillRegInFunction(function, spilled, alloc);
+        if (function.id == spill_function_id) {
+            try spillRegInFunction(function, spilled, alloc);
+        }
     }
 }
 

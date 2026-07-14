@@ -130,13 +130,6 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
             const container = try walkExpr(value_obj, irBuilder, null, alloc);
 
             switch (container.type) {
-                .tuple => {
-                    try irBuilder.emit(Instruction{ .tuple_store = .{
-                        .tuple = container,
-                        .index = slice.operand,
-                        .src = rhs_value.operand,
-                    } }, alloc);
-                },
                 .list => {
                     try irBuilder.emit(Instruction{ .list_store = .{
                         .list = container,
@@ -439,11 +432,25 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                     } }, alloc);
                     return dst;
                 },
-                .tuple => {
-                    const dst: TypedOperand = .{ .operand = irBuilder.nextTemp(), .type = .any };
+                .tuple => |tuple| {
+                    if (getExprKind(slice) != .Constant) {
+                        return error.TupleIndexMustBeConstant;
+                    }
+                    const index_value_obj = c.PyObject_GetAttrString(slice, "value");
+                    std.debug.assert(index_value_obj != null);
+
+                    const raw_index = c.PyLong_AsLong(index_value_obj);
+                    const tuple_index: usize = @intCast(raw_index);
+                    if (tuple_index < 0) return error.TupleIndexOutOfBounds;
+                    if (tuple_index >= tuple.elements.len) return error.TupleIndexOutOfBounds;
+
+                    const dst: TypedOperand = .{
+                        .operand = irBuilder.nextTemp(),
+                        .type = try tuple.elements[tuple_index].clone(alloc),
+                    };
                     try irBuilder.emit(.{ .tuple_load = .{
                         .dst = dst,
-                        .tuple = value,
+                        .tuple = try value.clone(alloc),
                         .index = index.operand,
                     } }, alloc);
                     // any isnt right here but there's some complexity here since at comptime we dont know our type due to the homogenuous types not being ensured

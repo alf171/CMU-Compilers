@@ -36,10 +36,10 @@ fn emitFunction(
     alloc: std.mem.Allocator,
 ) !void {
     const local_count = countLocals(&function.blocks);
-    const array_slot_count = countArraySlots(&function.blocks);
+    const stack_bytes = countStackAllocBytes(&function.blocks);
     const local_stack_size = std.mem.alignForward(
         usize,
-        (array_slot_count + local_count) * 8,
+        stack_bytes + (local_count * 8),
         16,
     );
     const frame_stack_size = std.mem.alignForward(
@@ -48,7 +48,7 @@ fn emitFunction(
         16,
     );
     try createFunctionHeader(out, function.name, frame_stack_size, abi, alloc);
-    var next_array_location: usize = 0;
+    var next_stack_alloc_byte: usize = 0;
     for (function.blocks.items) |block| {
         try out.print(alloc, "{s}_L{d}:\n", .{ function.name, block.id });
         for (block.instructions.items) |instruction| {
@@ -83,53 +83,6 @@ fn emitFunction(
                             return error.InvalidLenCall;
                         },
                     }
-                },
-                .tuple_literal => |tl| {
-                    const dst = try abi.regFor(tl.dst.operand, colors, .gp);
-
-                    const tuple_type = switch (tl.dst.type) {
-                        .tuple => |tuple| tuple.elements,
-                        else => return error.WrongType,
-                    };
-
-                    // get our overall size
-                    var tuple_size: usize = 0;
-                    for (tuple_type) |cur_type| {
-                        tuple_size += try cur_type.sizeOfType();
-                    }
-                    const tuple_slots = std.mem.alignForward(usize, tuple_size, 8) / 8;
-                    const base_slot = next_array_location;
-                    next_array_location += tuple_slots;
-
-                    // array[i] = sp - end + adjust(i)
-                    const base_offset = arrayOffset(local_count, base_slot + tuple_slots - 1);
-                    var cur_offset: usize = 0;
-                    for (tl.elements, 0..) |elem, i| {
-                        const src = switch (elem) {
-                            .top => |top| try abi.regFor(top.operand, colors, .gp),
-                            .constant => |c| blk: {
-                                const scratch_reg = try abi.scratchReg(0, abi.regFromType(c.toType()));
-                                try emitConstantToReg(out, scratch_reg, c, alloc);
-                                break :blk scratch_reg;
-                            },
-                        };
-
-                        const offset = base_offset - cur_offset;
-
-                        const elem_type = switch (tl.dst.type) {
-                            .tuple => |tuple| tuple.elements[i],
-                            else => return error.WrongType,
-                        };
-
-                        switch (elem_type) {
-                            .i64, .i32 => try emitStackStore(out, src, offset, alloc),
-                            .bool, .char => try emitStackStoreByte(out, src, offset, alloc),
-                            else => return error.NotImpl,
-                        }
-                        cur_offset += try elem_type.sizeOfType();
-                    }
-                    // array_base = x29 - end
-                    try out.print(alloc, "\tleaq -{d}(%rbp), %{s}\n", .{ base_offset, dst });
                 },
                 .lir => |l| {
                     switch (l) {
@@ -319,9 +272,11 @@ fn emitFunction(
                             const dst = try abi.regFor(c.dst.operand, colors, .gp);
                             const lhs = try abi.regFor(c.lhs.operand, colors, .gp);
                             const rhs = try abi.regFor(c.rhs.operand, colors, .gp);
+                            const scratch = try abi.scratchReg(0, .gp);
+                            const scratch8 = reg8(scratch);
                             try out.print(alloc, "\tcmpq %{s}, %{s}\n", .{ rhs, lhs });
-                            try out.print(alloc, "\t{s} %r10b\n", .{condForCmp(c.op)});
-                            try out.print(alloc, "\tmovzbq %r10b, %{s}\n", .{dst});
+                            try out.print(alloc, "\t{s} %{s}\n", .{ condForCmp(c.op), scratch8 });
+                            try out.print(alloc, "\tmovzbq %{s}, %{s}\n", .{ scratch8, dst });
                         },
                         .jump => |j| {
                             try out.print(alloc, "\tjmp {s}_L{d}\n", .{ function.name, j.target });
@@ -333,17 +288,15 @@ fn emitFunction(
                             try out.print(alloc, "\tjmp {s}_L{d}\n", .{ function.name, b.else_block });
                         },
                         .select => |s| {
-                            const scratch_reg = try abi.scratchReg(0, .gp);
-                            // TODO: dont use two scratch regs!
-                            const scratch_reg_2 = try abi.scratchReg(1, .gp);
                             const dst = try abi.regFor(s.dst, colors, .gp);
-                            const if_reg = try valueToReg(s.if_value, out, scratch_reg, colors, abi, alloc);
-                            const else_reg = try valueToReg(s.else_value, out, scratch_reg_2, colors, abi, alloc);
-
+                            const scratch_reg = try abi.scratchReg(0, .gp);
+                            const else_reg = try valueToReg(s.else_value, out, dst, colors, abi, alloc);
+                            if (!std.mem.eql(u8, else_reg, dst)) {
+                                try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ else_reg, dst });
+                            }
                             const condition = try abi.regFor(s.condition, colors, .gp);
-
-                            try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ else_reg, dst });
                             try out.print(alloc, "\tcmpq $0, %{s}\n", .{condition});
+                            const if_reg = try valueToReg(s.if_value, out, scratch_reg, colors, abi, alloc);
                             try out.print(alloc, "\tcmovne %{s}, %{s}\n", .{ if_reg, dst });
                         },
                         .unaryop => |u| {
@@ -415,6 +368,13 @@ fn emitFunction(
                                     }
                                 },
                             }
+                        },
+                        .stack_alloc => |sa| {
+                            const dst = try abi.regFor(sa.dst.operand, colors, .gp);
+                            next_stack_alloc_byte += sa.bytes;
+                            const bytes = local_count * 8 + next_stack_alloc_byte;
+
+                            try out.print(alloc, "\tleaq -{d}(%rbp), %{s}\n", .{ bytes, dst });
                         },
                         else => |e| {
                             std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(e)});
@@ -551,12 +511,17 @@ fn countLocals(blocks: *const ArrayList(Block)) usize {
     return if (max_local) |m| @as(usize, m) + 1 else 0;
 }
 
-fn countArraySlots(blocks: *const ArrayList(Block)) usize {
+fn countStackAllocBytes(blocks: *const ArrayList(Block)) usize {
     var slots: usize = 0;
     for (blocks.items) |block| {
         for (block.instructions.items) |instruction| {
             switch (instruction) {
-                .tuple_literal => |al| slots += al.elements.len,
+                .lir => |lir| switch (lir) {
+                    .stack_alloc => |sa| {
+                        slots += sa.bytes;
+                    },
+                    else => {},
+                },
                 else => {},
             }
         }
@@ -664,6 +629,8 @@ fn reg32(reg: []const u8) []const u8 {
     if (std.mem.eql(u8, reg, "rbx")) return "ebx";
     if (std.mem.eql(u8, reg, "r8")) return "r8d";
     if (std.mem.eql(u8, reg, "r9")) return "r9d";
+    if (std.mem.eql(u8, reg, "r10")) return "r10b";
+    if (std.mem.eql(u8, reg, "r11")) return "r11d";
     if (std.mem.eql(u8, reg, "r12")) return "r12d";
     if (std.mem.eql(u8, reg, "r13")) return "r13d";
     if (std.mem.eql(u8, reg, "r14")) return "r14d";
@@ -680,6 +647,8 @@ fn reg8(reg: []const u8) []const u8 {
     if (std.mem.eql(u8, reg, "rbx")) return "bl";
     if (std.mem.eql(u8, reg, "r8")) return "r8b";
     if (std.mem.eql(u8, reg, "r9")) return "r9b";
+    if (std.mem.eql(u8, reg, "r10")) return "r10b";
+    if (std.mem.eql(u8, reg, "r11")) return "r11b";
     if (std.mem.eql(u8, reg, "r12")) return "r12b";
     if (std.mem.eql(u8, reg, "r13")) return "r13b";
     if (std.mem.eql(u8, reg, "r14")) return "r14b";

@@ -37,10 +37,10 @@ fn emitFunction(
     alloc: std.mem.Allocator,
 ) !void {
     const local_count = countLocals(&function.blocks);
-    const array_slot_count = countArraySlots(&function.blocks);
+    const stack_bytes = countStackAllocBytes(&function.blocks);
     const local_stack_size = std.mem.alignForward(
         usize,
-        (array_slot_count + local_count) * 8,
+        stack_bytes + (local_count * 8),
         16,
     );
     const frame_stack_size = std.mem.alignForward(
@@ -49,7 +49,7 @@ fn emitFunction(
         16,
     );
     try createFunctionHeader(out, function.name, frame_stack_size, abi, alloc);
-    var next_array_location: usize = 0;
+    var next_stack_alloc_byte: usize = 0;
     for (function.blocks.items) |block| {
         try out.print(alloc, "_{s}_L{d}:\n", .{ function.name, block.id });
         for (block.instructions.items) |instruction| {
@@ -346,6 +346,13 @@ fn emitFunction(
                                 else => return error.UnsupportedCast,
                             }
                         },
+                        .stack_alloc => |sa| {
+                            const dst = try abi.regFor(sa.dst.operand, colors, abi.regFromType(sa.dst.type));
+                            next_stack_alloc_byte += sa.bytes;
+                            const bytes = local_count * 8 + next_stack_alloc_byte;
+
+                            try out.print(alloc, "\tsub {s}, x29, #{d}", .{ dst, bytes });
+                        },
                         else => |lir| {
                             std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(lir)});
                             return error.NotSupported;
@@ -385,79 +392,6 @@ fn emitFunction(
                     const dst = try abi.regFor(fr.dst.operand, colors, .gp);
                     try out.print(alloc, "\tadrp {s}, _{s}@PAGE\n", .{ dst, fr.function_name });
                     try out.print(alloc, "\tadd {s}, {s}, _{s}@PAGEOFF\n", .{ dst, dst, fr.function_name });
-                },
-                // x29 - 8  local: items pointer
-                // x29 - 16 array[2]
-                // x29 - 24 array[1]
-                // x29 - 32 array[0]  <- array_base
-                .tuple_literal => |tl| {
-                    const dst = try abi.regFor(tl.dst.operand, colors, .gp);
-
-                    const tuple_type = switch (tl.dst.type) {
-                        .tuple => |tuple| tuple.elements,
-                        else => return error.WrongType,
-                    };
-
-                    // get our overall size
-                    var tuple_size: usize = 0;
-                    for (tuple_type) |cur_type| {
-                        tuple_size += try cur_type.sizeOfType();
-                    }
-                    const tuple_slots = std.mem.alignForward(usize, tuple_size, 8) / 8;
-                    const base_slot = next_array_location;
-                    next_array_location += tuple_slots;
-
-                    // array[i] = x29 - end + adjust(i)
-                    const base_offset = arrayOffset(local_count, base_slot + tuple_slots - 1);
-                    var cur_offset: usize = 0;
-                    for (tl.elements, 0..) |elem, i| {
-                        const src = switch (elem) {
-                            .top => |top| try abi.regFor(top.operand, colors, .gp),
-                            .constant => |c| blk: {
-                                const scratch_reg = try abi.scratchReg(0, .gp);
-                                try emitConstantToReg(out, scratch_reg, c, alloc);
-                                break :blk scratch_reg;
-                            },
-                        };
-
-                        const offset = base_offset - cur_offset;
-
-                        const elem_type = switch (tl.dst.type) {
-                            .tuple => |tuple| tuple.elements[i],
-                            else => return error.WrongType,
-                        };
-
-                        switch (elem_type) {
-                            .i64, .i32, .ptr => try emitStackStore(out, src, offset, try abi.scratchReg(0, .gp), alloc),
-                            .bool, .char => try emitStackStoreByte(out, src, offset, try abi.scratchReg(0, .gp), alloc),
-                            else => |e| {
-                                std.debug.print("cant handle {s}", .{@tagName(e)});
-                                return error.NotImpl;
-                            },
-                        }
-                        cur_offset += try elem_type.sizeOfType();
-                    }
-                    // array_base = x29 - end
-                    try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, base_offset });
-                },
-                .tuple_load => |tl| {
-                    const dst = try abi.regFor(tl.dst.operand, colors, .gp);
-                    const index = try abi.regFor(tl.index, colors, .gp);
-                    const tuple = try abi.regFor(tl.tuple.operand, colors, .gp);
-
-                    const elem_type = try getElementType(tl.tuple.type);
-                    switch (elem_type) {
-                        // index = index << 3
-                        .i64, .i32 => {
-                            const scratch_reg = try abi.scratchReg(0, .gp);
-                            try out.print(alloc, "\tlsl {s}, {s}, #3\n", .{ scratch_reg, index });
-                            try out.print(alloc, "\tldr {s}, [{s}, {s}]\n", .{ dst, tuple, scratch_reg });
-                        },
-                        .bool => {
-                            try out.print(alloc, "\tldr w{s}, [{s}, {s}]\n", .{ dst[1..], tuple, index });
-                        },
-                        else => return error.TypeNotImpl,
-                    }
                 },
                 else => |ir| {
                     std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(ir)});
@@ -617,12 +551,17 @@ fn countLocals(blocks: *const ArrayList(Block)) usize {
     return if (max_local) |m| @as(usize, m) + 1 else 0;
 }
 
-fn countArraySlots(blocks: *const ArrayList(Block)) usize {
+fn countStackAllocBytes(blocks: *const ArrayList(Block)) usize {
     var slots: usize = 0;
     for (blocks.items) |block| {
         for (block.instructions.items) |instruction| {
             switch (instruction) {
-                .tuple_literal => |al| slots += al.elements.len,
+                .lir => |lir| switch (lir) {
+                    .stack_alloc => |sa| {
+                        slots += sa.bytes;
+                    },
+                    else => {},
+                },
                 else => {},
             }
         }

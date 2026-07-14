@@ -42,8 +42,6 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - [ ] classes or objs or structs (?)
   - [ ] will be used eventually to write a minitorch
 - [ ] support arbitrary transformations like `map`
-- [ ] `tst/python/if.py` copy.zig bug
-- [ ] rewrite tuple len into a constant op
 
 ### Linker
 - [ ] remove clang on linux/x86
