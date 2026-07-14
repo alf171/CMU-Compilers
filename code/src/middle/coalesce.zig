@@ -12,7 +12,6 @@ pub fn run(graph: *igraph.IGraph, reg_count: u8, alloc: std.mem.Allocator, stdou
     while (try checkForPossibleMerges(graph.*, reg_count, stdout, alloc)) |pair| {
         // try stdout.print("merging {any} and {any}\n", .{ pair.nodeA, pair.nodeB });
         try graph.mergeNodes(pair.nodeA, pair.nodeB);
-        try swapNode(graph, pair.nodeA, pair.nodeB, alloc);
     }
     // try stdout.flush();
 }
@@ -72,24 +71,6 @@ fn canCoalesce(graph: igraph.IGraph, a: igraph.Node, b: igraph.Node, k: u8, allo
     }
 
     return count < k;
-}
-
-fn swapNode(graph: *igraph.IGraph, new: Operand, remove: Operand, alloc: std.mem.Allocator) !void {
-    var node_it = graph.nodes.valueIterator();
-    while (node_it.next()) |node| {
-        var neighbors = std.AutoHashMap(Operand, void).init(alloc);
-        errdefer neighbors.deinit();
-        var nbor_it = node.neighbors.keyIterator();
-        while (nbor_it.next()) |nbor_id| {
-            if (nbor_id.equal(remove)) {
-                try neighbors.put(new, {});
-            } else {
-                try neighbors.put(nbor_id.*, {});
-            }
-        }
-        node.neighbors.deinit();
-        node.neighbors = neighbors;
-    }
 }
 
 //  (a+b)
