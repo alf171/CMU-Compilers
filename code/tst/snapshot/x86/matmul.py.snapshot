@@ -25,19 +25,29 @@ def matmul(
 matmul(
     M, N, P
 )
-couldn't find register for temp16
 couldn't find register for temp397
-couldn't find register for temp611
+couldn't find register for temp603
 couldn't find register for temp11
+couldn't find register for temp577
+couldn't find register for temp16
 
-performance report:
-number of asm lines: 1464
-mov count: 0
+performance report: (ORIGIN=user)
+number of asm lines: 244
+mov count: 141
 memory load count: 0
 memory store count: 0
-branch count: 0
-call count: 0
-spill count: 12
+branch count: 15
+call count: 5
+spill count: 6
+
+performance report: (ORIGIN=runtime)
+number of asm lines: 1214
+mov count: 793
+memory load count: 0
+memory store count: 0
+branch count: 28
+call count: 41
+spill count: 6
 
 actual output:
 215

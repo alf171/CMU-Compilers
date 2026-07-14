@@ -35,6 +35,9 @@ fn emitFunction(
     is_main: bool,
     alloc: std.mem.Allocator,
 ) !void {
+    // emit comment used by metrics for function origin metrics
+    try out.print(alloc, "# origin: {s}\n", .{@tagName(function.origin)});
+
     const local_count = countLocals(&function.blocks);
     const stack_bytes = countStackAllocBytes(&function.blocks);
     const local_stack_size = std.mem.alignForward(

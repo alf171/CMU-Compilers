@@ -44,19 +44,6 @@ pub fn run(
     const snapshot_file_name = try std.fmt.allocPrint(alloc, "{s}.snapshot", .{std.fs.path.basename(file_name)});
     defer alloc.free(snapshot_file_name);
 
-    // perform snapshotting
-    if (update) {
-        const file = try dir.createFile(io, snapshot_file_name, .{});
-        defer file.close(io);
-
-        var file_buf: [1028]u8 = undefined;
-        var file_writer: std.Io.File.Writer = .init(file, io, &file_buf);
-        try file_writer.interface.writeAll(result.stderr);
-        try file_writer.interface.flush();
-        std.debug.print(" [[REGENERATED]]\n", .{});
-        return;
-    }
-
     // verify
     const temp_file_path_with_dir = try std.fs.path.join(alloc, &.{ "/tmp", snapshot_file_name });
     defer alloc.free(temp_file_path_with_dir);
@@ -79,6 +66,23 @@ pub fn run(
     defer alloc.free(diff.stderr);
 
     const code = diff.term.exited;
+
+    // perform snapshotting
+    if (update) {
+        if (code == 0) {
+            std.debug.print(" [[EQUAL]]\n", .{});
+            return;
+        }
+        const file = try dir.createFile(io, snapshot_file_name, .{});
+        defer file.close(io);
+
+        var file_buf: [1028]u8 = undefined;
+        var file_writer: std.Io.File.Writer = .init(file, io, &file_buf);
+        try file_writer.interface.writeAll(result.stderr);
+        try file_writer.interface.flush();
+        std.debug.print(" [[REGENERATED]]\n", .{});
+        return;
+    }
 
     if (code == 1) {
         std.debug.print(" [[NOT EQUAL]]\n", .{});

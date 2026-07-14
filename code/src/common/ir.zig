@@ -49,6 +49,11 @@ pub const TempId = u16;
 /// we only permit 255 spills per program
 pub const MemoryId = u8;
 
+pub const FunctionType = enum {
+    runtime,
+    user,
+};
+
 pub const BinOp = enum { add, sub, mul, div, mod, lshift, rshift, unknown };
 
 pub const UnaryOp = enum { neg };
@@ -154,6 +159,7 @@ pub const Function = struct {
     entry_block: BlockId,
     next_temp: TempId,
     next_mem: MemoryId,
+    origin: FunctionType,
 
     pub fn nextTemp(self: *@This()) Operand {
         const id = self.next_temp;

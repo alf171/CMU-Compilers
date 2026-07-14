@@ -1132,6 +1132,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
         .entry_block = 0,
         .next_temp = 0,
         .next_mem = 0,
+        .origin = irBuilder.function_origin,
     });
 
     // save function state

@@ -15,7 +15,7 @@ pub fn walkAstWithRuntime(
     io: std.Io,
     alloc: std.mem.Allocator,
 ) !Program {
-    var irBuilder = try IrBuilder.init(alloc);
+    var irBuilder = try IrBuilder.init(.runtime, alloc);
     defer irBuilder.deinit(alloc);
     errdefer irBuilder.program.deinit(alloc);
     // iterate through files in runtime/*
@@ -24,6 +24,7 @@ pub fn walkAstWithRuntime(
 
     // walk UserFile
     const user_obj = try readFile(user_file_name, true, should_optim, use_escape_codes, io, alloc);
+    irBuilder.function_origin = .user;
     try walkAstIntoBuilder(user_obj, &irBuilder, alloc);
     return irBuilder.program;
 }

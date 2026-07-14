@@ -65,6 +65,10 @@ pub const Instruction = union(enum) {
         offset: ValueRef,
         src: TypedOperand,
     },
+    stack_alloc: struct {
+        dst: TypedOperand,
+        bytes: usize,
+    },
     select: struct {
         dst: Operand,
         condition: Operand,
@@ -109,6 +113,10 @@ pub const Instruction = union(enum) {
                 debugPrint(" + ", .{});
                 lo.offset.print();
                 debugPrint(")\n", .{});
+            },
+            .stack_alloc => |sa| {
+                sa.dst.operand.print();
+                debugPrint(" <- stack_alloc {d} bytes\n", .{sa.bytes});
             },
             .load_local => |ll| {
                 ll.dst.print();
@@ -269,6 +277,7 @@ pub const Instruction = union(enum) {
             .compare => |c| .{ .operand = c.dst.operand },
             .store_offset => null,
             .load_offset => |lo| .{ .operand = lo.dst.operand },
+            .stack_alloc => |so| .{ .operand = so.dst.operand },
             .select => |s| .{ .operand = s.dst },
             .branch => null,
             .jump => null,
@@ -307,6 +316,7 @@ pub const Instruction = union(enum) {
                 }
                 try res.append(alloc, .{ .operand = lo.src.operand });
             },
+            .stack_alloc => {},
             .load_local => |ll| {
                 try res.append(alloc, .{ .local = ll.local.id });
             },
@@ -366,6 +376,27 @@ pub const Instruction = union(enum) {
             },
             .load_local => |ll| {
                 alloc.free(ll.local.name);
+            },
+            .load_offset => |lo| {
+                lo.dst.type.deinit(alloc);
+                lo.src.type.deinit(alloc);
+                switch (lo.offset) {
+                    .top => |top| {
+                        top.type.deinit(alloc);
+                    },
+                    .constant => {},
+                }
+            },
+            .store_offset => |so| {
+                so.dst.type.deinit(alloc);
+                so.src.type.deinit(alloc);
+                switch (so.offset) {
+                    .top => |top| top.type.deinit(alloc),
+                    .constant => {},
+                }
+            },
+            .stack_alloc => |so| {
+                so.dst.type.deinit(alloc);
             },
             else => {},
         }

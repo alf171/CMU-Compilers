@@ -3,6 +3,7 @@ const debugPrint = std.debug.print;
 const ArrayList = std.ArrayList;
 const BasicBlock = @import("ir.zig").BasicBlock;
 const Function = @import("ir.zig").Function;
+const FunctionType = @import("ir.zig").FunctionType;
 const Param = @import("alloc.zig").Param;
 
 pub const Program = struct {
@@ -24,6 +25,7 @@ pub const Program = struct {
                 .return_type = .i64,
                 .next_temp = 0,
                 .next_mem = 0,
+                .origin = .runtime,
             },
             .functions = .empty,
         };

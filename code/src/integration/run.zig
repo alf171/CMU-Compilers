@@ -138,8 +138,9 @@ pub fn main(init: std.process.Init) !void {
     defer alloc.free(asm_text);
 
     if (should_dump_stats) {
-        const stats = metrics.get(asm_text, result.spill_rounds);
-        stats.print(use_escape_codes);
+        const stats = metrics.get(asm_text, result.spill_rounds, target);
+        stats.user.print(use_escape_codes);
+        stats.runtime.print(use_escape_codes);
     }
 
     try file_writer.interface.writeAll(asm_text);

@@ -1,0 +1,54 @@
+running program: (OPTIM=true)
+
+value1: int = 100
+t1: tuple[int, str, bool] = (11, "first", True)
+value2: int = 200
+t2: tuple[int, str, bool] = (22, "second", False)
+value3: int = 300
+
+print(t1[0])
+print(t1[1])
+print(t1[2])
+
+print(t2[0])
+print(t2[1])
+print(t2[2])
+
+print(value1)
+print(value2)
+print(value3)
+
+print(len(t1))
+print(len(t1))
+
+performance report: (ORIGIN=user)
+number of asm lines: 0
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+performance report: (ORIGIN=runtime)
+number of asm lines: 591
+mov count: 334
+memory load count: 0
+memory store count: 0
+branch count: 28
+call count: 35
+spill count: 0
+
+actual output:
+11
+first
+True
+22
+second
+False
+100
+200
+300
+3
+3
+[!!memory report!!]: allocs=15 frees=15 allocated_bytes=177 freed_bytes=177

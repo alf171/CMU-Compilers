@@ -5,6 +5,7 @@ const LocalId = @import("common").ir.LocalId;
 const LocalInfo = @import("common").ir.LocalInfo;
 const TempId = @import("common").ir.TempId;
 const Function = @import("common").ir.Function;
+const FunctionType = @import("common").ir.FunctionType;
 const TypeInfo = @import("common").types.TypeInfo;
 
 const BasicBlock = @import("common").ir.BasicBlock;
@@ -31,8 +32,9 @@ pub const IrBuilder = struct {
     local_values: LocalValues,
     // LocalId -> LocalValues
     locals: ArrayList(LocalInfo),
+    function_origin: FunctionType,
 
-    pub fn init(alloc: std.mem.Allocator) !IrBuilder {
+    pub fn init(origin: FunctionType, alloc: std.mem.Allocator) !IrBuilder {
         const program = try Program.init(alloc);
 
         return IrBuilder{
@@ -45,6 +47,7 @@ pub const IrBuilder = struct {
             .locals_by_name = std.StringHashMap(LocalId).init(alloc),
             .local_values = LocalValues.init(alloc),
             .locals = .empty,
+            .function_origin = origin,
         };
     }
 
