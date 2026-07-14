@@ -13,12 +13,21 @@ else:
 
 print(x)
 
-performance report:
+performance report: (ORIGIN=user)
+number of asm lines: 0
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+performance report: (ORIGIN=runtime)
 number of asm lines: 417
-mov count: 69
+mov count: 178
 memory load count: 1
 memory store count: 34
-branch count: 21
+branch count: 27
 call count: 24
 spill count: 0
 

@@ -36,6 +36,8 @@ fn emitFunction(
     is_main: bool,
     alloc: std.mem.Allocator,
 ) !void {
+    // emit comment used by metrics for function origin metrics
+    try out.print(alloc, "// origin: {s}\n", .{@tagName(function.origin)});
     const local_count = countLocals(&function.blocks);
     const stack_bytes = countStackAllocBytes(&function.blocks);
     const local_stack_size = std.mem.alignForward(
@@ -351,7 +353,7 @@ fn emitFunction(
                             next_stack_alloc_byte += sa.bytes;
                             const bytes = local_count * 8 + next_stack_alloc_byte;
 
-                            try out.print(alloc, "\tsub {s}, x29, #{d}", .{ dst, bytes });
+                            try out.print(alloc, "\tsub {s}, x29, #{d}\n", .{ dst, bytes });
                         },
                         else => |lir| {
                             std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(lir)});

@@ -16,12 +16,21 @@ f_temp = f
 y = g(f_temp, False)
 print(y)
 
-performance report:
-number of asm lines: 456
-mov count: 80
+performance report: (ORIGIN=user)
+number of asm lines: 50
+mov count: 12
+memory load count: 0
+memory store count: 0
+branch count: 9
+call count: 1
+spill count: 0
+
+performance report: (ORIGIN=runtime)
+number of asm lines: 406
+mov count: 174
 memory load count: 1
 memory store count: 34
-branch count: 25
+branch count: 24
 call count: 24
 spill count: 0
 

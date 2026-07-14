@@ -6,12 +6,21 @@ print(a < b)
 print(a == b)
 print(a != b)
 
-performance report:
+performance report: (ORIGIN=user)
+number of asm lines: 0
+mov count: 0
+memory load count: 0
+memory store count: 0
+branch count: 0
+call count: 0
+spill count: 0
+
+performance report: (ORIGIN=runtime)
 number of asm lines: 413
-mov count: 70
+mov count: 175
 memory load count: 1
 memory store count: 34
-branch count: 18
+branch count: 24
 call count: 25
 spill count: 0
 
