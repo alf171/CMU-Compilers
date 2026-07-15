@@ -4,19 +4,21 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 
 ## Run Commands
 
-`zig build integration-test -- tst/python/simple.py /tmp/out.s`
+`zig build integration-test -- tst/python/simple.py /tmp/host.s`
 - run python program and output asm
-`clang /tmp/out.s -o /tmp/out`
+`clang /tmp/host.s -o /tmp/out`
 - generate executable
 `/tmp/out`
 - run file
 
-`zig build integration-test -- tst/python/simple.py /tmp/out.s --run`
+`zig build integration-test -- tst/python/simple.py /tmp/host.s --run`
 - do all three steps above together
 `--optim`
 - run optimization passes of the compiler
 `--dump-stats`
 - dump assmebly stats useful for comparing perf
+`--host`
+- x86 or arm to indicate host platform to run program on
 
 `zig build snapshot-test --`
 - run snapshot testing against all tests written
