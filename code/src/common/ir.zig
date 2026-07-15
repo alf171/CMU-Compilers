@@ -54,6 +54,11 @@ pub const FunctionType = enum {
     user,
 };
 
+pub const FunctionKind = enum {
+    host,
+    gpu_kernel,
+};
+
 pub const BinOp = enum { add, sub, mul, div, mod, lshift, rshift, unknown };
 
 pub const UnaryOp = enum { neg };
@@ -160,6 +165,7 @@ pub const Function = struct {
     next_temp: TempId,
     next_mem: MemoryId,
     origin: FunctionType,
+    kind: FunctionKind,
 
     pub fn nextTemp(self: *@This()) Operand {
         const id = self.next_temp;
@@ -177,5 +183,49 @@ pub const Function = struct {
             .id = id,
             .function_id = self.id,
         } };
+    }
+
+    pub fn init(
+        func_name: []const u8,
+        id: usize,
+        params: []Param,
+        return_type: TypeInfo,
+        origin: FunctionType,
+        kind: FunctionKind,
+        alloc: std.mem.Allocator,
+    ) !@This() {
+        var blocks = ArrayList(BasicBlock).empty;
+        try blocks.append(alloc, BasicBlock.init(0));
+        return .{
+            .name = try alloc.dupe(u8, func_name),
+            .id = id,
+            .params = params,
+            .return_type = return_type,
+            .blocks = blocks,
+            .entry_block = 0,
+            .next_temp = 0,
+            .next_mem = 0,
+            .origin = origin,
+            .kind = kind,
+        };
+    }
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        for (self.blocks.items) |*block| {
+            for (block.instructions.items) |*instruction| {
+                instruction.deinit(alloc);
+            }
+            block.instructions.deinit(alloc);
+            block.successors.deinit(alloc);
+        }
+        self.blocks.deinit(alloc);
+        // function metadata
+        self.return_type.deinit(alloc);
+        alloc.free(self.name);
+        for (self.params) |param| {
+            alloc.free(param.name);
+            param.type.deinit(alloc);
+        }
+        alloc.free(self.params);
     }
 };

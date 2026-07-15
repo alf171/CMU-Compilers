@@ -26,37 +26,18 @@ pub const Program = struct {
                 .next_temp = 0,
                 .next_mem = 0,
                 .origin = .runtime,
+                .kind = .host,
             },
             .functions = .empty,
         };
     }
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
-        deinitFunction(&self.main, alloc);
+        self.main.deinit(alloc);
         for (self.functions.items) |*func| {
-            deinitFunction(func, alloc);
+            func.deinit(alloc);
         }
-
         self.functions.deinit(alloc);
-    }
-
-    fn deinitFunction(function: *Function, alloc: std.mem.Allocator) void {
-        for (function.blocks.items) |*block| {
-            for (block.instructions.items) |*instruction| {
-                instruction.deinit(alloc);
-            }
-            block.instructions.deinit(alloc);
-            block.successors.deinit(alloc);
-        }
-        function.blocks.deinit(alloc);
-        // function metadata
-        function.return_type.deinit(alloc);
-        alloc.free(function.name);
-        for (function.params) |param| {
-            alloc.free(param.name);
-            param.type.deinit(alloc);
-        }
-        alloc.free(function.params);
     }
 
     pub fn print(self: @This()) !void {

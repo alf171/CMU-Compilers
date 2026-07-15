@@ -7,6 +7,7 @@ const Block = common.ir.BasicBlock;
 const Copy = common.mir.Copy;
 const FrontEndProgram = common.program.Program;
 const Function = common.ir.Function;
+const Param = common.alloc.Param;
 const Instruction = common.mir.Instruction;
 const Operand = common.alloc.Operand;
 
@@ -92,34 +93,21 @@ fn lowerFunction(function: *Function, alloc: std.mem.Allocator) !void {
 // c <- a
 test "cycle" {
     const alloc = std.testing.allocator;
-    var function = Function{
-        .name = "test",
-        .id = 0,
-        .blocks = .empty,
-        .params = &.{},
-        .entry_block = 0,
-        .next_temp = 4,
-        .next_mem = 0,
-        .return_type = .i64,
-    };
+    var function = try Function.init(
+        "test",
+        0,
+        try alloc.alloc(Param, 0),
+        .i64,
+        .user,
+        .host,
+        alloc,
+    );
 
-    try function.blocks.append(alloc, Block{
-        .id = 0,
-        .instructions = .empty,
-        .successors = .empty,
-    });
+    defer function.deinit(alloc);
 
-    defer {
-        for (function.blocks.items) |*block| {
-            block.instructions.deinit(alloc);
-            block.successors.deinit(alloc);
-        }
-        function.blocks.deinit(alloc);
-    }
-
-    const a = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
-    const b = Operand{ .temp = .{ .id = 2, .function_id = 0 } };
-    const c = Operand{ .temp = .{ .id = 3, .function_id = 0 } };
+    const a = function.nextTemp();
+    const b = function.nextTemp();
+    const c = function.nextTemp();
 
     try function.blocks.items[0].instructions.append(alloc, Instruction{
         .parallel_copy = .{ .copies = try alloc.dupe(Copy, &.{

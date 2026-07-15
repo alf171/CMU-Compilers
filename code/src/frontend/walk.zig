@@ -3,6 +3,7 @@ const ArrayList = std.ArrayList;
 const c = @import("python.zig").c;
 
 const Function = @import("common").ir.Function;
+const FunctionKind = @import("common").ir.FunctionKind;
 const ConstValue = @import("common").ir.ConstValue;
 const BasicBlock = @import("common").ir.BasicBlock;
 const types = @import("common").types;
@@ -1097,6 +1098,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     const args_list = c.PyObject_GetAttrString(args_obj, "args");
     std.debug.assert(args_list != null);
 
+    // function params
     var params = ArrayList(Param).empty;
     for (0..@intCast(c.PyList_Size(args_list))) |i| {
         const arg_obj = c.PyList_GetItem(args_list, @intCast(i));
@@ -1120,20 +1122,15 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     const returns = c.PyObject_GetAttrString(stmt, "returns");
     const return_type = try parseTypeAnnotation(returns, alloc);
 
-    var blocks = ArrayList(BasicBlock).empty;
-    try blocks.append(alloc, BasicBlock.init(0));
-
-    try irBuilder.program.functions.append(alloc, Function{
-        .name = try alloc.dupe(u8, std.mem.span(func_name)),
-        .id = irBuilder.nextFunctionIdx(),
-        .params = try params.toOwnedSlice(alloc),
-        .return_type = return_type,
-        .blocks = blocks,
-        .entry_block = 0,
-        .next_temp = 0,
-        .next_mem = 0,
-        .origin = irBuilder.function_origin,
-    });
+    try irBuilder.program.functions.append(alloc, try Function.init(
+        std.mem.span(func_name),
+        irBuilder.nextFunctionIdx(),
+        try params.toOwnedSlice(alloc),
+        return_type,
+        irBuilder.function_origin,
+        kind,
+        alloc,
+    ));
 
     // save function state
     const saved_current_function = irBuilder.current_function;
@@ -1427,7 +1424,7 @@ test "while loop" {
     const tree = c.PyObject_CallFunction(parse_fn, "s", code);
     std.debug.assert(tree != null);
 
-    var irBuilder = try IrBuilder.init(alloc);
+    var irBuilder = try IrBuilder.init(.user, alloc);
     defer irBuilder.deinit(alloc);
     errdefer irBuilder.program.deinit(alloc);
     try walkAstIntoBuilder(tree, &irBuilder, alloc);

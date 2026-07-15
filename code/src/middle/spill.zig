@@ -9,6 +9,7 @@ const MemoryId = common.ir.MemoryId;
 const Instruction = common.mir.Instruction;
 const IrProgram = common.program.Program;
 const Function = common.ir.Function;
+const Param = common.alloc.Param;
 const AllocProgram = common.alloc.AllocProgram;
 const BasicBlock = common.ir.BasicBlock;
 const BlockId = common.ir.BlockId;
@@ -231,39 +232,26 @@ fn spillLine(
 test "spill reg function" {
     const alloc = std.testing.allocator;
 
-    var blocks = ArrayList(BasicBlock).empty;
-    var instructions = ArrayList(Instruction).empty;
+    var function = try Function.init(
+        "test",
+        0,
+        try alloc.alloc(Param, 0),
+        .i64,
+        .user,
+        .host,
+        alloc,
+    );
+    defer function.deinit(alloc);
     // A <- op A, B
-    const A = Operand{ .temp = .{ .id = 0, .function_id = 0 } };
-    const B = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
-    try instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
+    const A = function.nextTemp();
+    const B = function.nextTemp();
+    const instruction: Instruction = .{ .lir = .{ .binop = .{
         .dst = .{ .operand = A, .type = .any },
         .lhs = .{ .operand = A, .type = .any },
         .op = .add,
         .rhs = .{ .operand = B, .type = .any },
-    } } });
-    try blocks.append(alloc, BasicBlock{
-        .id = 0,
-        .instructions = instructions,
-        .successors = .empty,
-    });
-    var function = Function{
-        .name = "test",
-        .id = 0,
-        .blocks = blocks,
-        .entry_block = 0,
-        .params = &.{},
-        .return_type = .i64,
-        .next_temp = 2,
-        .next_mem = 0,
-    };
-    defer {
-        for (blocks.items) |*block| {
-            block.instructions.deinit(alloc);
-            block.successors.deinit(alloc);
-        }
-        blocks.deinit(alloc);
-    }
+    } } };
+    try function.blocks.items[0].instructions.append(alloc, instruction);
 
     // :spill A:
     // :becomes:
