@@ -697,8 +697,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 }
             }
 
-            // user defined function
-            var arguments = ArrayList(TypedOperand).empty;
+            // arguments are params only declared at call site
+            var arguments: ArrayList(TypedOperand) = .empty;
             for (0..@intCast(c.PyList_Size(args))) |i| {
                 const arg_obj = c.PyList_GetItem(args, @intCast(i));
                 std.debug.assert(arg_obj != null);
@@ -1099,7 +1099,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     std.debug.assert(args_list != null);
 
     // function params
-    var params = ArrayList(Param).empty;
+    var params: ArrayList(Param) = .empty;
     for (0..@intCast(c.PyList_Size(args_list))) |i| {
         const arg_obj = c.PyList_GetItem(args_list, @intCast(i));
         std.debug.assert(arg_obj != null);
@@ -1113,12 +1113,34 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
         std.debug.assert(raw_name != null);
         const name = std.mem.span(raw_name);
 
-        try params.append(alloc, Param{
+        try params.append(alloc, .{
             .name = try alloc.dupe(u8, name),
             .type = arg_type,
         });
     }
+    // default function params
+    const default_objs = c.PyObject_GetAttrString(args_obj, "defaults");
+    std.debug.assert(default_objs != null);
+    const default_len: usize = @intCast(c.PyList_Size(default_objs));
+    for (0..default_len) |i| {
+        const default_obj = c.PyList_GetItem(default_objs, @intCast(i));
+        std.debug.assert(default_obj != null);
+        // list aren't consts today...
+        if (getExprKind(default_obj) != .Constant)
+            return error.InvalidDefault;
+        // TODO: share parseConstant with walkExpr
+        const value_obj = c.PyObject_GetAttrString(default_obj, "value");
+        std.debug.assert(value_obj != null);
+        // HACK: assume bool type or fast fail
+        if (!std.mem.eql(u8, getPyType(value_obj), "bool")) {
+            return error.UnsupportedDefaultType;
+        }
 
+        const param_index = (default_len - 1) + i;
+        params.items[param_index].default = .{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
+    }
+
+    // return type
     const returns = c.PyObject_GetAttrString(stmt, "returns");
     const return_type = try parseTypeAnnotation(returns, alloc);
 
@@ -1128,7 +1150,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
         try params.toOwnedSlice(alloc),
         return_type,
         irBuilder.function_origin,
-        kind,
+        .host,
         alloc,
     ));
 
@@ -1153,7 +1175,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
             .type = try param.type.clone(alloc),
         };
 
-        try irBuilder.emit(Instruction{ .function_param = .{
+        try irBuilder.emit(.{ .function_param = .{
             .dst = value,
             .name = try alloc.dupe(u8, param.name),
             .index = i,
@@ -1282,6 +1304,7 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
         const annotation_id = c.PyUnicode_AsUTF8(annotation_id_obj);
         std.debug.assert(annotation_id != null);
 
+        // TODO: use getPyType and enumify it?
         if (std.mem.eql(u8, std.mem.span(annotation_id), "int")) {
             return .i64;
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "i32")) {
@@ -1359,6 +1382,9 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
     std.debug.print("kind not supported {s}\n", .{kind});
     return error.NotImpl;
 }
+
+// TODO: impl
+// fn parseConstant(obj: *PyObject) void{}
 
 fn getSubscriberType(annotation: *PyObject) !SubscriberTypes {
     const value_obj = c.PyObject_GetAttrString(annotation, "value");

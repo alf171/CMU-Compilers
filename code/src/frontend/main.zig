@@ -19,7 +19,7 @@ pub fn main(init: std.process.Init) !void {
     const tree = c.PyObject_CallFunction(parse_fn, "s", code);
     std.debug.assert(tree != null);
 
-    var irBuilder = try IrBuilder.init(alloc);
+    var irBuilder = try IrBuilder.init(.user, alloc);
     irBuilder.deinit(alloc);
     try walkAstIntoBuilder(tree, &irBuilder, alloc);
     defer irBuilder.program.deinit(alloc);

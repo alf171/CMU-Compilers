@@ -11,12 +11,13 @@ def _print_int_helper(d: int) -> None:
     write(1, buf, 1)
 
 # print(d: int) delegates to this method
-def print_int(d: int) -> None:
+def print_int(d: int, new_line: bool = True) -> None:
     if (d < 0):
         write(1, '-', 1)
         d = -d
     _print_int_helper(d)
-    write(1, '\n', 1)
+    if (new_line):
+        write(1, '\n', 1)
 
 # print(b: bool) delegates to this method
 def print_bool(b: bool) -> None:
@@ -25,9 +26,21 @@ def print_bool(b: bool) -> None:
     write(1, s, len)
 
 # print(b: str) delegates to this method
-def print_string(s: str) -> None:
+def print_string(s: str, new_line: bool = True) -> None:
     write(1, s, len(s) - 1)
-    write(1, '\n', 1)
+    if (new_line):
+        write(1, '\n', 1)
+
+# print(l: list[int]) delegates to this method
+def print_int_list(l: list[int]) -> None:
+    print_string('[', False)
+    for i in range(len(l)):
+        d = l[i]
+        print_int(d, False)
+        # dont print in last case
+        if i != len(l) - 1:
+            print_string(', ', False)
+    print_string(']', True)
 
 # print(f: float) delegates to this method
 def print_float(f: float) -> None:

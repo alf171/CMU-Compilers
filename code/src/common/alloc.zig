@@ -2,6 +2,7 @@
 const std = @import("std");
 const PhysicalReg = @import("ir.zig").PhysicalReg;
 const BlockId = @import("ir.zig").BlockId;
+const ConstValue = @import("ir.zig").ConstValue;
 const TempId = @import("ir.zig").TempId;
 const MemoryId = @import("ir.zig").MemoryId;
 const TypeInfo = @import("types.zig").TypeInfo;
@@ -193,6 +194,7 @@ pub const Operand = union(enum) {
 pub const Param = struct {
     name: []const u8,
     type: TypeInfo,
+    default: ?ConstValue = null,
 };
 
 pub const TypedOperand = struct {

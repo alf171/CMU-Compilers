@@ -5,3 +5,4 @@ items[2] = 0
 print(items[0])
 print(items[1])
 print(items[2])
+print(items)
