@@ -11,21 +11,21 @@ def fib(n: int) -> int:
 print(fib(35))
 
 performance report: (ORIGIN=user)
-number of asm lines: 50
-mov count: 13
+number of asm lines: 23
+mov count: 6
 memory load count: 0
 memory store count: 0
-branch count: 11
-call count: 2
+branch count: 2
+call count: 3
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 403
-mov count: 173
-memory load count: 1
-memory store count: 34
-branch count: 24
-call count: 24
+number of asm lines: 550
+mov count: 229
+memory load count: 4
+memory store count: 44
+branch count: 47
+call count: 30
 spill count: 0
 
 actual output:

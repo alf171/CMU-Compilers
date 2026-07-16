@@ -17,21 +17,21 @@ y = g(f_temp, False)
 print(y)
 
 performance report: (ORIGIN=user)
-number of asm lines: 50
-mov count: 12
+number of asm lines: 26
+mov count: 7
 memory load count: 0
 memory store count: 0
-branch count: 9
-call count: 1
+branch count: 2
+call count: 3
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 406
-mov count: 174
-memory load count: 1
-memory store count: 34
-branch count: 24
-call count: 24
+number of asm lines: 550
+mov count: 228
+memory load count: 4
+memory store count: 44
+branch count: 45
+call count: 29
 spill count: 0
 
 actual output:
