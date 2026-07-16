@@ -25,7 +25,7 @@ pub const Program = struct {
                 .return_type = .i64,
                 .next_temp = 0,
                 .next_mem = 0,
-                .origin = .runtime,
+                .origin = .user,
                 .kind = .host,
             },
             .functions = .empty,
