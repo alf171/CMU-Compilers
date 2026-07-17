@@ -6,6 +6,7 @@ const tuple = @import("frontend").tuple;
 const lazy = @import("frontend").lazy;
 const list = @import("frontend").list;
 const print = @import("frontend").print;
+const func = @import("frontend").function;
 const middle = @import("middle");
 const backend = @import("backend");
 const getPlatform = backend.getPlatform;
@@ -74,8 +75,10 @@ pub fn main(init: std.process.Init) !void {
     // rewrite layer
     try lazy.rewrite(&ir_program, alloc);
     try tuple.rewrite(&ir_program, alloc);
-    try print.rewrite(&ir_program, alloc);
     try list.rewrite(&ir_program, alloc);
+    try print.rewrite(&ir_program, alloc);
+    try func.rewrite(&ir_program, alloc);
+
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
 

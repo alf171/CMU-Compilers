@@ -27,18 +27,10 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     switch (p.src.type) {
                         .list => |l| {
                             if (l.element.* == .char) {
-                                const new_line: TypedOperand = .{
-                                    .operand = function.nextTemp(),
-                                    .type = .bool,
-                                };
-                                try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                                    .dst = new_line,
-                                    .src = .{ .constant = .{ .bool = true } },
-                                } } });
                                 try new_instructions.append(alloc, .{ .function_call = .{
                                     .dst = null,
                                     .callee = .{ .direct = "print_string" },
-                                    .args = try alloc.dupe(TypedOperand, &.{ p.src, new_line }),
+                                    .args = try alloc.dupe(TypedOperand, &.{p.src}),
                                 } });
                             } else if (l.element.* == .i64 or l.element.* == .i32) {
                                 try new_instructions.append(alloc, .{ .function_call = .{
@@ -56,18 +48,10 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             } });
                         },
                         .i64, .i32 => {
-                            const new_line: TypedOperand = .{
-                                .operand = function.nextTemp(),
-                                .type = .bool,
-                            };
-                            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                                .dst = new_line,
-                                .src = .{ .constant = .{ .bool = true } },
-                            } } });
                             try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
                                 .callee = .{ .direct = "print_int" },
-                                .args = try alloc.dupe(TypedOperand, &.{ p.src, new_line }),
+                                .args = try alloc.dupe(TypedOperand, &.{p.src}),
                             } });
                         },
                         .float => {

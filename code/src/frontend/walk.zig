@@ -1136,7 +1136,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
             return error.UnsupportedDefaultType;
         }
 
-        const param_index = (default_len - 1) + i;
+        const param_index = params.items.len - default_len + i;
         params.items[param_index].default = .{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
     }
 
