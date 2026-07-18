@@ -29,7 +29,7 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                         .operand = .{
                             .reg = .{
                                 .id = id,
-                                .class = abi.regFromType(fp.dst.type),
+                                .class = fp.dst.type.toCpuRegisterType(),
                             },
                         },
                         .type = fp.dst.type,
@@ -40,7 +40,7 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                     if (fr.value) |src_op| {
                         const reg = Operand{ .reg = .{
                             .id = abi.getFunctionReturnIdx(function.return_type),
-                            .class = abi.regFromType(function.return_type),
+                            .class = function.return_type.toCpuRegisterType(),
                         } };
                         try new_instructions.append(alloc, .{ .lir = .{ .move = .{ .dst = .{
                             .operand = reg,
@@ -68,7 +68,7 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                     for (fc.args, 0..) |arg, i| {
                         const reg = Operand{ .reg = .{
                             .id = @intCast(i),
-                            .class = abi.regFromType(arg.type),
+                            .class = arg.type.toCpuRegisterType(),
                         } };
                         copies[i] = .{
                             .dst = .{
@@ -98,7 +98,7 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                                 .src = .{ .top = .{
                                     .operand = .{ .reg = .{
                                         .id = abi.getFunctionReturnIdx(dst.type),
-                                        .class = abi.regFromType(dst.type),
+                                        .class = dst.type.toCpuRegisterType(),
                                     } },
                                     .type = dst.type,
                                 } },

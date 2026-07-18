@@ -11,7 +11,7 @@ pub const SeenValue = union(enum) {
     local: LocalId,
 };
 
-pub const RegisterType = union(enum) {
+pub const CpuRegisterType = union(enum) {
     /// general purpose register
     gp,
     /// floating point register
@@ -20,7 +20,7 @@ pub const RegisterType = union(enum) {
 
 pub const PhysicalReg = struct {
     id: u8,
-    class: RegisterType,
+    class: CpuRegisterType,
 
     pub fn equal(self: @This(), other: @This()) bool {
         return self.id == other.id and std.meta.activeTag(self.class) == std.meta.activeTag(other.class);

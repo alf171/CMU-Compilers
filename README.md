@@ -24,3 +24,4 @@
 - [phi function vs block args](https://mlir.llvm.org/docs/Rationale/Rationale/#block-arguments-vs-phi-nodes)
 - [phi vs select](https://stackoverflow.com/questions/63048341/what-is-the-difference-between-select-and-phi-in-llvm-ir)
 - [x86 abi](http://man6.org/lib/pdfjs/web/viewer.html?file=/blog/PdfFile/x86-64-psABI-1.0.pdf)
+- [rdna3 abi](https://gpuopen.com/news/rdna3-isa-guide-now-available/)

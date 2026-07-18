@@ -137,11 +137,11 @@ fn emitFunction(
                                 .top => |src_top| {
                                     switch (m.dst.operand) {
                                         .temp => {
-                                            const dst = try abi.regFor(m.dst.operand, colors, abi.regFromType(m.dst.type));
+                                            const dst = try abi.regFor(m.dst.operand, colors, m.dst.type.toCpuRegisterType());
                                             switch (src_top.operand) {
                                                 // temp <- temp
                                                 .temp => {
-                                                    const src = try abi.regFor(src_top.operand, colors, abi.regFromType(m.dst.type));
+                                                    const src = try abi.regFor(src_top.operand, colors, m.dst.type.toCpuRegisterType());
                                                     if (std.mem.eql(u8, dst, src)) continue;
                                                     switch (m.dst.type) {
                                                         .float => try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, src }),
@@ -219,9 +219,9 @@ fn emitFunction(
                             }
                         },
                         .binop => |binop| {
-                            const dst = try abi.regFor(binop.dst.operand, colors, abi.regFromType(binop.dst.type));
-                            const lhs = try abi.regFor(binop.lhs.operand, colors, abi.regFromType(binop.lhs.type));
-                            const rhs = try abi.regFor(binop.rhs.operand, colors, abi.regFromType(binop.rhs.type));
+                            const dst = try abi.regFor(binop.dst.operand, colors, binop.dst.type.toCpuRegisterType());
+                            const lhs = try abi.regFor(binop.lhs.operand, colors, binop.lhs.type.toCpuRegisterType());
+                            const rhs = try abi.regFor(binop.rhs.operand, colors, binop.rhs.type.toCpuRegisterType());
 
                             switch (binop.op) {
                                 .add => {
@@ -349,7 +349,7 @@ fn emitFunction(
                             }
                         },
                         .stack_alloc => |sa| {
-                            const dst = try abi.regFor(sa.dst.operand, colors, abi.regFromType(sa.dst.type));
+                            const dst = try abi.regFor(sa.dst.operand, colors, sa.dst.type.toCpuRegisterType());
                             next_stack_alloc_byte += sa.bytes;
                             const bytes = local_count * 8 + next_stack_alloc_byte;
 
@@ -642,7 +642,7 @@ fn valueToReg(
     alloc: std.mem.Allocator,
 ) ![]const u8 {
     switch (value) {
-        .top => |top| return abi.regFor(top.operand, colors, abi.regFromType(top.type)),
+        .top => |top| return abi.regFor(top.operand, colors, top.type.toCpuRegisterType()),
         .constant => |c| {
             switch (c) {
                 .float => |f| {

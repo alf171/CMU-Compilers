@@ -1,4 +1,5 @@
 const std = @import("std");
+pub const CpuRegisterType = @import("ir.zig").CpuRegisterType;
 
 // use a pointer on element type for recursive purposes
 // things like range dont know their size at comptime
@@ -131,6 +132,13 @@ pub const TypeInfo = union(enum) {
 
     pub fn equal(self: @This(), other: @This()) bool {
         return std.meta.activeTag(self) == std.meta.activeTag(other);
+    }
+
+    pub fn toCpuRegisterType(self: @This()) CpuRegisterType {
+        return switch (self) {
+            .float => .f,
+            else => return .gp,
+        };
     }
 };
 
