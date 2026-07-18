@@ -3,7 +3,7 @@ const Operand = @import("common").alloc.Operand;
 const ValueRef = @import("common").ir.ValueRef;
 const ColoredGraph = @import("middle").color.ColoredGraph;
 const TypeInfo = @import("common").types.TypeInfo;
-const RegisterType = @import("common").ir.RegisterType;
+const RegisterType = @import("common").ir.CpuRegisterType;
 
 // function_return_idx = idnex of in mask of the function return register
 // mask calculation could be moved to comptime
