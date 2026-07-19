@@ -204,33 +204,43 @@ pub fn main(init: std.process.Init) !void {
         defer alloc.free(clang_malloc_result.stderr);
 
         //include hsa
-        const hsa_runtime_path = init.environ_map.get("HSA_RUNTIME_PATH") orelse return error.CantFindHsaPath;
-        const hsa_include = try std.fs.path.join(alloc, &.{ hsa_runtime_path, "include" });
-        defer alloc.free(hsa_include);
-        // clang -I ($HSA_RUNTIME_PATH)/include -c src/gpu.c -o /tmp/gpu.o
-        const gpu_result = try runCommand(alloc, io, &.{
-            "clang",
-            "-I",
-            hsa_include,
-            "-c",
-            "src/gpu.c",
-            "-o",
-            "/tmp/gpu.o",
-        });
-        defer alloc.free(gpu_result.stdout);
-        defer alloc.free(gpu_result.stderr);
+        if (target.device != .host) {
+            const hsa_runtime_path = init.environ_map.get("HSA_RUNTIME_PATH") orelse return error.CantFindHsaPath;
+            const hsa_include = try std.fs.path.join(alloc, &.{ hsa_runtime_path, "include" });
+            defer alloc.free(hsa_include);
+            // clang -I ($HSA_RUNTIME_PATH)/include -c src/gpu.c -o /tmp/gpu.o
+            const gpu_result = try runCommand(alloc, io, &.{
+                "clang",
+                "-I",
+                hsa_include,
+                "-c",
+                "src/gpu.c",
+                "-o",
+                "/tmp/gpu.o",
+            });
+            defer alloc.free(gpu_result.stdout);
+            defer alloc.free(gpu_result.stderr);
+        }
 
         // create /tmp/integration_out
-        const clang_final_result = try runCommand(alloc, io, &.{
-            "clang",
-            obj_file,
-            "/tmp/malloc.o",
-            "/tmp/gpu.o",
-            // needed for amd gpu
-            "-lhsa-runtime64",
-            "-o",
-            "/tmp/integration_out",
-        });
+        const clang_final_result = if (target.device == .host)
+            try runCommand(alloc, io, &.{
+                "clang",
+                obj_file,
+                "/tmp/malloc.o",
+                "-o",
+                "/tmp/integration_out",
+            })
+        else
+            try runCommand(alloc, io, &.{
+                "clang",
+                obj_file,
+                "/tmp/malloc.o",
+                "/tmp/gpu.o",
+                "-lhsa-runtime64",
+                "-o",
+                "/tmp/integration_out",
+            });
         defer alloc.free(clang_final_result.stdout);
         defer alloc.free(clang_final_result.stderr);
         // run!
