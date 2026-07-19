@@ -282,7 +282,7 @@ test "constant arg setup gets folded into abi reg" {
     try instructions.append(alloc, .{
         .function_call = .{
             .dst = null,
-            .callee = .{ .direct = "foobar" },
+            .callee = .{ .direct = try alloc.dupe(u8, "foobar") },
             .args = try alloc.dupe(TypedOperand, &[_]TypedOperand{.{
                 .operand = r0,
                 .type = .i64,

@@ -14,9 +14,10 @@ pub const Node = struct {
     neighbors: std.AutoHashMap(Operand, void),
     moves: std.AutoHashMap(Operand, void),
     selected: bool = false,
-    spill: bool = false,
     static_degree: DegreeCount = 0,
     cur_degree: DegreeCount = 0,
+    /// utilize to select which temp to spill
+    spill_cost: u32 = 0,
     /// encode which colors aren't allowed. ultimately, we should have a precoloring stage to avoid this hack
     forbidden_colors: u32 = 0,
 
@@ -39,6 +40,15 @@ pub const Node = struct {
 
         self.static_degree += 1;
         self.cur_degree += 1;
+    }
+
+    pub fn legalCount(self: *@This(), k: u8) DegreeCount {
+        // largest value forbidden_colors supports
+        std.debug.assert(k < 32);
+        const mask = (@as(u32, 1) << @intCast(k)) - 1;
+        const forbiddden_count: DegreeCount = @popCount(mask & self.forbidden_colors);
+
+        return k - forbiddden_count;
     }
 };
 
@@ -157,7 +167,7 @@ pub const IGraph = struct {
             _ = dst_node.moves.remove(dst);
 
             dst_node.selected = false;
-            dst_node.spill = src_node.spill or dst_node.spill;
+            dst_node.spill_cost += src_node.spill_cost;
             // do we have sleeper nodes like mem and special?
             const degree: u8 = @intCast(dst_node.neighbors.count());
             dst_node.cur_degree = degree;
@@ -220,6 +230,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
         while (it.next()) |op| {
             if (op.shouldColor()) {
                 try igraph.defineNodeIfDoesntExist(op.*, allocator);
+                igraph.nodes.getPtr(op.*).?.spill_cost += 1;
             }
         }
     }
@@ -229,6 +240,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
         while (it.next()) |op| {
             if (op.shouldColor()) {
                 try igraph.defineNodeIfDoesntExist(op.*, allocator);
+                igraph.nodes.getPtr(op.*).?.spill_cost += 1;
             }
         }
     }

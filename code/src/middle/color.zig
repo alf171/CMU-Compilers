@@ -137,7 +137,7 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
                 continue;
             }
 
-            if (node.cur_degree < k) {
+            if (node.cur_degree < node.legalCount(k)) {
                 try simplify.put(node.val, {});
             } else {
                 try spill.put(node.val, {});
@@ -161,48 +161,31 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
             };
             if (!node.selected) {
                 try removeNode(input, node.*, &select, &simplify, &spill, k);
-                node.spill = false;
             }
         } else {
-            // spill node with most edges
-            const id = try takeNodeWithMostEdges(input.nodes, &spill);
-            const node = input.nodes.getPtr(id) orelse {
-                return error.CantFindNode;
-            };
-            if (!node.selected) {
-                try removeNode(input, node.*, &select, &simplify, &spill, k);
-                node.spill = true;
-            }
+            // spill node with lowest impact according to our hueristic
+            const id = try takeNodeWithCheapestSpill(input.nodes, &spill, allocator);
+            new_graph.deinit();
+            return .{ .spill_register = id };
         }
     }
 
     // phase 3: select + color
     while (select.items.len > 0) {
         const id = select.pop().?;
-        const node = input.nodes.getPtr(id) orelse {
-            std.debug.print("node doesn't exist in graph", .{});
-            return error.GraphError;
-        };
         var graph_node = new_graph.nodes.getPtr(id) orelse {
             std.debug.print("node doesn't exist in graph", .{});
             return error.GraphError;
         };
 
-        if (!node.spill) {
+        const reg = try scanForRegister(graph_node, &new_graph, k) orelse {
             const str = try id.toString(allocator);
             defer allocator.free(str);
-            const reg = try scanForRegister(graph_node, &new_graph, k) orelse {
-                std.debug.print("couldn't find register for {s}\n", .{str});
-                new_graph.deinit();
-                return .{ .spill_register = id };
-            };
-            graph_node.register = reg;
-        } else {
-            const str = try id.toString(allocator);
-            defer allocator.free(str);
+            std.debug.print("couldn't find register for {s}\n", .{str});
             new_graph.deinit();
             return .{ .spill_register = id };
-        }
+        };
+        graph_node.register = reg;
     }
 
     // phase 4: swap Operand aliases
@@ -251,7 +234,7 @@ fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_l
         }
 
         // if we go from k -> k - 1, move from spill to select
-        if (n.cur_degree == k) {
+        if (n.cur_degree == n.legalCount(k)) {
             std.debug.assert(spill.contains(n_ptr.*));
             std.debug.assert(!simplify.contains(n_ptr.*));
             _ = spill.remove(n_ptr.*);
@@ -261,21 +244,47 @@ fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_l
     }
 }
 
-fn takeNodeWithMostEdges(input_graph: std.AutoHashMap(Operand, graph.Node), s: *std.AutoHashMap(Operand, void)) !Operand {
-    var it = s.keyIterator();
+// spill cost / degree
+fn takeNodeWithCheapestSpill(
+    input_graph: std.AutoHashMap(Operand, graph.Node),
+    canadidites: *std.AutoHashMap(Operand, void),
+    allocator: std.mem.Allocator,
+) !Operand {
+    var it = canadidites.keyIterator();
     var best_id: ?Operand = null;
-    var max_edges: u32 = 0;
-    while (it.next()) |p| {
-        const temp = p.*;
-        const node = input_graph.get(temp) orelse continue;
-        const edges = node.neighbors.count();
-        if (edges > max_edges) {
-            max_edges = node.neighbors.count();
-            best_id = temp;
+    var best_cost: u32 = 0;
+    var best_degree: u16 = 1;
+
+    while (it.next()) |canadidite| {
+        const name = try canadidite.*.toString(allocator);
+        const node = input_graph.get(canadidite.*) orelse continue;
+        defer allocator.free(name);
+
+        const degree = @max(node.static_degree, 1);
+        // base case
+        if (best_id == null) {
+            best_id = canadidite.*;
+            best_degree = degree;
+            best_cost = node.spill_cost;
+            continue;
+        }
+        // cross product to change to multiplies
+        const candidate_score: u64 = @as(u64, node.spill_cost) * @as(u64, best_degree);
+        const best_score: u64 = @as(u64, best_cost) * @as(u64, degree);
+        if (candidate_score < best_score) {
+            best_id = canadidite.*;
+            best_degree = degree;
+            best_cost = node.spill_cost;
         }
     }
     const id = best_id orelse return error.IllegalGraph;
-    _ = s.remove(id);
+    const selected_name = try id.toString(allocator);
+    defer allocator.free(selected_name);
+    std.debug.print(
+        "select spill {s}: cost={d} static_degree={d}\n",
+        .{ selected_name, best_cost, best_degree },
+    );
+    _ = canadidites.remove(id);
     return id;
 }
 
