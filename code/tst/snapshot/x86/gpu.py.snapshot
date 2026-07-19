@@ -20,8 +20,8 @@ call count: 4
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 585
-mov count: 297
+number of asm lines: 575
+mov count: 287
 memory load count: 0
 memory store count: 0
 branch count: 44

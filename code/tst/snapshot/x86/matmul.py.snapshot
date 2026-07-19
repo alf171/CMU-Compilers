@@ -25,24 +25,27 @@ def matmul(
 matmul(
     M, N, P
 )
-couldn't find register for temp397
-couldn't find register for temp603
-couldn't find register for temp11
-couldn't find register for temp577
-couldn't find register for temp16
+select spill temp6: cost=8 static_degree=420
+select spill temp8: cost=2 static_degree=81
+select spill temp21: cost=2 static_degree=67
+select spill temp12: cost=8 static_degree=229
+select spill temp4: cost=3 static_degree=84
+select spill temp15: cost=3 static_degree=74
+select spill temp36: cost=2 static_degree=41
+select spill temp37: cost=3 static_degree=51
 
 performance report: (ORIGIN=user)
-number of asm lines: 782
-mov count: 561
+number of asm lines: 749
+mov count: 528
 memory load count: 0
 memory store count: 0
 branch count: 2
 call count: 20
-spill count: 6
+spill count: 2
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 838
-mov count: 446
+number of asm lines: 805
+mov count: 413
 memory load count: 0
 memory store count: 0
 branch count: 59

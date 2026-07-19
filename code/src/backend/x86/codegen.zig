@@ -115,6 +115,8 @@ fn emitFunction(
                                                 .temp, .reg => {
                                                     const dst = try abi.regFor(m.dst.operand, colors, m.dst.type.toCpuRegisterType());
                                                     const src = try abi.regFor(src_top.operand, colors, src_top.type.toCpuRegisterType());
+                                                    // HACK: self moves area leaking into backend
+                                                    if (std.mem.eql(u8, dst, src)) continue;
                                                     try out.print(alloc, "\t{s} %{s}, %{s}\n", .{ mov_isnt, src, dst });
                                                 },
                                                 .mem => |mem| {
