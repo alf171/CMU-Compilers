@@ -25,7 +25,11 @@
             zsh
             python313
             pkg-config
+            lld
+            rocmPackages.rocm-runtime
           ];
+
+          HSA_RUNTIME_PATH = "${pkgs.rocmPackages.rocm-runtime}";
 
           shellHook = ''
             if [ -z "$ZSH_VERSION" ] && [ -z "$NIX_DEVELOP_ZSH" ]; then

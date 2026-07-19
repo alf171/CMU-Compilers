@@ -13,8 +13,8 @@ pub fn run(
     std.debug.print("running {s}", .{file_name});
     const platform_arg = try std.fmt.allocPrint(
         alloc,
-        "--platform={s}",
-        .{try target.toString()},
+        "--host={s}",
+        .{try target.host.toString()},
     );
     defer alloc.free(platform_arg);
 
@@ -35,7 +35,7 @@ pub fn run(
     const snapshot_dir_path = try std.fmt.allocPrint(
         alloc,
         "tst/snapshot/{s}",
-        .{try target.toString()},
+        .{try target.host.toString()},
     );
     defer alloc.free(snapshot_dir_path);
 
@@ -104,11 +104,14 @@ pub fn main(init: std.process.Init) !void {
     const alloc = init.gpa;
 
     var should_regen_snapshot = false;
-    var target: Target = .ARM;
+    var target: Target = .{
+        .host = .X86,
+        .device = .gfx1103,
+    };
     for (args[1..]) |arg| {
         if (std.mem.eql(u8, arg, "--regen")) should_regen_snapshot = true;
-        if (std.mem.eql(u8, arg, "--platform=arm")) target = .ARM;
-        if (std.mem.eql(u8, arg, "--platform=x86")) target = .X86;
+        if (std.mem.eql(u8, arg, "--host=arm")) target.host = .ARM;
+        if (std.mem.eql(u8, arg, "--host=x86")) target.host = .X86;
     }
     const compiler_path = args[1];
 

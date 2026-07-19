@@ -10,16 +10,18 @@ const Function = common.ir.Function;
 const ValueRef = common.ir.ValueRef;
 const getElementType = common.types.getElementType;
 const ColoredGraph = @import("middle").color.ColoredGraph;
-const Abi = @import("../abi.zig").Abi;
+const Abi = @import("../cpu_abi.zig").CpuAbi;
 
 pub fn emit(program: *const Program, colors: *const ColoredGraph, abi: Abi, alloc: std.mem.Allocator) ![]u8 {
     var out = ArrayList(u8).empty;
     errdefer out.deinit(alloc);
 
     try createProgramHeader(&out, alloc);
+    std.debug.assert(program.main.kind == .host);
     try emitFunction(&out, colors, &program.main, abi, true, alloc);
     for (program.functions.items) |function| {
-        try emitFunction(&out, colors, &function, abi, false, alloc);
+        if (function.kind == .host)
+            try emitFunction(&out, colors, &function, abi, false, alloc);
     }
 
     try createFooter(&out, alloc);
@@ -379,14 +381,38 @@ fn emitFunction(
 
                             try out.print(alloc, "\tleaq -{d}(%rbp), %{s}\n", .{ bytes, dst });
                         },
+                        // (register -> memory)
+                        .store_local => |sl| {
+                            const src = try abi.regFor(sl.src, colors, sl.local.type.toCpuRegisterType());
+                            try emitStackStore(
+                                out,
+                                src,
+                                localOffset(sl.local.id),
+                                alloc,
+                            );
+                        },
+                        // (memory -> register)
+                        .load_local => |ll| {
+                            const dst = try abi.regFor(ll.dst, colors, ll.local.type.toCpuRegisterType());
+                            try emitStackLoad(
+                                out,
+                                dst,
+                                localOffset(ll.local.id),
+                                alloc,
+                            );
+                        },
                         else => |e| {
-                            std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(e)});
+                            std.debug.panic("ir instruction doesnt have a mapping in x86 backend: {s}\n", .{@tagName(e)});
                             return error.NotSupported;
                         },
                     }
                 },
+                .gpu_launch => |gl| {
+                    try out.print(alloc, "\t# gpu launch: {s}\n", .{gl.kernel});
+                    try out.print(alloc, "\tcallq gpu_launch\n", .{});
+                },
                 else => |ir| {
-                    std.debug.panic("ir instruction doesnt have a mapping in arm backend: {s}\n", .{@tagName(ir)});
+                    std.debug.panic("ir instruction doesnt have a mapping in x86 backend: {s}\n", .{@tagName(ir)});
                     return error.NotSupported;
                 },
             }
@@ -410,6 +436,10 @@ fn createFunctionHeader(out: *ArrayList(u8), name: []const u8, local_stack_size:
     if (local_stack_size > 0) {
         try out.print(alloc, "\tsubq ${d}, %rsp\n", .{local_stack_size});
     }
+    // ensure 16 byte alignment
+    if (abi.gp_callee_save_regs.len % 2 != 0)
+        try out.print(alloc, "\tsubq $8, %rsp\n", .{});
+
     try saveCalleeSaveReg(out, abi, alloc);
 }
 
@@ -432,10 +462,8 @@ fn emitStackLoad(
     out: *ArrayList(u8),
     dst: []const u8,
     offset: usize,
-    scratch: []const u8,
     alloc: std.mem.Allocator,
 ) !void {
-    _ = scratch;
     try out.print(alloc, "\tmovzbq -{d}(%rbp), %{s}\n", .{ offset, dst });
 }
 
@@ -476,6 +504,10 @@ fn createFunctionFooter(out: *ArrayList(u8), name: []const u8, local_stack_size:
     }
 
     try restoreCalleeSafeReg(out, abi, alloc);
+    // match createFunctionHeader alignment
+    if (abi.gp_callee_save_regs.len % 2 != 0)
+        try out.print(alloc, "\taddq $8, %rsp\n", .{});
+
     if (local_stack_size > 0) {
         try out.print(alloc, "\taddq ${d}, %rsp\n", .{local_stack_size});
     }

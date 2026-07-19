@@ -9,7 +9,7 @@ while x < 3:
 print(x)
 
 performance report: (ORIGIN=user)
-number of asm lines: 42
+number of asm lines: 44
 mov count: 11
 memory load count: 0
 memory store count: 0
@@ -18,7 +18,7 @@ call count: 3
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 573
+number of asm lines: 585
 mov count: 297
 memory load count: 0
 memory store count: 0

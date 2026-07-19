@@ -19,7 +19,7 @@ def f() -> None:
 f()
 
 performance report: (ORIGIN=user)
-number of asm lines: 21
+number of asm lines: 23
 mov count: 2
 memory load count: 0
 memory store count: 0
@@ -28,7 +28,7 @@ call count: 2
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 619
+number of asm lines: 633
 mov count: 312
 memory load count: 0
 memory store count: 0

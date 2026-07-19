@@ -1,24 +1,15 @@
 running program: (OPTIM=true)
 
-from typing import Callable
 
-def f(c: bool) -> int:
-  if c:
-      x = 1
-  else:
-      x = 2
-  return x
 
-def g(f: Callable[[bool], int], y: bool) -> int:
-    return 2 * f(y)
+def f(a: int, b: int, c: int, d: int, e:int, f: int) -> int:
+    return a + b + c + d + e + f
 
-f_temp = f
-y = g(f_temp, False)
-print(y)
+print(f(1,2,3,4,5,6))
 
 performance report: (ORIGIN=user)
-number of asm lines: 30
-mov count: 7
+number of asm lines: 33
+mov count: 11
 memory load count: 0
 memory store count: 0
 branch count: 2
@@ -26,14 +17,14 @@ call count: 3
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 647
-mov count: 309
+number of asm lines: 618
+mov count: 305
 memory load count: 0
 memory store count: 0
-branch count: 54
-call count: 29
+branch count: 47
+call count: 28
 spill count: 0
 
 actual output:
-4
+21
 [!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10

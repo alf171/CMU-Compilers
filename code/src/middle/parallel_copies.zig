@@ -36,8 +36,8 @@ fn lowerFunction(function: *Function, alloc: std.mem.Allocator) !void {
         }
         // perform swaps
         var new_instructions = ArrayList(Instruction).empty;
-        for (block.instructions.items) |instruction| {
-            switch (instruction) {
+        for (block.instructions.items) |*instruction| {
+            switch (instruction.*) {
                 .parallel_copy => |pc| {
                     for (pc.copies) |copy| {
                         if (used.contains(copy.dst.operand)) {
@@ -45,37 +45,37 @@ fn lowerFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 .id = function.next_temp,
                                 .function_id = function.id,
                             } };
-                            try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
+                            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                                 .dst = .{ .operand = temp, .type = .any },
-                                .src = .{ .top = copy.dst },
+                                .src = .{ .top = try copy.dst.clone(alloc) },
                             } } });
                             try used.put(copy.dst.operand, temp);
                             function.next_temp += 1;
                             // emit the original instruction too
                             const src = if (used.get(copy.src)) |entry| entry orelse copy.src else copy.src;
                             try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                                .dst = copy.dst,
-                                .src = .{ .top = .{ .operand = src, .type = copy.dst.type } },
+                                .dst = try copy.dst.clone(alloc),
+                                .src = .{ .top = .{ .operand = src, .type = try copy.dst.type.clone(alloc) } },
                             } } });
                         } else if (used.get(copy.src)) |entry| {
                             const temp = entry orelse copy.src;
                             try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                                .dst = copy.dst,
-                                .src = .{ .top = .{ .operand = temp, .type = copy.dst.type } },
+                                .dst = try copy.dst.clone(alloc),
+                                .src = .{ .top = .{ .operand = temp, .type = try copy.dst.type.clone(alloc) } },
                             } } });
                         } else {
                             try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                                .dst = copy.dst,
+                                .dst = try copy.dst.clone(alloc),
                                 .src = .{
-                                    .top = .{ .operand = copy.src, .type = copy.dst.type },
+                                    .top = .{ .operand = copy.src, .type = try copy.dst.type.clone(alloc) },
                                 },
                             } } });
                         }
                     }
-                    alloc.free(pc.copies);
+                    instruction.deinit(alloc);
                 },
                 else => {
-                    try new_instructions.append(alloc, instruction);
+                    try new_instructions.append(alloc, instruction.*);
                 },
             }
         }

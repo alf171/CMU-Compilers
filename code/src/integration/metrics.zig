@@ -49,7 +49,11 @@ pub const MetricsReport = struct {
     runtime: Metrics,
 };
 
-pub fn get(asm_text: []u8, spill_counts: std.EnumArray(FunctionType, usize), target: Target) MetricsReport {
+pub fn get(
+    asm_text: []const u8,
+    spill_counts: std.EnumArray(FunctionType, usize),
+    target: Target,
+) MetricsReport {
     var current_origin: FunctionType = .user;
     var runtime_metrics = Metrics.init(.runtime, spill_counts.get(.runtime));
     var user_metrics = Metrics.init(.user, spill_counts.get(.user));
@@ -76,7 +80,7 @@ pub fn get(asm_text: []u8, spill_counts: std.EnumArray(FunctionType, usize), tar
         if (trim[0] == '.' or trim[0] == '_') continue;
 
         current.line_count += 1;
-        switch (target) {
+        switch (target.host) {
             .ARM => {
                 if (std.mem.startsWith(u8, trim, "mov")) current.mov_count += 1;
                 if (std.mem.startsWith(u8, trim, "ldr")) current.memory_load_count += 1;

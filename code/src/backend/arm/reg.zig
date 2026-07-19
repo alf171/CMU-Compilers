@@ -1,7 +1,7 @@
 const std = @import("std");
 const common = @import("common");
 const ValueRef = common.ir.ValueRef;
-const Abi = @import("../abi.zig").Abi;
+const CpuAbi = @import("../cpu_abi.zig").CpuAbi;
 
 // reserve two regs for scratch purposes
 const gp_scratch_reg = "x16";
@@ -29,7 +29,7 @@ const fp_callee_save_regs = [_][]const u8{ "d19", "d20", "d21", "d22", "d23", "d
 /// in order to allow using d0-d7, we need to write percoloring code so that we dont have a collision
 const fp_caller_save_regs = [_][]const u8{ "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15" };
 
-pub const ArmAbi = Abi.init(
+pub const ArmAbi = CpuAbi.init(
     &gp_function_param_regs,
     &gp_caller_save_regs,
     &gp_callee_save_regs,

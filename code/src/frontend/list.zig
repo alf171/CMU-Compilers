@@ -36,8 +36,8 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         .{ .operand = size_temp, .type = .i64 },
                     });
                     try new_instructions.append(alloc, .{ .function_call = .{
-                        .dst = ll.dst,
-                        .callee = .{ .direct = "arena_malloc" },
+                        .dst = try ll.dst.clone(alloc),
+                        .callee = .{ .direct = try alloc.dupe(u8, "arena_malloc") },
                         .args = args,
                     } });
                     // store list size
@@ -65,7 +65,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 const src: TypedOperand = .{ .operand = function.nextTemp(), .type = .any };
                                 try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                                     .dst = src,
-                                    .src = .{ .top = top },
+                                    .src = .{ .top = try top.clone(alloc) },
                                 } } });
                                 break :blk ValueRef{ .top = src };
                             },

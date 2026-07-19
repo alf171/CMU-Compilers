@@ -9,7 +9,7 @@ print(int(-5.9))
 
 
 performance report: (ORIGIN=user)
-number of asm lines: 45
+number of asm lines: 47
 mov count: 16
 memory load count: 0
 memory store count: 0
@@ -18,7 +18,7 @@ call count: 5
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 573
+number of asm lines: 585
 mov count: 297
 memory load count: 0
 memory store count: 0

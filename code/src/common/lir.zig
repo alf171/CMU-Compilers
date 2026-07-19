@@ -371,6 +371,13 @@ pub const Instruction = union(enum) {
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         switch (self.*) {
+            .move => |m| {
+                m.dst.type.deinit(alloc);
+                switch (m.src) {
+                    .top => |top| top.type.deinit(alloc),
+                    .constant => {},
+                }
+            },
             .store_local => |sl| {
                 alloc.free(sl.local.name);
             },

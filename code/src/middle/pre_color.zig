@@ -1,5 +1,5 @@
 const std = @import("std");
-const Abi = @import("backend").Abi;
+const CpuAbi = @import("backend").CpuAbi;
 const IrProgram = @import("common").program.Program;
 const Copy = @import("common").mir.Copy;
 const Function = @import("common").ir.Function;
@@ -9,14 +9,17 @@ const Instruction = @import("common").mir.Instruction;
 const IGraph = @import("igraph.zig").IGraph;
 const PhysicalReg = @import("common").ir.PhysicalReg;
 
-pub fn apply(ir_program: *IrProgram, abi: Abi, alloc: std.mem.Allocator) !void {
+pub fn apply(ir_program: *IrProgram, abi: CpuAbi, alloc: std.mem.Allocator) !void {
     try applyFunction(&ir_program.main, abi, alloc);
     for (ir_program.functions.items) |*function| {
+        // only color cpu abi for now
+        if (function.kind == .gpu_kernel)
+            continue;
         try applyFunction(function, abi, alloc);
     }
 }
 
-pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !void {
+pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator) !void {
     for (function.blocks.items) |*block| {
         var new_instructions = std.ArrayList(Instruction).empty;
         errdefer new_instructions.deinit(alloc);
@@ -25,15 +28,18 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
             switch (instruction.*) {
                 .function_param => |fp| {
                     const id = try abi.getIndexForType(fp.index, fp.dst.type);
-                    try new_instructions.append(alloc, .{ .lir = .{ .move = .{ .dst = fp.dst, .src = .{ .top = .{
-                        .operand = .{
-                            .reg = .{
-                                .id = id,
-                                .class = fp.dst.type.toCpuRegisterType(),
+                    try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                        .dst = try fp.dst.clone(alloc),
+                        .src = .{ .top = .{
+                            .operand = .{
+                                .reg = .{
+                                    .id = id,
+                                    .class = fp.dst.type.toCpuRegisterType(),
+                                },
                             },
-                        },
-                        .type = fp.dst.type,
-                    } } } } });
+                            .type = try fp.dst.type.clone(alloc),
+                        } },
+                    } } });
                     instruction.deinit(alloc);
                 },
                 .function_return => |fr| {
@@ -73,13 +79,13 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                         copies[i] = .{
                             .dst = .{
                                 .operand = reg,
-                                .type = arg.type,
+                                .type = try arg.type.clone(alloc),
                             },
                             .src = arg.operand,
                         };
                         args[i] = .{
                             .operand = reg,
-                            .type = arg.type,
+                            .type = try arg.type.clone(alloc),
                         };
                     }
                     try new_instructions.append(alloc, .{ .parallel_copy = .{
@@ -88,19 +94,19 @@ pub fn applyFunction(function: *Function, abi: Abi, alloc: std.mem.Allocator) !v
                     // jumps to function
                     try new_instructions.append(alloc, .{ .function_call = .{
                         .dst = null,
-                        .callee = fc.callee,
+                        .callee = try fc.callee.clone(alloc),
                         .args = args,
                     } });
                     if (fc.dst) |dst| {
                         try new_instructions.append(alloc, .{ .lir = .{
                             .move = .{
-                                .dst = dst,
+                                .dst = try dst.clone(alloc),
                                 .src = .{ .top = .{
                                     .operand = .{ .reg = .{
                                         .id = abi.getFunctionReturnIdx(dst.type),
                                         .class = dst.type.toCpuRegisterType(),
                                     } },
-                                    .type = dst.type,
+                                    .type = try dst.type.clone(alloc),
                                 } },
                             },
                         } });

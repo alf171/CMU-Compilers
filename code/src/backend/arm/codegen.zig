@@ -10,7 +10,7 @@ const Function = common.ir.Function;
 const ValueRef = common.ir.ValueRef;
 const getElementType = common.types.getElementType;
 const ColoredGraph = @import("middle").color.ColoredGraph;
-const Abi = @import("../abi.zig").Abi;
+const Abi = @import("../cpu_abi.zig").CpuAbi;
 const RegisterType = @import("common").ir.RegisterType;
 
 pub fn emit(program: *const Program, colors: *const ColoredGraph, abi: Abi, alloc: std.mem.Allocator) ![]u8 {
@@ -18,9 +18,11 @@ pub fn emit(program: *const Program, colors: *const ColoredGraph, abi: Abi, allo
     errdefer out.deinit(alloc);
 
     try createProgramHeader(&out, alloc);
+    std.debug.assert(program.main.kind == .host);
     try emitFunction(&out, colors, &program.main, abi, true, alloc);
     for (program.functions.items) |function| {
-        try emitFunction(&out, colors, &function, abi, false, alloc);
+        if (function.kind == .host)
+            try emitFunction(&out, colors, &function, abi, false, alloc);
     }
 
     try createFooter(&out, alloc);

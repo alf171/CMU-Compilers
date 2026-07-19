@@ -1,7 +1,7 @@
 const std = @import("std");
 const common = @import("common");
 const ValueRef = common.ir.ValueRef;
-const Abi = @import("../abi.zig").Abi;
+const Abi = @import("../cpu_abi.zig").CpuAbi;
 
 const gp_scratch_reg = "r11";
 

@@ -1,18 +1,22 @@
 running program: (OPTIM=true)
 
-x = range(3, 5)
-print(len(x))
+@gpu
+def kernel(out: list[int], n: int) -> None:
+    out[global_id()] = 42
+    return
 
-y = (1, 2, 3, 4)
-print(len(y))
+out: list[int] = [0, 0, 0, 0, 0]
+
+kernel(out, len(out))
+print(out)
 
 performance report: (ORIGIN=user)
-number of asm lines: 44
-mov count: 18
+number of asm lines: 68
+mov count: 35
 memory load count: 0
 memory store count: 0
 branch count: 2
-call count: 3
+call count: 4
 spill count: 0
 
 performance report: (ORIGIN=runtime)
@@ -25,6 +29,5 @@ call count: 28
 spill count: 0
 
 actual output:
-2
-4
-[!!memory report!!]: allocs=2 frees=2 allocated_bytes=20 freed_bytes=20
+[42, 42, 42, 42, 42]
+[!!memory report!!]: allocs=8 frees=8 allocated_bytes=122 freed_bytes=122

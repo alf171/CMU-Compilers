@@ -9,8 +9,8 @@ const print = @import("frontend").print;
 const func = @import("frontend").func;
 const middle = @import("middle");
 const backend = @import("backend");
-const getPlatform = backend.getPlatform;
 const Target = backend.Target;
+const CompilationArifacts = backend.CompilationArifacts;
 const metrics = @import("metrics.zig");
 const loop = middle.loop;
 const reg_alloc = middle.reg_alloc;
@@ -50,22 +50,27 @@ pub fn main(init: std.process.Init) !void {
     }
 
     const input_file = args[1];
-    const output_file = args[2];
     var should_run = false;
     var should_optim = false;
     var should_dump_ir = false;
     var should_dump_stats = false;
     var use_escape_codes = true;
-    var target: Target = .ARM;
-    for (args[3..]) |arg| {
+    // default target
+    var target: Target = .{
+        .host = .X86,
+        .device = .gfx1103,
+    };
+    for (args[2..]) |arg| {
         if (std.mem.eql(u8, arg, "--run")) should_run = true;
         if (std.mem.eql(u8, arg, "--optim")) should_optim = true;
         if (std.mem.eql(u8, arg, "--dump-ir")) should_dump_ir = true;
         if (std.mem.eql(u8, arg, "--dump-stats")) should_dump_stats = true;
         if (std.mem.eql(u8, arg, "--omit-escape-codes")) use_escape_codes = false;
         // allow caller to decide their platform
-        if (std.mem.eql(u8, arg, "--platform=arm")) target = .ARM;
-        if (std.mem.eql(u8, arg, "--platform=x86")) target = .X86;
+        if (std.mem.eql(u8, arg, "--host=arm")) target.host = .ARM;
+        if (std.mem.eql(u8, arg, "--host=x86")) target.host = .X86;
+        if (std.mem.eql(u8, arg, "--device=host")) target.device = .host;
+        if (std.mem.eql(u8, arg, "--device=gfx1103")) target.device = .gfx1103;
     }
 
     // walk user program
@@ -82,8 +87,8 @@ pub fn main(init: std.process.Init) !void {
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
 
-    const platform = try getPlatform(target);
-    try precolor.apply(&ir_program, platform.abi, alloc);
+    const host_platform = try target.host.getPlatform();
+    try precolor.apply(&ir_program, host_platform.abi, alloc);
     try parallel_copies.lower(&ir_program, alloc);
 
     // run optimization passses
@@ -101,31 +106,33 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    var alloc_program = try reg_alloc.build(ir_program, @intCast(platform.abi.gp_allocatable_regs.len), alloc);
+    var alloc_program = try reg_alloc.build(ir_program, @intCast(host_platform.abi.gp_allocatable_regs.len), alloc);
     try live.calculateLiveOut(&alloc_program, alloc);
 
     // run optimzation passes
     if (should_optim) {
         try dead.run(&ir_program, &alloc_program, alloc);
         alloc_program.deinit(alloc);
-        alloc_program = try reg_alloc.build(ir_program, @intCast(platform.abi.gp_allocatable_regs.len), alloc);
+        alloc_program = try reg_alloc.build(ir_program, @intCast(host_platform.abi.gp_allocatable_regs.len), alloc);
         try live.calculateLiveOut(&alloc_program, alloc);
     }
 
     defer alloc_program.deinit(alloc);
 
-    var graph = try igraph.createIgraph(alloc_program.lines, platform.abi.gp_call_clobber_mask, alloc);
+    var graph = try igraph.createIgraph(alloc_program.lines, host_platform.abi.gp_call_clobber_mask, alloc);
     defer graph.deinit();
 
-    const file = try std.Io.Dir.createFileAbsolute(io, output_file, .{});
-    var file_buf: [1028]u8 = undefined;
-    var file_writer: std.Io.File.Writer = .init(file, io, &file_buf);
-
-    defer file.close(io);
-
-    const result = try loop.run(&ir_program, &graph, &alloc_program, should_optim, platform.abi.gp_call_clobber_mask, alloc, null);
-    var colored = result.graph;
-    defer colored.deinit();
+    const result = try loop.run(
+        &ir_program,
+        &graph,
+        &alloc_program,
+        should_optim,
+        host_platform.abi.gp_call_clobber_mask,
+        alloc,
+        null,
+    );
+    var host_colors = result.graph;
+    defer host_colors.deinit();
 
     // dump colored graph
     if (should_dump_ir) {
@@ -137,19 +144,49 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    const asm_text = try platform.emit(&ir_program, &colored, platform.abi, alloc);
-    defer alloc.free(asm_text);
+    var artifacts = try (backend.CompileRequest{
+        .program = &ir_program,
+        .host_colors = &host_colors,
+        .target = target,
+    }).compile(alloc);
+    defer artifacts.deinit(alloc);
 
     if (should_dump_stats) {
-        const stats = metrics.get(asm_text, result.spill_rounds, target);
+        const stats = metrics.get(artifacts.host_asm, result.spill_rounds, target);
         stats.user.print(use_escape_codes);
         stats.runtime.print(use_escape_codes);
     }
 
-    try file_writer.interface.writeAll(asm_text);
-    try file_writer.interface.flush();
+    const output_file = "/tmp/host.s";
+    try writeArtifact(output_file, artifacts.host_asm, io);
+    if (artifacts.device_asm) |device_asm|
+        try writeArtifact("/tmp/device.s", device_asm, io);
 
     if (should_run) {
+        if (artifacts.device_asm != null) {
+            const device_asm_result = try runCommand(alloc, io, &.{
+                "clang",
+                "-target",
+                "amdgcn-amd-amdhsa",
+                "-mcpu=gfx1103",
+                "-c",
+                "/tmp/device.s",
+                "-o",
+                "/tmp/device.o",
+            });
+            defer alloc.free(device_asm_result.stdout);
+            defer alloc.free(device_asm_result.stderr);
+
+            const device_link_result = try runCommand(alloc, io, &.{
+                "ld.lld",
+                "-shared",
+                "/tmp/device.o",
+                "-o",
+                "/tmp/device.co",
+            });
+            defer alloc.free(device_link_result.stdout);
+            defer alloc.free(device_link_result.stderr);
+        }
         const dir = std.fs.path.dirname(output_file) orelse ".";
         const stem = std.fs.path.stem(output_file);
         const obj_name = try std.fmt.allocPrint(alloc, "{s}.o", .{stem});
@@ -157,7 +194,7 @@ pub fn main(init: std.process.Init) !void {
         const obj_file = try std.fs.path.join(alloc, &.{ dir, obj_name });
         defer alloc.free(obj_file);
 
-        // clang -c src/out.s -o /tmp/out.o
+        // clang -c src/host.s -o /tmp/host.o
         const clang_object_result = try runCommand(alloc, io, &.{ "clang", "-c", output_file, "-o", obj_file });
         defer alloc.free(clang_object_result.stdout);
         defer alloc.free(clang_object_result.stderr);
@@ -165,8 +202,35 @@ pub fn main(init: std.process.Init) !void {
         const clang_malloc_result = try runCommand(alloc, io, &.{ "clang", "-c", "src/malloc.c", "-o", "/tmp/malloc.o" });
         defer alloc.free(clang_malloc_result.stdout);
         defer alloc.free(clang_malloc_result.stderr);
+
+        //include hsa
+        const hsa_runtime_path = init.environ_map.get("HSA_RUNTIME_PATH") orelse return error.CantFindHsaPath;
+        const hsa_include = try std.fs.path.join(alloc, &.{ hsa_runtime_path, "include" });
+        defer alloc.free(hsa_include);
+        // clang -I ($HSA_RUNTIME_PATH)/include -c src/gpu.c -o /tmp/gpu.o
+        const gpu_result = try runCommand(alloc, io, &.{
+            "clang",
+            "-I",
+            hsa_include,
+            "-c",
+            "src/gpu.c",
+            "-o",
+            "/tmp/gpu.o",
+        });
+        defer alloc.free(gpu_result.stdout);
+        defer alloc.free(gpu_result.stderr);
+
         // create /tmp/integration_out
-        const clang_final_result = try runCommand(alloc, io, &.{ "clang", obj_file, "/tmp/malloc.o", "-o", "/tmp/integration_out" });
+        const clang_final_result = try runCommand(alloc, io, &.{
+            "clang",
+            obj_file,
+            "/tmp/malloc.o",
+            "/tmp/gpu.o",
+            // needed for amd gpu
+            "-lhsa-runtime64",
+            "-o",
+            "/tmp/integration_out",
+        });
         defer alloc.free(clang_final_result.stdout);
         defer alloc.free(clang_final_result.stderr);
         // run!
@@ -181,6 +245,16 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("\n", .{});
         std.debug.print("{s}", .{run_result.stdout});
     }
+}
+
+fn writeArtifact(output_file: []const u8, contents: []const u8, io: std.Io) !void {
+    const file = try std.Io.Dir.createFileAbsolute(io, output_file, .{});
+    var file_buf: [1028]u8 = undefined;
+    var file_writer: std.Io.File.Writer = .init(file, io, &file_buf);
+
+    defer file.close(io);
+    try file_writer.interface.writeAll(contents);
+    try file_writer.interface.flush();
 }
 
 pub fn runCommand(alloc: std.mem.Allocator, io: std.Io, argv: []const []const u8) !std.process.RunResult {

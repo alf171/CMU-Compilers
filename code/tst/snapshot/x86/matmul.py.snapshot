@@ -32,7 +32,7 @@ couldn't find register for temp577
 couldn't find register for temp16
 
 performance report: (ORIGIN=user)
-number of asm lines: 780
+number of asm lines: 782
 mov count: 561
 memory load count: 0
 memory store count: 0
@@ -41,7 +41,7 @@ call count: 20
 spill count: 6
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 824
+number of asm lines: 838
 mov count: 446
 memory load count: 0
 memory store count: 0

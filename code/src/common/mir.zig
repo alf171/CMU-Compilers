@@ -31,6 +31,26 @@ pub const ListStore = struct {
     src: ValueRef,
 };
 
+pub const FunctionCallee = union(enum) {
+    /// a function name to call
+    direct: []const u8,
+    /// a value holding our function
+    indirect: TypedOperand,
+
+    pub fn clone(self: @This(), alloc: std.mem.Allocator) !@This() {
+        return switch (self) {
+            .direct => |d| .{ .direct = try alloc.dupe(u8, d) },
+            .indirect => |ind| .{ .indirect = try ind.clone(alloc) },
+        };
+    }
+};
+
+pub const FunctionCallInst = struct {
+    dst: ?TypedOperand,
+    callee: FunctionCallee,
+    args: []TypedOperand,
+};
+
 pub const Instruction = union(enum) {
     print: struct {
         src: TypedOperand,
@@ -56,16 +76,7 @@ pub const Instruction = union(enum) {
         name: []const u8,
         index: usize,
     },
-    function_call: struct {
-        dst: ?TypedOperand,
-        callee: union(enum) {
-            /// a function name to call
-            direct: []const u8,
-            /// a value holding our function
-            indirect: TypedOperand,
-        },
-        args: []TypedOperand,
-    },
+    function_call: FunctionCallInst,
     function_return: struct {
         value: ?Operand,
     },
@@ -73,6 +84,11 @@ pub const Instruction = union(enum) {
     function_ref: struct {
         dst: TypedOperand,
         function_name: []const u8,
+    },
+    gpu_launch: struct {
+        kernel: []const u8,
+        args: []TypedOperand,
+        work_items: TypedOperand,
     },
     // heap based variable size
     list_literal: struct {
@@ -104,13 +120,21 @@ pub const Instruction = union(enum) {
         lazy: TypedOperand,
         index: Operand,
     },
+    global_idx: struct {
+        dst: TypedOperand,
+    },
     // deglate to LIR impl
     lir: LirInstruction,
     unkown,
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         switch (self.*) {
-            .parallel_copy => {},
+            .parallel_copy => |pc| {
+                for (pc.copies) |copy| {
+                    copy.dst.type.deinit(alloc);
+                }
+                alloc.free(pc.copies);
+            },
             .phi => |phi| {
                 alloc.free(phi.inputs);
             },
@@ -123,6 +147,16 @@ pub const Instruction = union(enum) {
                 alloc.free(fr.function_name);
             },
             .function_call => |fc| {
+                if (fc.dst) |dst| {
+                    dst.type.deinit(alloc);
+                }
+                switch (fc.callee) {
+                    .direct => |d| alloc.free(d),
+                    .indirect => |ind| ind.type.deinit(alloc),
+                }
+                for (fc.args) |arg| {
+                    arg.type.deinit(alloc);
+                }
                 alloc.free(fc.args);
             },
             .tuple_literal => |tl| {
@@ -142,6 +176,13 @@ pub const Instruction = union(enum) {
             },
             .range => |r| {
                 r.dst.type.deinit(alloc);
+            },
+            .global_idx => |gl| {
+                gl.dst.type.deinit(alloc);
+            },
+            .gpu_launch => |gl| {
+                alloc.free(gl.kernel);
+                alloc.free(gl.args);
             },
             .lir => |*lir| lir.deinit(alloc),
             else => {},
@@ -409,6 +450,8 @@ pub const Instruction = union(enum) {
             .function_param => |fp| .{ .operand = fp.dst.operand },
             .function_call => |fc| if (fc.dst) |op| .{ .operand = op.operand } else null,
             .function_return => null,
+            .global_idx => |gi| .{ .operand = gi.dst.operand },
+            .gpu_launch => null,
             .lir => |l| l.getDefines(),
             else => |e| {
                 debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});
@@ -474,6 +517,9 @@ pub const Instruction = union(enum) {
             .function_ref => {},
             .function_param => {},
             .function_call => |fc| {
+                if (fc.dst) |dst| {
+                    dst.type.deinit(alloc);
+                }
                 switch (fc.callee) {
                     .direct => {},
                     .indirect => |ind| {
@@ -487,6 +533,13 @@ pub const Instruction = union(enum) {
             .function_return => |fc| {
                 if (fc.value) |op| {
                     try res.append(alloc, .{ .operand = op });
+                }
+            },
+            .global_idx => {},
+            .gpu_launch => |gl| {
+                // no need to append arg.work_items since its contained in args already
+                for (gl.args) |arg| {
+                    try res.append(alloc, .{ .operand = arg.operand });
                 }
             },
             .lir => |l| {

@@ -11,7 +11,7 @@ def fib(n: int) -> int:
 print(fib(35))
 
 performance report: (ORIGIN=user)
-number of asm lines: 26
+number of asm lines: 28
 mov count: 6
 memory load count: 0
 memory store count: 0
@@ -20,7 +20,7 @@ call count: 3
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 637
+number of asm lines: 651
 mov count: 316
 memory load count: 0
 memory store count: 0

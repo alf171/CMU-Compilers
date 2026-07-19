@@ -22,7 +22,7 @@ print(len(t1))
 print(len(t1))
 
 performance report: (ORIGIN=user)
-number of asm lines: 167
+number of asm lines: 169
 mov count: 113
 memory load count: 0
 memory store count: 0
@@ -31,7 +31,7 @@ call count: 14
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 573
+number of asm lines: 585
 mov count: 297
 memory load count: 0
 memory store count: 0

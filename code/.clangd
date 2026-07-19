@@ -1,0 +1,5 @@
+CompileFlags:
+  Add:
+    - -isystem
+    - /nix/store/q884ckbxvfzv8wyqxd17fb99kn55wr06-rocm-runtime-7.2.3/include
+    - HSA_RUNTIME_PATH

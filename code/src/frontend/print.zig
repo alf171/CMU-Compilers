@@ -24,41 +24,44 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
                 .print => |p| {
+                    const args = try alloc.alloc(TypedOperand, 1);
+                    errdefer alloc.free(args);
+                    args[0] = try p.src.clone(alloc);
                     switch (p.src.type) {
                         .list => |l| {
                             if (l.element.* == .char) {
                                 try new_instructions.append(alloc, .{ .function_call = .{
                                     .dst = null,
-                                    .callee = .{ .direct = "print_string" },
-                                    .args = try alloc.dupe(TypedOperand, &.{p.src}),
+                                    .callee = .{ .direct = try alloc.dupe(u8, "print_string") },
+                                    .args = args,
                                 } });
                             } else if (l.element.* == .i64 or l.element.* == .i32) {
                                 try new_instructions.append(alloc, .{ .function_call = .{
                                     .dst = null,
-                                    .callee = .{ .direct = "print_int_list" },
-                                    .args = try alloc.dupe(TypedOperand, &.{p.src}),
+                                    .callee = .{ .direct = try alloc.dupe(u8, "print_int_list") },
+                                    .args = args,
                                 } });
                             }
                         },
                         .bool => {
                             try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
-                                .callee = .{ .direct = "print_bool" },
-                                .args = try alloc.dupe(TypedOperand, &.{p.src}),
+                                .callee = .{ .direct = try alloc.dupe(u8, "print_bool") },
+                                .args = args,
                             } });
                         },
                         .i64, .i32 => {
                             try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
-                                .callee = .{ .direct = "print_int" },
-                                .args = try alloc.dupe(TypedOperand, &.{p.src}),
+                                .callee = .{ .direct = try alloc.dupe(u8, "print_int") },
+                                .args = args,
                             } });
                         },
                         .float => {
                             try new_instructions.append(alloc, .{ .function_call = .{
                                 .dst = null,
-                                .callee = .{ .direct = "print_float" },
-                                .args = try alloc.dupe(TypedOperand, &.{p.src}),
+                                .callee = .{ .direct = try alloc.dupe(u8, "print_float") },
+                                .args = args,
                             } });
                         },
                         else => |e| {
