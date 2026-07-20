@@ -67,7 +67,7 @@ pub const RegisterOperands = struct {
         while (it.next()) |entry| {
             const loop_op = entry.key_ptr.*;
             if (!loop_op.equal(op)) {
-                try res.ops.put(loop_op.*, entry.value_ptr.*);
+                try res.ops.put(loop_op, entry.value_ptr.*);
             }
         }
         return res;
@@ -104,6 +104,18 @@ pub const RegisterOperands = struct {
         }
         var it = self.ops.keyIterator();
         return it.next().?.*;
+    }
+
+    pub fn singleForType(self: @This(), reg_type: RegisterType) !?Operand {
+        var res: ?Operand = null;
+        var it = self.ops.iterator();
+        while (it.next()) |entry| {
+            if (entry.value_ptr.* != reg_type) continue;
+            if (res != null) return error.ExpectedSingle;
+
+            res = entry.key_ptr.*;
+        }
+        return res;
     }
 
     pub fn equal(self: *const @This(), other: *const @This()) bool {
@@ -169,7 +181,7 @@ pub const Operand = union(enum) {
 
     pub fn toString(op: @This(), allocator: std.mem.Allocator) ![]u8 {
         return switch (op) {
-            .temp => |t| std.fmt.allocPrint(allocator, "temp{d}", .{t.id + 1}),
+            .temp => |t| std.fmt.allocPrint(allocator, "fid{d}:temp{d}", .{ t.function_id, t.id + 1 }),
             .reg => |r| std.fmt.allocPrint(allocator, "reg{d}", .{r.id}),
             .mem => |t| std.fmt.allocPrint(allocator, "spill{d}", .{t.id + 1}),
             else => return error.Unknown,

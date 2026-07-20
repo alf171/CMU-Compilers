@@ -63,8 +63,8 @@ fn spillRegInFunction(
                                 spill_slot = function.nextMem();
                             }
                             try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
-                                .dst = .{ .operand = t1, .type = .any },
-                                .src = .{ .top = .{ .operand = spill_slot.?, .type = .any } },
+                                .dst = .{ .operand = t1, .type = try use_top.type.clone(alloc) },
+                                .src = .{ .top = .{ .operand = spill_slot.?, .type = try use_top.type.clone(alloc) } },
                             } } });
                             instruction.replaceUses(spilled, t1);
                             continue;
@@ -83,8 +83,8 @@ fn spillRegInFunction(
                             spill_slot = function.nextMem();
                         }
                         try new_instructions.append(alloc, Instruction{ .lir = .{ .move = .{
-                            .dst = .{ .operand = spill_slot.?, .type = .any },
-                            .src = .{ .top = .{ .operand = t2, .type = .any } },
+                            .dst = .{ .operand = spill_slot.?, .type = try define_top.type.clone(alloc) },
+                            .src = .{ .top = .{ .operand = t2, .type = try define_top.type.clone(alloc) } },
                         } } });
                         continue;
                     }

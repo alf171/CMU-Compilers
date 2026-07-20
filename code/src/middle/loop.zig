@@ -12,6 +12,7 @@ const AllocProgram = @import("common").alloc.AllocProgram;
 const IrProgram = @import("common").program.Program;
 const Function = @import("common").ir.Function;
 const FunctionType = @import("common").ir.FunctionType;
+const RegisterFile = @import("common").register.RegisterFile;
 const Writer = std.Io.Writer;
 
 pub const RunResult = struct {
@@ -25,7 +26,7 @@ pub fn run(
     ir_program: *IrProgram,
     graph: *igraph.IGraph,
     init_program: *AllocProgram,
-    register_file: color.RegisterFile,
+    register_file: RegisterFile,
     should_coalesce: bool,
     alloc: Allocator,
 ) !RunResult {
@@ -43,6 +44,10 @@ pub fn run(
             .temp => |t| try getFunctionFromIdx(ir_program, t.function_id),
             else => return error.BadSpill,
         };
+        // std.debug.print("spilling {s} register in function {s}\n", .{
+        //     @tagName(register_file.type),
+        //     function.name,
+        // });
         color_attemps.getPtr(function.origin).* += 1;
 
         // free previous graph

@@ -1,6 +1,6 @@
 const std = @import("std");
 const parser = @import("parse.zig");
-const RegisterFile = @import("color.zig").RegisterFile;
+const RegisterFile = @import("common").register.RegisterFile;
 
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
@@ -46,7 +46,7 @@ pub const Node = struct {
         self.cur_degree += 1;
     }
 
-    pub fn legalCount(self: *@This(), k: u16) DegreeCount {
+    pub fn legalCount(self: @This(), k: u16) DegreeCount {
         // largest value forbidden_colors supports
         std.debug.assert(k < 32);
         const mask = (@as(u32, 1) << @intCast(k)) - 1;
@@ -79,6 +79,10 @@ pub const IGraph = struct {
     }
 
     pub fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, reg_type: RegisterType, allocator: Allocator) !void {
+        if (graph.nodes.getPtr(val)) |node| {
+            std.debug.assert(node.reg_type == reg_type);
+            return;
+        }
         if (!graph.nodes.contains(val)) {
             try graph.nodes.put(val, Node.init(val, reg_type, allocator));
         }
@@ -235,65 +239,85 @@ fn placeNodes(
 ) !void {
     // place all defines
     {
-        var it = line.defines.ops.keyIterator();
-        while (it.next()) |op| {
-            if (op.shouldColor()) {
-                try igraph.defineNodeIfDoesntExist(op.*, register_file.type, allocator);
-                igraph.nodes.getPtr(op.*).?.spill_cost += 1;
-            }
+        var it = line.defines.ops.iterator();
+        while (it.next()) |entry| {
+            const op = entry.key_ptr.*;
+            const reg_type = entry.value_ptr.*;
+
+            if (reg_type != register_file.type) continue;
+            if (!op.shouldColor()) continue;
+
+            try igraph.defineNodeIfDoesntExist(op, register_file.type, allocator);
+            igraph.nodes.getPtr(op).?.spill_cost += 1;
         }
     }
     // place all uses
     {
-        var it = line.uses.ops.keyIterator();
-        while (it.next()) |op| {
-            if (op.shouldColor()) {
-                try igraph.defineNodeIfDoesntExist(op.*, register_file.type, allocator);
-                igraph.nodes.getPtr(op.*).?.spill_cost += 1;
-            }
+        var it = line.uses.ops.iterator();
+        while (it.next()) |entry| {
+            const op = entry.key_ptr.*;
+            const reg_type = entry.value_ptr.*;
+
+            if (reg_type != register_file.type) continue;
+            if (!op.shouldColor()) continue;
+
+            try igraph.defineNodeIfDoesntExist(op, register_file.type, allocator);
+            igraph.nodes.getPtr(op).?.spill_cost += 1;
         }
     }
     // temporary clobbering logic
     {
         if (line.clobber_caller_saved) {
-            var it = line.live_out.ops.keyIterator();
-            while (it.next()) |op| {
+            var it = line.live_out.ops.iterator();
+            while (it.next()) |entry| {
+                const op = entry.key_ptr.*;
+                const reg_type = entry.value_ptr.*;
+
+                if (reg_type != register_file.type) continue;
                 if (!op.shouldColor()) continue;
                 // x <- f(y) scenario, x can be a caller-safe register in this scenario
-                if (line.defines.ops.contains(op.*)) continue;
+                if (line.defines.ops.contains(op)) continue;
 
-                try igraph.defineNodeIfDoesntExist(op.*, register_file.type, allocator);
-                igraph.nodes.getPtr(op.*).?.forbidden_colors |= register_file.forbidden_mask;
+                try igraph.defineNodeIfDoesntExist(op, register_file.type, allocator);
+                igraph.nodes.getPtr(op).?.forbidden_colors |= register_file.forbidden_mask;
             }
         }
     }
     // build interference edges
     {
-        var it = line.defines.ops.keyIterator();
-        while (it.next()) |define_op| {
-            var live_out_it = line.live_out.ops.keyIterator();
-            while (live_out_it.next()) |live_out_op| {
-                try igraph.addInterference(define_op.*, live_out_op.*, register_file.type, allocator);
+        var it = line.defines.ops.iterator();
+        while (it.next()) |define_entry| {
+            if (define_entry.value_ptr.* != register_file.type) continue;
+
+            const define_op = define_entry.key_ptr.*;
+            var live_out_it = line.live_out.ops.iterator();
+            while (live_out_it.next()) |live_out_entry| {
+                if (live_out_entry.value_ptr.* != register_file.type) continue;
+
+                const live_out_op = live_out_entry.key_ptr.*;
+                try igraph.addInterference(define_op, live_out_op, register_file.type, allocator);
             }
         }
     }
     // things used together should interfer also
     {
-        var use_it = line.uses.ops.keyIterator();
-        while (use_it.next()) |first_key| {
-            var use_it_2 = line.uses.ops.keyIterator();
-            while (use_it_2.next()) |second_key| {
-                try igraph.addInterference(first_key.*, second_key.*, register_file.type, allocator);
+        var use_it = line.uses.ops.iterator();
+        while (use_it.next()) |first_entry| {
+            if (first_entry.value_ptr.* != register_file.type) continue;
+
+            var use_it_2 = line.uses.ops.iterator();
+            while (use_it_2.next()) |second_entry| {
+                if (second_entry.value_ptr.* != register_file.type) continue;
+
+                try igraph.addInterference(first_entry.key_ptr.*, second_entry.key_ptr.*, register_file.type, allocator);
             }
         }
     }
     // keep track of moves
     {
         if (line.move) {
-            std.debug.assert(line.defines.ops.count() == 1);
-            std.debug.assert(line.uses.ops.count() == 1);
-            const define = try line.defines.single();
-            const uses = try line.uses.single();
+            const define = try line.defines.singleForType(register_file.type) orelse return;
+            const uses = try line.uses.singleForType(register_file.type) orelse return;
 
             // skip memory and register things from coalescing.
             if (define == .mem or uses == .mem or define == .reg or uses == .reg) {

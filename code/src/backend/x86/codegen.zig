@@ -2,6 +2,7 @@ const std = @import("std");
 const ArrayList = std.ArrayList;
 
 const common = @import("common");
+const RegisterType = common.register.RegisterType;
 const Program = common.program.Program;
 const TypeInfo = common.types.TypeInfo;
 const Block = common.ir.BasicBlock;
@@ -276,13 +277,22 @@ fn emitFunction(
                             }
                         },
                         .compare => |c| {
+                            const reg_type = c.lhs.type.toCpuRegisterType();
                             const dst = try abi.regFor(c.dst.operand, colors, .gp);
-                            const lhs = try abi.regFor(c.lhs.operand, colors, .gp);
-                            const rhs = try abi.regFor(c.rhs.operand, colors, .gp);
+                            const lhs = try abi.regFor(c.lhs.operand, colors, reg_type);
+                            const rhs = try abi.regFor(c.rhs.operand, colors, reg_type);
                             const scratch = try abi.scratchReg(0, .gp);
                             const scratch8 = reg8(scratch);
-                            try out.print(alloc, "\tcmpq %{s}, %{s}\n", .{ rhs, lhs });
-                            try out.print(alloc, "\t{s} %{s}\n", .{ condForCmp(c.op), scratch8 });
+                            switch (reg_type) {
+                                .gp => {
+                                    try out.print(alloc, "\tcmpq %{s}, %{s}\n", .{ rhs, lhs });
+                                },
+                                .f => {
+                                    try out.print(alloc, "\tucomisd %{s}, %{s}\n", .{ rhs, lhs });
+                                },
+                                else => unreachable,
+                            }
+                            try out.print(alloc, "\t{s} %{s}\n", .{ condForCmp(c.op, reg_type), scratch8 });
                             try out.print(alloc, "\tmovzbq %{s}, %{s}\n", .{ scratch8, dst });
                         },
                         .jump => |j| {
@@ -316,7 +326,8 @@ fn emitFunction(
                                         const fp_scratch_reg = try abi.scratchReg(0, .f);
                                         const gp_scratch_reg = try abi.scratchReg(0, .gp);
                                         try out.print(alloc, "\tmovabsq $0x8000000000000000, %{s}\n", .{gp_scratch_reg});
-                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ fp_scratch_reg, gp_scratch_reg });
+                                        try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ gp_scratch_reg, fp_scratch_reg });
+                                        try out.print(alloc, "\t xorpd %{s}, %{s}\n", .{ fp_scratch_reg, dst });
                                     },
                                     else => try out.print(alloc, "\tnegq %{s}\n", .{dst}),
                                 },
@@ -616,14 +627,25 @@ fn emitMovUnsigned(out: *ArrayList(u8), dst: []const u8, value: u64, alloc: std.
     }
 }
 
-fn condForCmp(op: common.ir.CmpOp) []const u8 {
-    return switch (op) {
-        .eq => "sete",
-        .neq => "setne",
-        .lt => "setl",
-        .lte => "stle",
-        .gt => "setg",
-        .gte => "setge",
+fn condForCmp(op: common.ir.CmpOp, reg_type: RegisterType) []const u8 {
+    return switch (reg_type) {
+        .gp => switch (op) {
+            .eq => "sete",
+            .neq => "setne",
+            .lt => "setl",
+            .lte => "setle",
+            .gt => "setg",
+            .gte => "setge",
+        },
+        .f => switch (op) {
+            .eq => "sete",
+            .neq => "setne",
+            .lt => "setb",
+            .lte => "setbe",
+            .gt => "seta",
+            .gte => "setae",
+        },
+        else => unreachable,
     };
 }
 
@@ -675,6 +697,7 @@ fn reg32(reg: []const u8) []const u8 {
     unreachable;
 }
 
+/// transfer general purpose regs
 fn reg8(reg: []const u8) []const u8 {
     if (std.mem.eql(u8, reg, "rsi")) return "sil";
     if (std.mem.eql(u8, reg, "rdi")) return "dil";

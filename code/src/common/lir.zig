@@ -235,6 +235,13 @@ pub const Instruction = union(enum) {
                     else => {},
                 }
             },
+            .cast => |*c| {
+                if (c.dst.operand.equal(old)) c.dst.operand = new;
+                if (c.src.operand.equal(old)) c.src.operand = new;
+            },
+            .unaryop => |*uop| {
+                if (uop.src.operand.equal(old)) uop.src.operand = new;
+            },
             else => |e| {
                 debugPrint("uses cant handle {s}\n", .{@tagName(e)});
                 unreachable;
@@ -258,6 +265,9 @@ pub const Instruction = union(enum) {
             },
             .select => |*s| {
                 if (s.dst.operand.equal(old)) s.dst.operand = new;
+            },
+            .unaryop => |*uop| {
+                if (uop.dst.operand.equal(old)) uop.dst.operand = new;
             },
             else => |e| {
                 debugPrint("defines cant handle {s}\n", .{@tagName(e)});

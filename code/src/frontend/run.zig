@@ -23,6 +23,7 @@ pub fn walkAstWithRuntime(
     try walkAstIntoBuilder(runtime_obj, &irBuilder, alloc);
 
     // walk UserFile
+    irBuilder.function_origin = .user;
     const user_obj = try readFile(user_file_name, true, should_optim, use_escape_codes, io, alloc);
     try walkAstIntoBuilder(user_obj, &irBuilder, alloc);
     return irBuilder.program;

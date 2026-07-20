@@ -5,19 +5,12 @@ const graph = @import("igraph.zig");
 
 const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
-const Operands = @import("common").alloc.Operands;
+const RegisterFile = @import("common").register.RegisterFile;
 const Operand = @import("common").alloc.Operand;
-const RegisterType = @import("common").types.RegisterType;
 
 pub fn Set(comptime K: type) type {
     return std.AutoHashMap(K, void);
 }
-
-pub const RegisterFile = struct {
-    count: u16,
-    type: RegisterType,
-    forbidden_mask: u32,
-};
 
 // TODO: hacky way to have different nodes
 pub const Node = struct {
@@ -46,7 +39,7 @@ pub const ColoredGraph = struct {
     nodes: std.AutoHashMap(Operand, ColoredNode),
 
     // compose a node with a register since we need it for coloring
-    pub fn init(input: *graph.IGraph, allocator: Allocator) !ColoredGraph {
+    pub fn init(input: *graph.IGraph, allocator: Allocator) !@This() {
         var cg = ColoredGraph{
             .nodes = std.AutoHashMap(Operand, ColoredNode).init(allocator),
         };
@@ -76,6 +69,12 @@ pub const ColoredGraph = struct {
         return cg;
     }
 
+    pub fn initEmpty(alloc: std.mem.Allocator) @This() {
+        return .{
+            .nodes = std.AutoHashMap(Operand, ColoredNode).init(alloc),
+        };
+    }
+
     pub fn deinit(self: *@This()) void {
         var it = self.nodes.valueIterator();
         while (it.next()) |cn| {
@@ -83,6 +82,20 @@ pub const ColoredGraph = struct {
             cn.node.neighbors.deinit();
         }
         self.nodes.deinit();
+    }
+
+    pub fn absorb(self: *@This(), other: *@This()) !void {
+        // ensure we have enough space to aovid partial failures
+        try self.nodes.ensureUnusedCapacity(other.nodes.count());
+
+        var other_it = other.nodes.iterator();
+        while (other_it.next()) |other_entry| {
+            try self.nodes.put(
+                other_entry.key_ptr.*,
+                other_entry.value_ptr.*,
+            );
+        }
+        other.nodes.clearRetainingCapacity();
     }
 
     pub fn print(self: *@This(), allocator: Allocator, stdout: *Writer) !void {
@@ -165,6 +178,21 @@ pub fn colorGraph(input: *graph.IGraph, register_file: RegisterFile, allocator: 
         } else {
             // spill node with lowest impact according to our hueristic
             const id = try takeNodeWithCheapestSpill(input.nodes, &spill, allocator);
+            // const node = input.nodes.get(id) orelse return error.CantFindNode;
+            // const name = try id.toString(allocator);
+            // defer allocator.free(name);
+            // std.debug.print(
+            //     "select {s} spill {s}: cost={d} degree={d} forbidden=0x{x} legal={d}/{d}\n",
+            //     .{
+            //         @tagName(register_file.type),
+            //         name,
+            //         node.spill_cost,
+            //         node.static_degree,
+            //         node.forbidden_colors,
+            //         node.legalCount(register_file.count),
+            //         register_file.count,
+            //     },
+            // );
             new_graph.deinit();
             return .{ .spill_register = id };
         }
@@ -280,10 +308,6 @@ fn takeNodeWithCheapestSpill(
     const id = best_id orelse return error.IllegalGraph;
     const selected_name = try id.toString(allocator);
     defer allocator.free(selected_name);
-    std.debug.print(
-        "select spill {s}: cost={d} static_degree={d}\n",
-        .{ selected_name, best_cost, best_degree },
-    );
     _ = canadidites.remove(id);
     return id;
 }

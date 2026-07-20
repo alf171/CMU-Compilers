@@ -8,22 +8,22 @@ def f(a: int, b: int, c: int, d: int, e:int, f: int) -> int:
 print(f(1,2,3,4,5,6))
 
 performance report: (ORIGIN=user)
-number of asm lines: 33
-mov count: 11
+number of asm lines: 65
+mov count: 17
 memory load count: 0
 memory store count: 0
-branch count: 2
+branch count: 5
 call count: 3
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 606
-mov count: 293
+number of asm lines: 588
+mov count: 298
 memory load count: 0
 memory store count: 0
-branch count: 47
+branch count: 44
 call count: 28
-spill count: 0
+spill count: 3
 
 actual output:
 21

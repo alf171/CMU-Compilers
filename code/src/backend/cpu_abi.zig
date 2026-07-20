@@ -3,7 +3,8 @@ const Operand = @import("common").alloc.Operand;
 const ValueRef = @import("common").ir.ValueRef;
 const ColoredGraph = @import("middle").color.ColoredGraph;
 const TypeInfo = @import("common").types.TypeInfo;
-const RegisterType = @import("common").ir.RegisterType;
+const RegisterType = @import("common").register.RegisterType;
+const RegisterFile = @import("common").register.RegisterFile;
 
 // function_return_idx = idnex of in mask of the function return register
 // mask calculation could be moved to comptime
@@ -57,6 +58,21 @@ pub const CpuAbi = struct {
             .fp_call_clobber_mask = fp_caller_save_mask | fp_function_param_mask,
             .fp_function_return_idx = fp_function_return_idx,
             .fp_scratch_regs = fp_scratch_regs,
+        };
+    }
+
+    pub fn registerFiles(self: @This()) [2]RegisterFile {
+        return .{
+            .{
+                .count = @intCast(self.gp_allocatable_regs.len),
+                .type = .gp,
+                .forbidden_mask = self.gp_call_clobber_mask,
+            },
+            .{
+                .count = @intCast(self.fp_allocatable_regs.len),
+                .type = .f,
+                .forbidden_mask = self.fp_call_clobber_mask,
+            },
         };
     }
 

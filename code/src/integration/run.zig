@@ -17,12 +17,13 @@ const reg_alloc = middle.reg_alloc;
 const live = middle.live;
 const igraph = middle.igraph;
 const color = middle.color;
-const RegisterFile = color.RegisterFile;
+const RegisterFile = @import("common").register.RegisterFile;
 const precolor = middle.precolor;
 const phi = middle.phi;
 const parallel_copies = middle.parallel_copies;
 const copy = middle.copy;
 const dead = middle.dead;
+const FunctionType = @import("common").ir.FunctionType;
 
 const underline_code = "\x1b[4m";
 const reset_code = "\x1b[0m";
@@ -121,25 +122,29 @@ pub fn main(init: std.process.Init) !void {
     defer alloc_program.deinit(alloc);
 
     // setup register specifics
-    const register_file: RegisterFile = .{
-        .count = @intCast(host_platform.abi.gp_allocatable_regs.len),
-        .type = .gp,
-        .forbidden_mask = host_platform.abi.gp_call_clobber_mask,
-    };
+    const register_files = host_platform.abi.registerFiles();
     // generate interference graph
-    var graph = try igraph.createIgraph(alloc_program.lines, register_file, alloc);
-    defer graph.deinit();
-
-    const result = try loop.run(
-        &ir_program,
-        &graph,
-        &alloc_program,
-        register_file,
-        should_optim,
-        alloc,
-    );
-    var host_colors = result.graph;
+    var host_colors = color.ColoredGraph.initEmpty(alloc);
     defer host_colors.deinit();
+    var spill_rounds = std.EnumArray(FunctionType, usize).initFill(0);
+    for (register_files) |register_file| {
+        var graph = try igraph.createIgraph(alloc_program.lines, register_file, alloc);
+        defer graph.deinit();
+        var result = try loop.run(
+            &ir_program,
+            &graph,
+            &alloc_program,
+            register_file,
+            should_optim,
+            alloc,
+        );
+        defer result.graph.deinit();
+        try host_colors.absorb(&result.graph);
+
+        inline for (std.meta.tags(FunctionType)) |function_type| {
+            spill_rounds.getPtr(function_type).* += result.spill_rounds.get(function_type);
+        }
+    }
 
     // dump colored graph
     if (should_dump_ir) {
@@ -159,7 +164,7 @@ pub fn main(init: std.process.Init) !void {
     defer artifacts.deinit(alloc);
 
     if (should_dump_stats) {
-        const stats = metrics.get(artifacts.host_asm, result.spill_rounds, target);
+        const stats = metrics.get(artifacts.host_asm, spill_rounds, target);
         stats.user.print(use_escape_codes);
         stats.runtime.print(use_escape_codes);
     }

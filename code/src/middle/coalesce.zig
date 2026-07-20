@@ -3,7 +3,7 @@ const std = @import("std");
 const igraph = @import("igraph.zig");
 const parser = @import("parse.zig");
 
-const RegisterFile = @import("color.zig").RegisterFile;
+const RegisterFile = @import("common").register.RegisterFile;
 const Node = @import("igraph.zig").Node;
 const Writer = std.Io.Writer;
 const Operand = @import("common").alloc.Operand;

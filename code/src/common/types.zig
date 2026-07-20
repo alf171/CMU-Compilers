@@ -1,5 +1,5 @@
 const std = @import("std");
-pub const RegisterType = @import("ir.zig").RegisterType;
+pub const RegisterType = @import("register.zig").RegisterType;
 
 // use a pointer on element type for recursive purposes
 // things like range dont know their size at comptime

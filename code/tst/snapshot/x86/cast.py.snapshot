@@ -9,7 +9,7 @@ print(int(-5.9))
 
 
 performance report: (ORIGIN=user)
-number of asm lines: 47
+number of asm lines: 48
 mov count: 16
 memory load count: 0
 memory store count: 0
@@ -18,17 +18,17 @@ call count: 5
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 575
-mov count: 287
+number of asm lines: 589
+mov count: 298
 memory load count: 0
 memory store count: 0
 branch count: 44
 call count: 28
-spill count: 0
+spill count: 3
 
 actual output:
 0.00000
--.00000
+-3.00000
 5
-5
-[!!memory report!!]: allocs=6 frees=6 allocated_bytes=60 freed_bytes=60
+-5
+[!!memory report!!]: allocs=8 frees=8 allocated_bytes=80 freed_bytes=80

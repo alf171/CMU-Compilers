@@ -25,32 +25,24 @@ def matmul(
 matmul(
     M, N, P
 )
-select spill temp6: cost=8 static_degree=420
-select spill temp8: cost=2 static_degree=81
-select spill temp21: cost=2 static_degree=67
-select spill temp12: cost=8 static_degree=229
-select spill temp4: cost=3 static_degree=84
-select spill temp15: cost=3 static_degree=74
-select spill temp36: cost=2 static_degree=41
-select spill temp37: cost=3 static_degree=51
 
 performance report: (ORIGIN=user)
-number of asm lines: 749
-mov count: 528
+number of asm lines: 976
+mov count: 650
 memory load count: 0
 memory store count: 0
-branch count: 2
-call count: 20
-spill count: 2
+branch count: 17
+call count: 25
+spill count: 8
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 805
-mov count: 413
+number of asm lines: 592
+mov count: 302
 memory load count: 0
 memory store count: 0
-branch count: 59
-call count: 33
-spill count: 6
+branch count: 44
+call count: 28
+spill count: 3
 
 actual output:
 215

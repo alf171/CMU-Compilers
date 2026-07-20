@@ -5,21 +5,11 @@ const TypeInfo = @import("types.zig").TypeInfo;
 const TypedOperand = @import("alloc.zig").TypedOperand;
 const Param = @import("alloc.zig").Param;
 const Operand = @import("alloc.zig").Operand;
+const RegisterType = @import("register.zig").RegisterType;
 
 pub const SeenValue = union(enum) {
     top: TypedOperand,
     local: LocalId,
-};
-
-pub const RegisterType = union(enum) {
-    /// general purpose register
-    gp,
-    /// floating point register
-    f,
-    /// scalar general purpose register
-    sgpr,
-    /// vector general purpose register
-    vgpr,
 };
 
 pub const PhysicalReg = struct {
@@ -27,7 +17,7 @@ pub const PhysicalReg = struct {
     class: RegisterType,
 
     pub fn equal(self: @This(), other: @This()) bool {
-        return self.id == other.id and std.meta.activeTag(self.class) == std.meta.activeTag(other.class);
+        return self.id == other.id and self.class == other.class;
     }
 };
 
