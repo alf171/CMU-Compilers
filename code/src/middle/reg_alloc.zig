@@ -2,19 +2,20 @@ const std = @import("std");
 const ArrayList = std.ArrayList;
 
 const common = @import("common");
+const LocalId = common.ir.LocalId;
 const AllocProgram = common.alloc.AllocProgram;
 const AllocBlock = common.alloc.AllocBlock;
 const AllocLine = common.alloc.AllocLine;
-const Operands = common.alloc.Operands;
+const RegisterOperands = common.alloc.RegisterOperands;
 const Function = common.ir.Function;
 const FrontEndProgram = common.program.Program;
+const TypedOperand = common.alloc.TypedOperand;
 
 /// generate the necessary information such that we do register selection eventually
-pub fn build(program: FrontEndProgram, reg_count: u8, alloc: std.mem.Allocator) !AllocProgram {
+pub fn build(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProgram {
     var res = AllocProgram{
         .lines = .empty,
         .blocks = .empty,
-        .register_count = reg_count,
     };
 
     var instruction_index: usize = 0;
@@ -33,7 +34,7 @@ fn appendBlocks(
     function_id: usize,
     alloc: std.mem.Allocator,
 ) !void {
-    var locals = std.AutoHashMap(common.ir.LocalId, common.alloc.Operand).init(alloc);
+    var locals = std.AutoHashMap(LocalId, TypedOperand).init(alloc);
     defer locals.deinit();
 
     for (blocks) |block| {
@@ -41,9 +42,9 @@ fn appendBlocks(
         for (block.instructions.items) |instruction| {
             var line = AllocLine{
                 .instruction_index = instruction_index.*,
-                .uses = Operands.init(alloc),
-                .defines = Operands.init(alloc),
-                .live_out = Operands.init(alloc),
+                .uses = RegisterOperands.init(alloc),
+                .defines = RegisterOperands.init(alloc),
+                .live_out = RegisterOperands.init(alloc),
                 .move = false,
                 .clobber_caller_saved = false,
             };
@@ -68,7 +69,7 @@ fn appendBlocks(
             const maybeDefines = instruction.getDefines();
             if (maybeDefines) |defines| {
                 switch (defines) {
-                    .operand => |operand| try line.defines.ops.put(operand, {}),
+                    .top => |top| try line.defines.ops.put(top.operand, top.type.toCpuRegisterType()),
                     .local => {},
                 }
             }
@@ -77,12 +78,12 @@ fn appendBlocks(
             defer uses.deinit(alloc);
             for (uses.items) |use| {
                 switch (use) {
-                    .operand => try line.uses.ops.put(use.operand, {}),
+                    .top => |top| try line.uses.ops.put(top.operand, top.type.toCpuRegisterType()),
                     .local => |id| {
                         const src = locals.get(id) orelse {
                             return error.LocalNotFound;
                         };
-                        try line.uses.ops.put(src, {});
+                        try line.uses.ops.put(src.operand, src.type.toCpuRegisterType());
                     },
                 }
             }

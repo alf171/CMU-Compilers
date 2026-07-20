@@ -3,39 +3,34 @@ const std = @import("std");
 const igraph = @import("igraph.zig");
 const parser = @import("parse.zig");
 
+const RegisterFile = @import("color.zig").RegisterFile;
 const Node = @import("igraph.zig").Node;
 const Writer = std.Io.Writer;
 const Operand = @import("common").alloc.Operand;
 
 /// merge either src or dest into later if live_out and degree let's us do so
-pub fn run(graph: *igraph.IGraph, reg_count: u8, alloc: std.mem.Allocator, stdout: ?*Writer) !void {
-    while (try checkForPossibleMerges(graph.*, reg_count, stdout, alloc)) |pair| {
-        // try stdout.print("merging {any} and {any}\n", .{ pair.nodeA, pair.nodeB });
+pub fn run(graph: *igraph.IGraph, register_file: RegisterFile, alloc: std.mem.Allocator) !void {
+    while (try checkForPossibleMerges(graph.*, register_file, alloc)) |pair| {
         try graph.mergeNodes(pair.nodeA, pair.nodeB);
     }
-    // try stdout.flush();
 }
 
-fn checkForPossibleMerges(graph: igraph.IGraph, k: u8, _: ?*Writer, alloc: std.mem.Allocator) !?struct { nodeA: Operand, nodeB: Operand } {
+fn checkForPossibleMerges(graph: igraph.IGraph, register_file: RegisterFile, alloc: std.mem.Allocator) !?struct { nodeA: Operand, nodeB: Operand } {
     var node_it = graph.nodes.valueIterator();
     while (node_it.next()) |node| {
         var move_it = node.moves.keyIterator();
         while (move_it.next()) |move_id| {
-            // try stdout.print("trying coalesce between {any} and {any}\n", .{ node.val, move_id.* });
             const move_node = graph.nodes.get(move_id.*) orelse {
                 return error.IllegalGraph;
             };
 
             // skip coalesces that aren't allowed
             if (node.neighbors.contains(move_id.*)) {
-                // try stdout.print("interference failure", .{});
                 continue;
             }
 
-            if (try canCoalesce(graph, node.*, move_node, k, alloc)) {
+            if (try canCoalesce(graph, node.*, move_node, register_file, alloc)) {
                 return .{ .nodeA = node.val, .nodeB = move_id.* };
-            } else {
-                // try stdout.print("degree failure", .{});
             }
         }
     }
@@ -43,7 +38,13 @@ fn checkForPossibleMerges(graph: igraph.IGraph, k: u8, _: ?*Writer, alloc: std.m
 }
 
 // https://en.wikipedia.org/wiki/Register_allocation
-fn canCoalesce(graph: igraph.IGraph, a: igraph.Node, b: igraph.Node, k: u8, alloc: std.mem.Allocator) !bool {
+fn canCoalesce(
+    graph: igraph.IGraph,
+    a: igraph.Node,
+    b: igraph.Node,
+    register_file: RegisterFile,
+    alloc: std.mem.Allocator,
+) !bool {
     var seen = std.AutoHashMap(Operand, void).init(alloc);
     defer seen.deinit();
     try seen.put(a.val, {});
@@ -56,7 +57,7 @@ fn canCoalesce(graph: igraph.IGraph, a: igraph.Node, b: igraph.Node, k: u8, allo
         const nbor = graph.nodes.get(nbor_id.*) orelse {
             return error.CantFindNode;
         };
-        if (nbor.cur_degree >= k) count += 1;
+        if (nbor.cur_degree >= register_file.count) count += 1;
         try seen.put(nbor_id.*, {});
     }
 
@@ -66,11 +67,11 @@ fn canCoalesce(graph: igraph.IGraph, a: igraph.Node, b: igraph.Node, k: u8, allo
         const nbor = graph.nodes.get(nbor_id.*) orelse {
             return error.CantFindNode;
         };
-        if (nbor.cur_degree >= k) count += 1;
+        if (nbor.cur_degree >= register_file.count) count += 1;
         try seen.put(nbor_id.*, {});
     }
 
-    return count < k;
+    return count < register_file.count;
 }
 
 //  (a+b)
@@ -86,20 +87,20 @@ test "reject coalesce" {
     const q = Operand{ .temp = .{ .id = 3, .function_id = 0 } };
     const r = Operand{ .temp = .{ .id = 4, .function_id = 0 } };
 
-    var a_node = Node.init(a, alloc);
+    var a_node = Node.init(a, .gp, alloc);
     try a_node.placeNode(p);
     try a_node.placeNode(q);
-    var b_node = Node.init(b, alloc);
+    var b_node = Node.init(b, .gp, alloc);
     try b_node.placeNode(r);
-    var p_node = Node.init(p, alloc);
+    var p_node = Node.init(p, .gp, alloc);
     try p_node.placeNode(a);
     try p_node.placeNode(q);
     try p_node.placeNode(r);
-    var q_node = Node.init(q, alloc);
+    var q_node = Node.init(q, .gp, alloc);
     try q_node.placeNode(p);
     try q_node.placeNode(a);
     try q_node.placeNode(r);
-    var r_node = Node.init(r, alloc);
+    var r_node = Node.init(r, .gp, alloc);
     try r_node.placeNode(b);
     try r_node.placeNode(p);
     try r_node.placeNode(q);
@@ -110,6 +111,16 @@ test "reject coalesce" {
     try graph.nodes.put(q, q_node);
     try graph.nodes.put(r, r_node);
 
-    const can_coalesce = try canCoalesce(graph, a_node, b_node, 3, alloc);
+    const can_coalesce = try canCoalesce(
+        graph,
+        a_node,
+        b_node,
+        .{
+            .count = 3,
+            .type = .gp,
+            .forbidden_mask = 0,
+        },
+        alloc,
+    );
     try std.testing.expect(!can_coalesce);
 }

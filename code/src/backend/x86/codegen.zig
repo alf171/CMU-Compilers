@@ -289,26 +289,26 @@ fn emitFunction(
                             try out.print(alloc, "\tjmp {s}_L{d}\n", .{ function.name, j.target });
                         },
                         .branch => |b| {
-                            const cond = try abi.regFor(b.condition, colors, .gp);
+                            const cond = try abi.regFor(b.condition.operand, colors, .gp);
                             try out.print(alloc, "\tcmpq $0, %{s}\n", .{cond});
                             try out.print(alloc, "\tjne {s}_L{d}\n", .{ function.name, b.then_block });
                             try out.print(alloc, "\tjmp {s}_L{d}\n", .{ function.name, b.else_block });
                         },
                         .select => |s| {
-                            const dst = try abi.regFor(s.dst, colors, .gp);
+                            const dst = try abi.regFor(s.dst.operand, colors, .gp);
                             const scratch_reg = try abi.scratchReg(0, .gp);
                             const else_reg = try valueToReg(s.else_value, out, dst, colors, abi, alloc);
                             if (!std.mem.eql(u8, else_reg, dst)) {
                                 try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ else_reg, dst });
                             }
-                            const condition = try abi.regFor(s.condition, colors, .gp);
+                            const condition = try abi.regFor(s.condition.operand, colors, .gp);
                             try out.print(alloc, "\tcmpq $0, %{s}\n", .{condition});
                             const if_reg = try valueToReg(s.if_value, out, scratch_reg, colors, abi, alloc);
                             try out.print(alloc, "\tcmovne %{s}, %{s}\n", .{ if_reg, dst });
                         },
                         .unaryop => |u| {
                             const dst = try abi.regFor(u.dst.operand, colors, u.dst.type.toCpuRegisterType());
-                            const src = try abi.regFor(u.src, colors, u.dst.type.toCpuRegisterType());
+                            const src = try abi.regFor(u.src.operand, colors, u.dst.type.toCpuRegisterType());
                             try out.print(alloc, "\t movq %{s}, %{s}\n", .{ src, dst });
                             switch (u.op) {
                                 .neg => switch (u.dst.type) {
@@ -327,7 +327,7 @@ fn emitFunction(
                             switch (c.src.type) {
                                 .i64 => switch (c.dst_target_type) {
                                     .float => {
-                                        const dst = try abi.regFor(c.dst, colors, .f);
+                                        const dst = try abi.regFor(c.dst.operand, colors, .f);
                                         const src = try abi.regFor(c.src.operand, colors, .gp);
                                         try out.print(alloc, "\tcvtsi2sdq %{s}, %{s}\n", .{ src, dst });
                                     },
@@ -341,7 +341,7 @@ fn emitFunction(
                                 },
                                 .float => switch (c.dst_target_type) {
                                     .i64 => {
-                                        const dst = try abi.regFor(c.dst, colors, .gp);
+                                        const dst = try abi.regFor(c.dst.operand, colors, .gp);
                                         const src = try abi.regFor(c.src.operand, colors, .f);
                                         try out.print(alloc, "\tcvttsd2siq %{s}, %{s}\n", .{ src, dst });
                                     },
@@ -385,7 +385,7 @@ fn emitFunction(
                         },
                         // (register -> memory)
                         .store_local => |sl| {
-                            const src = try abi.regFor(sl.src, colors, sl.local.type.toCpuRegisterType());
+                            const src = try abi.regFor(sl.src.operand, colors, sl.local.type.toCpuRegisterType());
                             try emitStackStore(
                                 out,
                                 src,
@@ -395,7 +395,7 @@ fn emitFunction(
                         },
                         // (memory -> register)
                         .load_local => |ll| {
-                            const dst = try abi.regFor(ll.dst, colors, ll.local.type.toCpuRegisterType());
+                            const dst = try abi.regFor(ll.dst.operand, colors, ll.local.type.toCpuRegisterType());
                             try emitStackLoad(
                                 out,
                                 dst,

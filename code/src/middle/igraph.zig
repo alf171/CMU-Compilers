@@ -1,16 +1,19 @@
 const std = @import("std");
 const parser = @import("parse.zig");
+const RegisterFile = @import("color.zig").RegisterFile;
 
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 const Writer = std.io.Writer;
 const Line = @import("common").alloc.AllocLine;
 const Operand = @import("common").alloc.Operand;
+const RegisterType = @import("common").types.RegisterType;
 
 const DegreeCount = u16;
 
 pub const Node = struct {
     val: Operand,
+    reg_type: RegisterType,
     neighbors: std.AutoHashMap(Operand, void),
     moves: std.AutoHashMap(Operand, void),
     selected: bool = false,
@@ -21,9 +24,10 @@ pub const Node = struct {
     /// encode which colors aren't allowed. ultimately, we should have a precoloring stage to avoid this hack
     forbidden_colors: u32 = 0,
 
-    pub fn init(val: Operand, allocator: Allocator) Node {
+    pub fn init(val: Operand, reg_type: RegisterType, allocator: Allocator) Node {
         return Node{
             .val = val,
+            .reg_type = reg_type,
             .neighbors = std.AutoHashMap(Operand, void).init(allocator),
             .moves = std.AutoHashMap(Operand, void).init(allocator),
         };
@@ -42,7 +46,7 @@ pub const Node = struct {
         self.cur_degree += 1;
     }
 
-    pub fn legalCount(self: *@This(), k: u8) DegreeCount {
+    pub fn legalCount(self: *@This(), k: u16) DegreeCount {
         // largest value forbidden_colors supports
         std.debug.assert(k < 32);
         const mask = (@as(u32, 1) << @intCast(k)) - 1;
@@ -74,13 +78,13 @@ pub const IGraph = struct {
         self.aliases.deinit();
     }
 
-    pub fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, allocator: Allocator) !void {
+    pub fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, reg_type: RegisterType, allocator: Allocator) !void {
         if (!graph.nodes.contains(val)) {
-            try graph.nodes.put(val, Node.init(val, allocator));
+            try graph.nodes.put(val, Node.init(val, reg_type, allocator));
         }
     }
 
-    pub fn addInterference(self: *@This(), a: Operand, b: Operand, alloc: std.mem.Allocator) !void {
+    pub fn addInterference(self: *@This(), a: Operand, b: Operand, reg_type: RegisterType, alloc: std.mem.Allocator) !void {
         if (Operand.equal(a, b)) return;
 
         switch (a) {
@@ -88,7 +92,7 @@ pub const IGraph = struct {
             .reg => |reg| switch (b) {
                 .reg, .mem => return,
                 .temp => {
-                    try defineNodeIfDoesntExist(self, b, alloc);
+                    try defineNodeIfDoesntExist(self, b, reg_type, alloc);
                     std.debug.assert(self.nodes.contains(b));
                     self.nodes.getPtr(b).?.forbidden_colors |= (@as(u32, 1) << @intCast(reg.id));
                     return;
@@ -97,8 +101,8 @@ pub const IGraph = struct {
             },
             .temp => switch (b) {
                 .temp => {
-                    try defineNodeIfDoesntExist(self, a, alloc);
-                    try defineNodeIfDoesntExist(self, b, alloc);
+                    try defineNodeIfDoesntExist(self, a, reg_type, alloc);
+                    try defineNodeIfDoesntExist(self, b, reg_type, alloc);
                     std.debug.assert(self.nodes.contains(a));
                     std.debug.assert(self.nodes.contains(b));
                     try self.nodes.getPtr(a).?.placeNode(b);
@@ -106,7 +110,7 @@ pub const IGraph = struct {
                     return;
                 },
                 .reg => |reg| {
-                    try defineNodeIfDoesntExist(self, a, alloc);
+                    try defineNodeIfDoesntExist(self, a, reg_type, alloc);
                     std.debug.assert(self.nodes.contains(a));
                     self.nodes.getPtr(a).?.forbidden_colors |= (@as(u32, 1) << @intCast(reg.id));
                     return;
@@ -215,21 +219,26 @@ pub const IGraph = struct {
     }
 };
 
-pub fn createIgraph(lines: ArrayList(Line), register_mask: u32, allocator: Allocator) !IGraph {
+pub fn createIgraph(lines: ArrayList(Line), register_file: RegisterFile, allocator: Allocator) !IGraph {
     var igraph = IGraph.init(allocator);
     for (lines.items) |line| {
-        try placeNodes(&igraph, line, register_mask, allocator);
+        try placeNodes(&igraph, line, register_file, allocator);
     }
     return igraph;
 }
 
-fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Allocator) !void {
+fn placeNodes(
+    igraph: *IGraph,
+    line: Line,
+    register_file: RegisterFile,
+    allocator: Allocator,
+) !void {
     // place all defines
     {
         var it = line.defines.ops.keyIterator();
         while (it.next()) |op| {
             if (op.shouldColor()) {
-                try igraph.defineNodeIfDoesntExist(op.*, allocator);
+                try igraph.defineNodeIfDoesntExist(op.*, register_file.type, allocator);
                 igraph.nodes.getPtr(op.*).?.spill_cost += 1;
             }
         }
@@ -239,7 +248,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
         var it = line.uses.ops.keyIterator();
         while (it.next()) |op| {
             if (op.shouldColor()) {
-                try igraph.defineNodeIfDoesntExist(op.*, allocator);
+                try igraph.defineNodeIfDoesntExist(op.*, register_file.type, allocator);
                 igraph.nodes.getPtr(op.*).?.spill_cost += 1;
             }
         }
@@ -253,8 +262,8 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
                 // x <- f(y) scenario, x can be a caller-safe register in this scenario
                 if (line.defines.ops.contains(op.*)) continue;
 
-                try igraph.defineNodeIfDoesntExist(op.*, allocator);
-                igraph.nodes.getPtr(op.*).?.forbidden_colors |= register_mask;
+                try igraph.defineNodeIfDoesntExist(op.*, register_file.type, allocator);
+                igraph.nodes.getPtr(op.*).?.forbidden_colors |= register_file.forbidden_mask;
             }
         }
     }
@@ -264,7 +273,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
         while (it.next()) |define_op| {
             var live_out_it = line.live_out.ops.keyIterator();
             while (live_out_it.next()) |live_out_op| {
-                try igraph.addInterference(define_op.*, live_out_op.*, allocator);
+                try igraph.addInterference(define_op.*, live_out_op.*, register_file.type, allocator);
             }
         }
     }
@@ -274,7 +283,7 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
         while (use_it.next()) |first_key| {
             var use_it_2 = line.uses.ops.keyIterator();
             while (use_it_2.next()) |second_key| {
-                try igraph.addInterference(first_key.*, second_key.*, allocator);
+                try igraph.addInterference(first_key.*, second_key.*, register_file.type, allocator);
             }
         }
     }
@@ -292,9 +301,9 @@ fn placeNodes(igraph: *IGraph, line: Line, register_mask: u32, allocator: Alloca
             }
 
             if (define.equal(uses)) return;
-            try igraph.defineNodeIfDoesntExist(define, allocator);
+            try igraph.defineNodeIfDoesntExist(define, register_file.type, allocator);
             try igraph.nodes.getPtr(define).?.moves.put(uses, {});
-            try igraph.defineNodeIfDoesntExist(uses, allocator);
+            try igraph.defineNodeIfDoesntExist(uses, register_file.type, allocator);
             try igraph.nodes.getPtr(uses).?.moves.put(define, {});
         }
     }
@@ -312,9 +321,9 @@ test "coalesce removes stale move refs" {
     const b = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
     const c = Operand{ .temp = .{ .id = 2, .function_id = 0 } };
     // init nodes
-    try graph.nodes.put(a, Node.init(a, alloc));
-    try graph.nodes.put(b, Node.init(b, alloc));
-    try graph.nodes.put(c, Node.init(c, alloc));
+    try graph.nodes.put(a, Node.init(a, .gp, alloc));
+    try graph.nodes.put(b, Node.init(b, .gp, alloc));
+    try graph.nodes.put(c, Node.init(c, .gp, alloc));
     // establish moves
     try graph.nodes.getPtr(a).?.moves.put(b, {});
     try graph.nodes.getPtr(b).?.moves.put(a, {});

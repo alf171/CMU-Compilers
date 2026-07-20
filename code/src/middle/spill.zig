@@ -56,8 +56,8 @@ fn spillRegInFunction(
                 // t2 <- op t1, B
                 // mem_slot <- t2
                 switch (use_item) {
-                    .operand => |use_op| {
-                        if (use_op.equal(spilled)) {
+                    .top => |use_top| {
+                        if (use_top.operand.equal(spilled)) {
                             const t1 = function.nextTemp();
                             if (spill_slot == null) {
                                 spill_slot = function.nextMem();
@@ -74,8 +74,8 @@ fn spillRegInFunction(
                 }
             }
             if (maybe_defines) |defines| switch (defines) {
-                .operand => |define_op| {
-                    if (define_op.equal(spilled)) {
+                .top => |define_top| {
+                    if (define_top.operand.equal(spilled)) {
                         const t2 = function.nextTemp();
                         try instruction.replaceDefines(spilled, t2);
                         try new_instructions.append(alloc, instruction);

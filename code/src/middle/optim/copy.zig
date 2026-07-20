@@ -31,8 +31,8 @@ pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
 
             if (instruction.getDefines()) |define| {
                 switch (define) {
-                    .operand => |op| {
-                        try invalidateCopiesDependingOn(op, &copyMap, alloc);
+                    .top => |top| {
+                        try invalidateCopiesDependingOn(top.operand, &copyMap, alloc);
                     },
                     .local => {},
                 }
@@ -93,16 +93,16 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
                     m.src = try resolve(m.src, copyMap);
                 },
                 .unaryop => |*uo| {
-                    uo.src = try resolveOperand(uo.src, copyMap);
+                    uo.src.operand = try resolveOperand(uo.src.operand, copyMap);
                 },
                 .branch => |*b| {
-                    b.condition = try resolveOperand(b.condition, copyMap);
+                    b.condition.operand = try resolveOperand(b.condition.operand, copyMap);
                 },
                 .store_local => |*sl| {
-                    sl.src = try resolveOperand(sl.src, copyMap);
+                    sl.src.operand = try resolveOperand(sl.src.operand, copyMap);
                 },
                 .select => |*s| {
-                    s.condition = try resolveOperand(s.condition, copyMap);
+                    s.condition.operand = try resolveOperand(s.condition.operand, copyMap);
                     s.if_value = try resolve(s.if_value, copyMap);
                     s.else_value = try resolve(s.else_value, copyMap);
                 },
@@ -122,11 +122,11 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
         },
         .tuple_load => |*tl| {
             tl.tuple.operand = try resolveOperand(tl.tuple.operand, copyMap);
-            tl.index = try resolveOperand(tl.index, copyMap);
+            tl.index.operand = try resolveOperand(tl.index.operand, copyMap);
         },
         .list_load => |*ll| {
             ll.list.operand = try resolveOperand(ll.list.operand, copyMap);
-            ll.index = try resolveOperand(ll.index, copyMap);
+            ll.index.operand = try resolveOperand(ll.index.operand, copyMap);
         },
         .list_literal => |*ll| {
             for (ll.elements) |*elem| {

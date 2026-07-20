@@ -25,15 +25,14 @@ pub fn run(
     ir_program: *IrProgram,
     graph: *igraph.IGraph,
     init_program: *AllocProgram,
+    register_file: color.RegisterFile,
     should_coalesce: bool,
-    register_mask: u32,
     alloc: Allocator,
-    stdout: ?*Writer,
 ) !RunResult {
     if (should_coalesce) {
-        try coalesce.run(graph, init_program.register_count, alloc, stdout);
+        try coalesce.run(graph, register_file, alloc);
     }
-    var graph_attempt = try color.colorGraph(graph, init_program.register_count, alloc);
+    var graph_attempt = try color.colorGraph(graph, register_file, alloc);
     var color_attemps = std.EnumArray(FunctionType, usize).initFill(0);
 
     var program = init_program;
@@ -51,16 +50,16 @@ pub fn run(
         // spill in ir
         try spill.spillRegInIr(ir_program, graph_attempt.spill_register, alloc);
         // rebuild alloc according to our spill
-        var new_program = try reg_alloc.build(ir_program.*, program.register_count, alloc);
+        var new_program = try reg_alloc.build(ir_program.*, alloc);
         try live.calculateLiveOut(&new_program, alloc);
         program.deinit(alloc);
         program.* = new_program;
         // try program.print(stdout);
-        graph.* = try igraph.createIgraph(program.lines, register_mask, alloc);
+        graph.* = try igraph.createIgraph(program.lines, register_file, alloc);
         if (should_coalesce) {
-            try coalesce.run(graph, program.register_count, alloc, stdout);
+            try coalesce.run(graph, register_file, alloc);
         }
-        graph_attempt = try color.colorGraph(graph, program.register_count, alloc);
+        graph_attempt = try color.colorGraph(graph, register_file, alloc);
     }
 
     // return graph_attempt.graph;

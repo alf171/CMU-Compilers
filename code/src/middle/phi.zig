@@ -31,7 +31,7 @@ pub fn eliminatePhiInFunction(function: *Function, alloc: std.mem.Allocator) !vo
             switch (instruction) {
                 .phi => |phi| {
                     for (phi.inputs) |input| {
-                        if (phi.dst.operand.equal(input.value)) continue;
+                        if (phi.dst.operand.equal(input.value.operand)) continue;
                         const entry = try copies_per_pred.getOrPut(input.pred);
 
                         if (!entry.found_existing) {
@@ -39,7 +39,7 @@ pub fn eliminatePhiInFunction(function: *Function, alloc: std.mem.Allocator) !vo
                         }
                         try entry.value_ptr.append(alloc, .{
                             .dst = try phi.dst.clone(alloc),
-                            .src = input.value,
+                            .src = input.value.operand,
                         });
                     }
                 },

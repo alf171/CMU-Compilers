@@ -76,7 +76,7 @@ pub fn walkLoop(
         const before_val = entry.value_ptr.*;
 
         var inputs = try alloc.alloc(PhiInput, 2);
-        inputs[0] = .{ .pred = entry_block, .value = before_val.operand };
+        inputs[0] = .{ .pred = entry_block, .value = before_val };
         inputs[1] = undefined;
 
         const dst = TypedOperand{
@@ -99,7 +99,7 @@ pub fn walkLoop(
     // callee defined phis
     for (carries) |*carry| {
         var inputs = try alloc.alloc(PhiInput, 2);
-        inputs[0] = .{ .pred = entry_block, .value = carry.initial.operand };
+        inputs[0] = .{ .pred = entry_block, .value = carry.initial };
         inputs[1] = undefined;
         const dst = TypedOperand{
             .operand = irBuilder.nextTemp(),
@@ -115,13 +115,16 @@ pub fn walkLoop(
     }
 
     const condition_expr = switch (condition) {
-        .expr => |cond| (try walkExpr(cond, irBuilder, null, alloc)).operand,
+        .expr => |cond| try walkExpr(cond, irBuilder, null, alloc),
         .compare => |comp| blk: {
-            const dst = irBuilder.nextTemp();
+            const dst: TypedOperand = .{
+                .operand = irBuilder.nextTemp(),
+                .type = .bool,
+            };
             const lhs = irBuilder.local_values.get(comp.local) orelse return error.LocalNotFound;
             const rhs = irBuilder.local_values.get(comp.rhs_local) orelse return error.LocalNotFound;
-            try irBuilder.emit(Instruction{ .lir = .{ .compare = .{
-                .dst = .{ .operand = dst, .type = .bool },
+            try irBuilder.emit(.{ .lir = .{ .compare = .{
+                .dst = dst,
                 .lhs = lhs,
                 .op = comp.cmp,
                 .rhs = rhs,
@@ -129,10 +132,13 @@ pub fn walkLoop(
             break :blk dst;
         },
         .operand_compare => |comp| blk: {
-            const dst = irBuilder.nextTemp();
+            const dst: TypedOperand = .{
+                .operand = irBuilder.nextTemp(),
+                .type = .bool,
+            };
             const lhs = carries[comp.carry_index].current;
             try irBuilder.emit(Instruction{ .lir = .{ .compare = .{
-                .dst = .{ .operand = dst, .type = .bool },
+                .dst = dst,
                 .lhs = lhs,
                 .op = comp.cmp,
                 .rhs = comp.rhs,
@@ -166,7 +172,7 @@ pub fn walkLoop(
         const value = body_values.get(loop_phi.local) orelse loop_phi.dst;
         loop_phi.phi_inputs[1] = .{
             .pred = backedge_block,
-            .value = value.operand,
+            .value = value,
         };
     }
 
@@ -174,7 +180,7 @@ pub fn walkLoop(
         const value = carry.next orelse return error.CarryNotSet;
         carry.inputs[1] = .{
             .pred = backedge_block,
-            .value = value.operand,
+            .value = value,
         };
     }
 

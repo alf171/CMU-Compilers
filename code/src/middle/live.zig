@@ -5,7 +5,7 @@ const parser = @import("parse.zig");
 const common = @import("common");
 const AllocBlock = common.alloc.AllocBlock;
 const Line = common.alloc.AllocLine;
-const Operands = common.alloc.Operands;
+const RegisterOperands = common.alloc.RegisterOperands;
 const Operand = common.alloc.Operand;
 
 /// handle case where we are last line in addition to other to rest
@@ -18,7 +18,7 @@ pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.me
             block_i -= 1;
             const block = program.blocks.items[block_i];
 
-            var live_after = Operands.init(alloc);
+            var live_after = RegisterOperands.init(alloc);
             defer live_after.free();
 
             for (block.successors.items) |id| {
@@ -52,15 +52,16 @@ pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.me
 
 /// Live_in(line) = Uses(line) u (Live_out(line) - Define(line))
 /// memory semantics, we are going to return new memory while keeping prev valid
-fn getLiveIn(line: *const Line, alloc: std.mem.Allocator) !Operands {
-    var result = Operands.init(alloc);
+fn getLiveIn(line: *const Line, alloc: std.mem.Allocator) !RegisterOperands {
+    var result = RegisterOperands.init(alloc);
     try result.add(&line.uses);
 
-    var it = line.live_out.ops.keyIterator();
-    while (it.next()) |live_out| {
+    var it = line.live_out.ops.iterator();
+    while (it.next()) |entry| {
+        const live_out = entry.key_ptr.*;
         // dont add duplicates + dont add if in define
-        if (!line.uses.ops.contains(live_out.*) and !line.defines.ops.contains(live_out.*)) {
-            try result.ops.put(live_out.*, {});
+        if (!line.uses.ops.contains(live_out) and !line.defines.ops.contains(live_out)) {
+            try result.ops.put(live_out, entry.value_ptr.*);
         }
     }
     return result;
@@ -70,9 +71,9 @@ test "out of bounds returns empty" {
     const alloc = std.testing.allocator;
 
     var line = Line{
-        .uses = Operands.init(alloc),
-        .defines = Operands.init(alloc),
-        .live_out = Operands.init(alloc),
+        .uses = RegisterOperands.init(alloc),
+        .defines = RegisterOperands.init(alloc),
+        .live_out = RegisterOperands.init(alloc),
         .move = false,
         .clobber_caller_saved = false,
         .instruction_index = 0,
@@ -88,15 +89,15 @@ test "out of bounds returns empty" {
 test "simple example" {
     const alloc = std.testing.allocator;
 
-    var uses = Operands.init(alloc);
+    var uses = RegisterOperands.init(alloc);
     defer uses.free();
     try uses.ops.put(Operand{ .temp = .{ .id = 0, .function_id = 0 } }, {});
 
-    var defines = Operands.init(alloc);
+    var defines = RegisterOperands.init(alloc);
     defer defines.free();
     try defines.ops.put(Operand{ .temp = .{ .id = 1, .function_id = 0 } }, {});
 
-    var live_out = Operands.init(alloc);
+    var live_out = RegisterOperands.init(alloc);
     defer live_out.free();
     const temps = [_]Operand{
         .{ .temp = .{ .id = 0, .function_id = 0 } },

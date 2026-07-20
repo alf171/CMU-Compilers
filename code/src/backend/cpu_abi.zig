@@ -3,7 +3,7 @@ const Operand = @import("common").alloc.Operand;
 const ValueRef = @import("common").ir.ValueRef;
 const ColoredGraph = @import("middle").color.ColoredGraph;
 const TypeInfo = @import("common").types.TypeInfo;
-const RegisterType = @import("common").ir.CpuRegisterType;
+const RegisterType = @import("common").ir.RegisterType;
 
 // function_return_idx = idnex of in mask of the function return register
 // mask calculation could be moved to comptime
@@ -79,6 +79,7 @@ pub const CpuAbi = struct {
         const function_arg_regs_len = switch (reg_type) {
             .f => self.fp_function_arg_regs.len,
             .gp => self.gp_function_arg_regs.len,
+            else => unreachable,
         };
 
         if (index >= function_arg_regs_len) return error.OutOfBounds;
@@ -90,6 +91,7 @@ pub const CpuAbi = struct {
         const function_arg_regs = switch (reg_type) {
             .f => self.fp_function_arg_regs,
             .gp => self.gp_function_arg_regs,
+            else => unreachable,
         };
 
         if (index >= function_arg_regs.len) return error.TooManyArgs;
@@ -100,6 +102,7 @@ pub const CpuAbi = struct {
         const allocatable_regs = switch (reg_type) {
             .f => self.fp_allocatable_regs,
             .gp => self.gp_allocatable_regs,
+            else => unreachable,
         };
         if (index >= allocatable_regs.len) return error.TooManyArgs;
         return allocatable_regs[index];
@@ -134,6 +137,7 @@ pub const CpuAbi = struct {
                 if (index >= self.gp_scratch_regs.len) return error.InvalidScratchReg;
                 return self.gp_scratch_regs[index];
             },
+            else => unreachable,
         }
     }
 };

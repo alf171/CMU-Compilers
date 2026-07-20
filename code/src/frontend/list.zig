@@ -70,9 +70,12 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 break :blk ValueRef{ .top = src };
                             },
                         };
-                        const index = function.nextTemp();
+                        const index: TypedOperand = .{
+                            .operand = function.nextTemp(),
+                            .type = .i64,
+                        };
                         try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                            .dst = .{ .operand = index, .type = .i64 },
+                            .dst = index,
                             .src = .{ .constant = .{ .i64 = @intCast(i) } },
                         } } });
                         try rewriteListStore(function, .{
@@ -96,10 +99,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     if (elem_size == 1) {
                         try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                             .dst = scaled,
-                            .src = .{ .top = .{
-                                .operand = ll.index,
-                                .type = scaled.type,
-                            } },
+                            .src = .{ .top = ll.index },
                         } } });
                     }
                     // scaled = index * element_size
@@ -112,7 +112,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
                             .dst = scaled,
                             .op = .mul,
-                            .lhs = .{ .operand = ll.index, .type = .i64 },
+                            .lhs = ll.index,
                             .rhs = element_size,
                         } } });
                     }
@@ -158,7 +158,7 @@ fn rewriteListStore(
     if (elem_size == 1) {
         try new_instructions.append(alloc, .{ .lir = .{ .move = .{
             .dst = scaled,
-            .src = .{ .top = .{ .operand = ls.index, .type = scaled.type } },
+            .src = .{ .top = ls.index },
         } } });
     }
     // scaled = index * element_size
@@ -171,7 +171,7 @@ fn rewriteListStore(
         try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
             .dst = scaled,
             .op = .mul,
-            .lhs = .{ .operand = ls.index, .type = .i64 },
+            .lhs = ls.index,
             .rhs = element_size,
         } } });
     }

@@ -44,21 +44,23 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                 },
                 .function_return => |fr| {
                     if (fr.value) |src_op| {
-                        const reg = Operand{ .reg = .{
-                            .id = abi.getFunctionReturnIdx(function.return_type),
-                            .class = function.return_type.toCpuRegisterType(),
-                        } };
-                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{ .dst = .{
-                            .operand = reg,
+                        const reg: TypedOperand = .{
+                            .operand = .{ .reg = .{
+                                .id = abi.getFunctionReturnIdx(function.return_type),
+                                .class = function.return_type.toCpuRegisterType(),
+                            } },
                             .type = function.return_type,
-                        }, .src = .{
-                            .top = .{
-                                .operand = src_op,
-                                .type = function.return_type,
+                        };
+                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                            .dst = reg,
+                            .src = .{
+                                .top = src_op,
                             },
-                        } } } });
+                        } } });
                         // emits branch with proper coloring
-                        try new_instructions.append(alloc, .{ .function_return = .{ .value = reg } });
+                        try new_instructions.append(alloc, .{
+                            .function_return = .{ .value = reg },
+                        });
                     } else {
                         // emits branch
                         try new_instructions.append(alloc, instruction.*);

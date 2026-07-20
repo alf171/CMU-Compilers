@@ -17,6 +17,7 @@ const reg_alloc = middle.reg_alloc;
 const live = middle.live;
 const igraph = middle.igraph;
 const color = middle.color;
+const RegisterFile = color.RegisterFile;
 const precolor = middle.precolor;
 const phi = middle.phi;
 const parallel_copies = middle.parallel_copies;
@@ -106,30 +107,36 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    var alloc_program = try reg_alloc.build(ir_program, @intCast(host_platform.abi.gp_allocatable_regs.len), alloc);
+    var alloc_program = try reg_alloc.build(ir_program, alloc);
     try live.calculateLiveOut(&alloc_program, alloc);
 
     // run optimzation passes
     if (should_optim) {
         try dead.run(&ir_program, &alloc_program, alloc);
         alloc_program.deinit(alloc);
-        alloc_program = try reg_alloc.build(ir_program, @intCast(host_platform.abi.gp_allocatable_regs.len), alloc);
+        alloc_program = try reg_alloc.build(ir_program, alloc);
         try live.calculateLiveOut(&alloc_program, alloc);
     }
 
     defer alloc_program.deinit(alloc);
 
-    var graph = try igraph.createIgraph(alloc_program.lines, host_platform.abi.gp_call_clobber_mask, alloc);
+    // setup register specifics
+    const register_file: RegisterFile = .{
+        .count = @intCast(host_platform.abi.gp_allocatable_regs.len),
+        .type = .gp,
+        .forbidden_mask = host_platform.abi.gp_call_clobber_mask,
+    };
+    // generate interference graph
+    var graph = try igraph.createIgraph(alloc_program.lines, register_file, alloc);
     defer graph.deinit();
 
     const result = try loop.run(
         &ir_program,
         &graph,
         &alloc_program,
+        register_file,
         should_optim,
-        host_platform.abi.gp_call_clobber_mask,
         alloc,
-        null,
     );
     var host_colors = result.graph;
     defer host_colors.deinit();

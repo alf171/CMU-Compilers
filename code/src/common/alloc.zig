@@ -6,6 +6,7 @@ const ConstValue = @import("ir.zig").ConstValue;
 const TempId = @import("ir.zig").TempId;
 const MemoryId = @import("ir.zig").MemoryId;
 const TypeInfo = @import("types.zig").TypeInfo;
+const RegisterType = @import("types.zig").RegisterType;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -14,8 +15,8 @@ const Writer = std.io.Writer;
 
 pub const REG_COUNT = 10;
 
-pub const Operands = struct {
-    ops: HashMap(Operand, void),
+pub const RegisterOperands = struct {
+    ops: HashMap(Operand, RegisterType),
 
     pub fn nextTemp(self: @This()) TempId {
         var max_temp: TempId = 0;
@@ -61,28 +62,29 @@ pub const Operands = struct {
     /// requires the elements being removed to be present
     pub fn remove(self: @This(), op: Operand, alloc: Allocator) !@This() {
         std.debug.assert(self.ops.contains(op));
-        var res = Operands.init(alloc);
-        var it = self.ops.keyIterator();
-        while (it.next()) |loop_op| {
+        var res = RegisterOperands.init(alloc);
+        var it = self.ops.iterator();
+        while (it.next()) |entry| {
+            const loop_op = entry.key_ptr.*;
             if (!loop_op.equal(op)) {
-                try res.ops.put(loop_op.*, {});
+                try res.ops.put(loop_op.*, entry.value_ptr.*);
             }
         }
         return res;
     }
 
-    pub fn clone(self: Operands, allocator: Allocator) !Operands {
-        var res = Operands.init(allocator);
-        var it = self.ops.keyIterator();
-        while (it.next()) |item| {
-            try res.ops.put(item.*, {});
+    pub fn clone(self: RegisterOperands, allocator: Allocator) !RegisterOperands {
+        var res = RegisterOperands.init(allocator);
+        var it = self.ops.iterator();
+        while (it.next()) |entry| {
+            try res.ops.put(entry.key_ptr.*, entry.value_ptr.*);
         }
         return res;
     }
 
-    pub fn init(allocator: Allocator) Operands {
-        const ops = std.AutoHashMap(Operand, void).init(allocator);
-        return Operands{ .ops = ops };
+    pub fn init(allocator: Allocator) RegisterOperands {
+        const ops = std.AutoHashMap(Operand, RegisterType).init(allocator);
+        return .{ .ops = ops };
     }
 
     pub fn free(self: *@This()) void {
@@ -90,9 +92,9 @@ pub const Operands = struct {
     }
 
     pub fn add(self: *@This(), other: *const @This()) !void {
-        var it = other.ops.keyIterator();
-        while (it.next()) |op| {
-            try self.ops.put(op.*, {});
+        var it = other.ops.iterator();
+        while (it.next()) |entry| {
+            try self.ops.put(entry.key_ptr.*, entry.value_ptr.*);
         }
     }
 
@@ -213,9 +215,9 @@ pub const TypedOperand = struct {
 
 pub const AllocLine = struct {
     instruction_index: usize,
-    uses: Operands,
-    defines: Operands,
-    live_out: Operands,
+    uses: RegisterOperands,
+    defines: RegisterOperands,
+    live_out: RegisterOperands,
     move: bool,
     // marks if an operation triggers a br; this indicates that caller saved
     // register will get cloberred and thus we must color differently
@@ -247,8 +249,6 @@ pub const AllocProgram = struct {
     lines: ArrayList(AllocLine),
     /// track register allocation w.r.t to the control flow
     blocks: ArrayList(AllocBlock),
-    /// how many registers the program needs to utilize
-    register_count: u8,
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         for (self.lines.items) |*line| {
@@ -291,19 +291,19 @@ pub const AllocProgram = struct {
 
 test "operands equal" {
     const alloc = std.testing.allocator;
-    var ops1 = HashMap(Operand, void).init(alloc);
+    var ops1 = HashMap(Operand, TypeInfo).init(alloc);
     defer ops1.deinit();
-    try ops1.put(Operand{ .temp = .{ .id = 99, .function_id = 0 } }, {});
-    var a = Operands{ .ops = ops1 };
+    try ops1.put(.{ .temp = .{ .id = 99, .function_id = 0 } }, .gp);
+    var a: RegisterOperands = .{ .ops = ops1 };
 
-    var ops2 = HashMap(Operand, void).init(alloc);
+    var ops2 = HashMap(Operand, TypeInfo).init(alloc);
     defer ops2.deinit();
-    try ops2.put(Operand{ .temp = .{ .id = 99, .function_id = 0 } }, {});
-    const b = Operands{ .ops = ops2 };
+    try ops2.put(Operand{ .temp = .{ .id = 99, .function_id = 0 } }, .gp);
+    const b: RegisterOperands = .{ .ops = ops2 };
 
     try std.testing.expect(b.equal(&a));
     try std.testing.expect(a.equal(&b));
 
-    try a.ops.put(Operand{ .temp = .{ .id = 100, .function_id = 0 } }, {});
+    try a.ops.put(.{ .temp = .{ .id = 100, .function_id = 0 } }, .gp);
     try std.testing.expect(!a.equal(&b));
 }

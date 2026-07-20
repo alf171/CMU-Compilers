@@ -45,7 +45,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     } } });
                     try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
                         .dst = scaled,
-                        .lhs = .{ .operand = tl.index, .type = .i64 },
+                        .lhs = tl.index,
                         .op = .mul,
                         .rhs = eight,
                     } } });

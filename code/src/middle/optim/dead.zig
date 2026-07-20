@@ -13,6 +13,18 @@ const LocalId = @import("common").ir.LocalId;
 const Instruction = @import("common").mir.Instruction;
 const SeenValue = @import("common").ir.SeenValue;
 
+pub const SeenIdentity = union(enum) {
+    operand: Operand,
+    local: LocalId,
+};
+
+fn seenIdentity(value: SeenValue) SeenIdentity {
+    return switch (value) {
+        .local => |local| .{ .local = local },
+        .top => |top| .{ .operand = top.operand },
+    };
+}
+
 /// run dead code elimination
 pub fn run(program: *Program, alloc_program: *const AllocProgram, alloc: std.mem.Allocator) !void {
     try runFunction(&program.main, alloc_program, alloc);
@@ -24,15 +36,15 @@ pub fn run(program: *Program, alloc_program: *const AllocProgram, alloc: std.mem
 fn runFunction(function: *Function, alloc_program: *const AllocProgram, alloc: std.mem.Allocator) !void {
     for (function.blocks.items) |*block| {
         const instructions = block.instructions.items;
-        var seen = HashMap(SeenValue, void).init(alloc);
+        var seen = HashMap(SeenIdentity, void).init(alloc);
         // seed seen with what's live from the previous block
         const alloc_block = try alloc_program.getBlockById(block.id, function.id);
         if (alloc_block.end != alloc_block.start) {
             const live_out = alloc_program.lines.items[alloc_block.end - 1].live_out;
-            var it = live_out.ops.keyIterator();
-            while (it.next()) |key| {
-                try seen.put(SeenValue{
-                    .operand = key.*,
+            var it = live_out.ops.iterator();
+            while (it.next()) |entry| {
+                try seen.put(.{
+                    .operand = entry.key_ptr.*,
                 }, {});
             }
         }
@@ -47,7 +59,7 @@ fn runFunction(function: *Function, alloc_program: *const AllocProgram, alloc: s
             var uses = try instruction.getUses(alloc);
 
             // if operand hasn't been used yet, instruction can be removed
-            if (!hasSideEffects(instruction) and defines != null and !seen.contains(defines.?)) {
+            if (!hasSideEffects(instruction) and defines != null and !seen.contains(seenIdentity(defines.?))) {
                 var removed = block.instructions.orderedRemove(i);
                 removed.deinit(alloc);
                 uses.deinit(alloc);
@@ -55,10 +67,10 @@ fn runFunction(function: *Function, alloc_program: *const AllocProgram, alloc: s
             }
 
             // once we define a value, it is longer seen so not a can be optimistically deregistered
-            if (defines) |d| _ = seen.remove(d);
+            if (defines) |d| _ = seen.remove(seenIdentity(d));
 
             // we've already seen this operand being used
-            for (uses.items) |use| try seen.put(use, {});
+            for (uses.items) |use| try seen.put(seenIdentity(use), {});
             uses.deinit(alloc);
         }
         seen.clearRetainingCapacity();
@@ -90,7 +102,10 @@ test "basic block elim" {
     defer program.deinit(alloc);
     var instructions = &program.main.blocks.items[0].instructions;
 
-    var alloc_program = AllocProgram{ .blocks = .empty, .lines = .empty, .register_count = 1 };
+    var alloc_program = AllocProgram{
+        .blocks = .empty,
+        .lines = .empty,
+    };
     try alloc_program.blocks.append(alloc, .{
         .start = 0,
         .end = 1,

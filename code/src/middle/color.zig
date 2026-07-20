@@ -7,10 +7,17 @@ const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
 const Operands = @import("common").alloc.Operands;
 const Operand = @import("common").alloc.Operand;
+const RegisterType = @import("common").types.RegisterType;
 
 pub fn Set(comptime K: type) type {
     return std.AutoHashMap(K, void);
 }
+
+pub const RegisterFile = struct {
+    count: u16,
+    type: RegisterType,
+    forbidden_mask: u32,
+};
 
 // TODO: hacky way to have different nodes
 pub const Node = struct {
@@ -110,14 +117,7 @@ const ColorGraphAttempt = union(enum) { graph: ColoredGraph, spill_register: Ope
 
 /// color a graph and generate a new graph via spilling if needed
 /// at what layer of abstraction should we do all of this is still being decided
-/// could consider doing this in src/main.zig
-/// main things left to be done
-/// 1. implement spilling with no heuristic
-/// 2. color special register following TODO in code
-/// 3. implement coalescing
-/// 4. add heuristic for spilling
-/// 5. clean up any code / todos
-pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraphAttempt {
+pub fn colorGraph(input: *graph.IGraph, register_file: RegisterFile, allocator: Allocator) !ColorGraphAttempt {
     // things to keep track of
     var simplify = Set(Operand).init(allocator);
     var spill = Set(Operand).init(allocator);
@@ -137,7 +137,7 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
                 continue;
             }
 
-            if (node.cur_degree < node.legalCount(k)) {
+            if (node.cur_degree < node.legalCount(register_file.count)) {
                 try simplify.put(node.val, {});
             } else {
                 try spill.put(node.val, {});
@@ -160,7 +160,7 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
                 return error.CantFindNode;
             };
             if (!node.selected) {
-                try removeNode(input, node.*, &select, &simplify, &spill, k);
+                try removeNode(input, node.*, &select, &simplify, &spill, register_file.count);
             }
         } else {
             // spill node with lowest impact according to our hueristic
@@ -178,7 +178,7 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
             return error.GraphError;
         };
 
-        const reg = try scanForRegister(graph_node, &new_graph, k) orelse {
+        const reg = try scanForRegister(graph_node, &new_graph, register_file.count) orelse {
             const str = try id.toString(allocator);
             defer allocator.free(str);
             std.debug.print("couldn't find register for {s}\n", .{str});
@@ -214,7 +214,7 @@ pub fn colorGraph(input: *graph.IGraph, k: u8, allocator: Allocator) !ColorGraph
 }
 
 /// build our select stack. move things between simplify and spill as needed
-fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_list.Managed(Operand), simplify: *Set(Operand), spill: *Set(Operand), k: u8) !void {
+fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_list.Managed(Operand), simplify: *Set(Operand), spill: *Set(Operand), register_count: u16) !void {
     std.debug.assert(node.val != .reg);
     std.debug.assert(!node.selected);
     try select.append(node.val);
@@ -234,7 +234,7 @@ fn removeNode(input: *const graph.IGraph, node: graph.Node, select: *std.array_l
         }
 
         // if we go from k -> k - 1, move from spill to select
-        if (n.cur_degree == n.legalCount(k)) {
+        if (n.cur_degree == n.legalCount(register_count)) {
             std.debug.assert(spill.contains(n_ptr.*));
             std.debug.assert(!simplify.contains(n_ptr.*));
             _ = spill.remove(n_ptr.*);
@@ -302,7 +302,7 @@ fn takeAny(s: *std.AutoHashMap(Operand, void)) !Operand {
 
 // take a node. determininstically find lowest reg available
 // skip registers based on callee_save_mask
-fn scanForRegister(cnode: *ColoredNode, g: *ColoredGraph, k: u8) !?u8 {
+fn scanForRegister(cnode: *ColoredNode, g: *ColoredGraph, k: u16) !?u8 {
     std.debug.assert(cnode.register == null);
     scan: for (0..k) |scan_reg| {
         // bit mask skip logic

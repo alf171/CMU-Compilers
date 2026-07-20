@@ -16,10 +16,10 @@ const TypedOperand = @import("alloc.zig").TypedOperand;
 pub const Instruction = union(enum) {
     store_local: struct {
         local: LocalInfo,
-        src: Operand,
+        src: TypedOperand,
     },
     load_local: struct {
-        dst: Operand,
+        dst: TypedOperand,
         local: LocalInfo,
     },
     binop: struct {
@@ -36,7 +36,7 @@ pub const Instruction = union(enum) {
     unaryop: struct {
         dst: TypedOperand,
         op: UnaryOp,
-        src: Operand,
+        src: TypedOperand,
     },
     compare: struct {
         dst: TypedOperand,
@@ -48,7 +48,7 @@ pub const Instruction = union(enum) {
         target: BlockId,
     },
     branch: struct {
-        condition: Operand,
+        condition: TypedOperand,
         then_block: BlockId,
         else_block: BlockId,
     },
@@ -70,13 +70,13 @@ pub const Instruction = union(enum) {
         bytes: usize,
     },
     select: struct {
-        dst: Operand,
-        condition: Operand,
+        dst: TypedOperand,
+        condition: TypedOperand,
         if_value: ValueRef,
         else_value: ValueRef,
     },
     cast: struct {
-        dst: Operand,
+        dst: TypedOperand,
         dst_target_type: TypeInfo,
         src: TypedOperand,
     },
@@ -94,7 +94,7 @@ pub const Instruction = union(enum) {
             },
             .store_local => |sl| {
                 debugPrint("\"{s}\" <- ", .{sl.local.name});
-                sl.src.print();
+                sl.src.operand.print();
                 debugPrint("\n", .{});
             },
             .store_offset => |so| {
@@ -119,13 +119,13 @@ pub const Instruction = union(enum) {
                 debugPrint(" <- stack_alloc {d} bytes\n", .{sa.bytes});
             },
             .load_local => |ll| {
-                ll.dst.print();
+                ll.dst.operand.print();
                 debugPrint(" <- \"{s}\"\n", .{ll.local.name});
             },
             .unaryop => |uop| {
                 uop.dst.operand.print();
                 debugPrint(" <- {s} ", .{@tagName(uop.op)});
-                uop.src.print();
+                uop.src.operand.print();
                 debugPrint("\n", .{});
             },
             .move => |m| {
@@ -146,13 +146,13 @@ pub const Instruction = union(enum) {
                 debugPrint("jump block{d}\n", .{j.target});
             },
             .branch => |b| {
-                b.condition.print();
+                b.condition.operand.print();
                 debugPrint(" ? jump block{d} : jump block{d}\n", .{ b.then_block, b.else_block });
             },
             .select => |s| {
-                s.dst.print();
+                s.dst.operand.print();
                 debugPrint(" <- ", .{});
-                s.condition.print();
+                s.condition.operand.print();
                 debugPrint(" ? ", .{});
                 s.if_value.print();
                 debugPrint(" : ", .{});
@@ -160,7 +160,7 @@ pub const Instruction = union(enum) {
                 debugPrint("\n", .{});
             },
             .cast => |c| {
-                c.dst.print();
+                c.dst.operand.print();
                 debugPrint(" <- ({s})", .{@tagName(c.dst_target_type)});
                 c.src.operand.print();
                 debugPrint("\n", .{});
@@ -175,7 +175,7 @@ pub const Instruction = union(enum) {
     pub fn replaceUses(self: *@This(), old: Operand, new: Operand) void {
         switch (self.*) {
             .store_local => |*sl| {
-                if (sl.src.equal(old)) sl.src = new;
+                if (sl.src.operand.equal(old)) sl.src.operand = new;
             },
             .store_offset => |*so| {
                 if (so.dst.operand.equal(old)) so.dst.operand = new;
@@ -217,7 +217,7 @@ pub const Instruction = union(enum) {
                 if (c.rhs.operand.equal(old)) c.rhs.operand = new;
             },
             .select => |*s| {
-                if (s.condition.equal(old)) s.condition = new;
+                if (s.condition.operand.equal(old)) s.condition.operand = new;
                 switch (s.if_value) {
                     .top => |*top| {
                         if (top.operand.equal(old)) {
@@ -257,7 +257,7 @@ pub const Instruction = union(enum) {
                 if (lo.dst.operand.equal(old)) lo.dst.operand = new;
             },
             .select => |*s| {
-                if (s.dst.equal(old)) s.dst = new;
+                if (s.dst.operand.equal(old)) s.dst.operand = new;
             },
             else => |e| {
                 debugPrint("defines cant handle {s}\n", .{@tagName(e)});
@@ -270,18 +270,18 @@ pub const Instruction = union(enum) {
     pub fn getDefines(instruction: Instruction) ?SeenValue {
         return switch (instruction) {
             .store_local => |sl| .{ .local = sl.local.id },
-            .load_local => |ll| .{ .operand = ll.dst },
-            .binop => |bop| .{ .operand = bop.dst.operand },
-            .move => |m| .{ .operand = m.dst.operand },
-            .unaryop => |uop| .{ .operand = uop.dst.operand },
-            .compare => |c| .{ .operand = c.dst.operand },
+            .load_local => |ll| .{ .top = ll.dst },
+            .binop => |bop| .{ .top = bop.dst },
+            .move => |m| .{ .top = m.dst },
+            .unaryop => |uop| .{ .top = uop.dst },
+            .compare => |c| .{ .top = c.dst },
             .store_offset => null,
-            .load_offset => |lo| .{ .operand = lo.dst.operand },
-            .stack_alloc => |so| .{ .operand = so.dst.operand },
-            .select => |s| .{ .operand = s.dst },
+            .load_offset => |lo| .{ .top = lo.dst },
+            .stack_alloc => |so| .{ .top = so.dst },
+            .select => |s| .{ .top = s.dst },
             .branch => null,
             .jump => null,
-            .cast => |c| .{ .operand = c.dst },
+            .cast => |c| .{ .top = c.dst },
             else => |e| {
                 std.debug.print("getDefines does not handle {s}\n", .{@tagName(e)});
                 unreachable;
@@ -295,71 +295,71 @@ pub const Instruction = union(enum) {
 
         switch (instruction) {
             .store_local => |sl| {
-                try res.append(alloc, .{ .operand = sl.src });
+                try res.append(alloc, .{ .top = sl.src });
             },
             .store_offset => |so| {
-                try res.append(alloc, .{ .operand = so.dst.operand });
+                try res.append(alloc, .{ .top = so.dst });
                 switch (so.offset) {
                     .top => |top| {
-                        try res.append(alloc, .{ .operand = top.operand });
+                        try res.append(alloc, .{ .top = top });
                     },
                     else => {},
                 }
-                try res.append(alloc, .{ .operand = so.src.operand });
+                try res.append(alloc, .{ .top = so.src });
             },
             .load_offset => |lo| {
                 switch (lo.offset) {
                     .top => |top| {
-                        try res.append(alloc, .{ .operand = top.operand });
+                        try res.append(alloc, .{ .top = top });
                     },
                     else => {},
                 }
-                try res.append(alloc, .{ .operand = lo.src.operand });
+                try res.append(alloc, .{ .top = lo.src });
             },
             .stack_alloc => {},
             .load_local => |ll| {
                 try res.append(alloc, .{ .local = ll.local.id });
             },
             .binop => |bop| {
-                try res.append(alloc, .{ .operand = bop.lhs.operand });
-                try res.append(alloc, .{ .operand = bop.rhs.operand });
+                try res.append(alloc, .{ .top = bop.lhs });
+                try res.append(alloc, .{ .top = bop.rhs });
             },
             .move => |m| {
                 switch (m.src) {
                     .top => |top| {
-                        try res.append(alloc, .{ .operand = top.operand });
+                        try res.append(alloc, .{ .top = top });
                     },
                     .constant => {},
                 }
             },
             .unaryop => |uop| {
-                try res.append(alloc, .{ .operand = uop.src });
+                try res.append(alloc, .{ .top = uop.src });
             },
             .compare => |c| {
-                try res.append(alloc, .{ .operand = c.lhs.operand });
-                try res.append(alloc, .{ .operand = c.rhs.operand });
+                try res.append(alloc, .{ .top = c.lhs });
+                try res.append(alloc, .{ .top = c.rhs });
             },
             .branch => |b| {
-                try res.append(alloc, .{ .operand = b.condition });
+                try res.append(alloc, .{ .top = b.condition });
             },
             .select => |s| {
-                try res.append(alloc, .{ .operand = s.condition });
+                try res.append(alloc, .{ .top = s.condition });
                 switch (s.if_value) {
                     .top => |top| {
-                        try res.append(alloc, .{ .operand = top.operand });
+                        try res.append(alloc, .{ .top = top });
                     },
                     else => {},
                 }
                 switch (s.else_value) {
                     .top => |top| {
-                        try res.append(alloc, .{ .operand = top.operand });
+                        try res.append(alloc, .{ .top = top });
                     },
                     else => {},
                 }
             },
             .jump => {},
             .cast => |c| {
-                try res.append(alloc, .{ .operand = c.src.operand });
+                try res.append(alloc, .{ .top = c.src });
             },
             else => |e| {
                 std.debug.print("getUses doesn't handle {s}\n", .{@tagName(e)});

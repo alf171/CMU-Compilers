@@ -63,7 +63,7 @@ fn emitFunction(
                     switch (l) {
                         // str: src, dst (register -> memory)
                         .store_local => |sl| {
-                            const src = try abi.regFor(sl.src, colors, .gp);
+                            const src = try abi.regFor(sl.src.operand, colors, .gp);
                             try emitStackStore(out, src, localOffset(sl.local.id), try abi.scratchReg(0, .gp), alloc);
                         },
                         .store_offset => |so| {
@@ -108,7 +108,7 @@ fn emitFunction(
                         },
                         // ldr: dst, src (memory -> register)
                         .load_local => |ll| {
-                            const dst = try abi.regFor(ll.dst, colors, .gp);
+                            const dst = try abi.regFor(ll.dst.operand, colors, .gp);
                             try emitStackLoad(out, dst, localOffset(ll.local.id), try abi.scratchReg(0, .gp), alloc);
                         },
                         .move => |m| {
@@ -155,6 +155,7 @@ fn emitFunction(
                                                     switch (reg.class) {
                                                         .f => try out.print(alloc, "\tfmov ", .{}),
                                                         .gp => try out.print(alloc, "\tmov ", .{}),
+                                                        else => unreachable,
                                                     }
                                                     const src = try abi.regForFromIndex(reg.id, reg.class);
                                                     try out.print(alloc, "{s}, {s}\n", .{ dst, src });
@@ -194,6 +195,7 @@ fn emitFunction(
                                                         .gp => {
                                                             try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                                                         },
+                                                        else => unreachable,
                                                     }
                                                 },
                                                 // reg <- reg
@@ -207,6 +209,7 @@ fn emitFunction(
                                                         .gp => {
                                                             try out.print(alloc, "\tmov {s}, {s}\n", .{ dst, src });
                                                         },
+                                                        else => unreachable,
                                                     }
                                                 },
                                                 else => |e| {
@@ -270,7 +273,7 @@ fn emitFunction(
                             }
                         },
                         .branch => |b| {
-                            const cond = try abi.regFor(b.condition, colors, .gp);
+                            const cond = try abi.regFor(b.condition.operand, colors, .gp);
                             try out.print(alloc, "\tcmp {s}, #0\n", .{cond});
                             try out.print(alloc, "\tb.ne _{s}_L{d}\n", .{ function.name, b.then_block });
                             try out.print(alloc, "\tb _{s}_L{d}\n", .{ function.name, b.else_block });
@@ -296,13 +299,13 @@ fn emitFunction(
                             }
                         },
                         .select => |s| {
-                            const dst = try abi.regFor(s.dst, colors, .gp);
+                            const dst = try abi.regFor(s.dst.operand, colors, .gp);
                             const scratch_reg = try abi.scratchReg(0, .gp);
                             const if_reg = try valueToReg(s.if_value, out, scratch_reg, colors, abi, alloc);
                             const scratch_reg_2 = try abi.scratchReg(1, .gp);
                             const else_reg = try valueToReg(s.else_value, out, scratch_reg_2, colors, abi, alloc);
 
-                            const condition = try abi.regFor(s.condition, colors, .gp);
+                            const condition = try abi.regFor(s.condition.operand, colors, .gp);
                             try out.print(alloc, "\tcmp {s}, #0\n", .{condition});
                             try out.print(alloc, "\tcsel {s}, {s}, {s}, ne\n", .{ dst, if_reg, else_reg });
                         },
@@ -311,12 +314,12 @@ fn emitFunction(
                                 .neg => switch (u.dst.type) {
                                     .float => {
                                         const dst = try abi.regFor(u.dst.operand, colors, .f);
-                                        const src = try abi.regFor(u.src, colors, .f);
+                                        const src = try abi.regFor(u.src.operand, colors, .f);
                                         try out.print(alloc, "\tfneg {s}, {s}\n", .{ dst, src });
                                     },
                                     else => {
                                         const dst = try abi.regFor(u.dst.operand, colors, .gp);
-                                        const src = try abi.regFor(u.src, colors, .gp);
+                                        const src = try abi.regFor(u.src.operand, colors, .gp);
                                         try out.print(alloc, "\tneg {s}, {s}\n", .{ dst, src });
                                     },
                                 },
@@ -327,7 +330,7 @@ fn emitFunction(
                             switch (c.src.type) {
                                 .i64 => switch (c.dst_target_type) {
                                     .float => {
-                                        const dst = try abi.regFor(c.dst, colors, .f);
+                                        const dst = try abi.regFor(c.dst.operand, colors, .f);
                                         const src = try abi.regFor(c.src.operand, colors, .gp);
                                         try out.print(alloc, "\tscvtf {s}, {s}\n", .{ dst, src });
                                     },
@@ -341,7 +344,7 @@ fn emitFunction(
                                 },
                                 .float => switch (c.dst_target_type) {
                                     .i64 => {
-                                        const dst = try abi.regFor(c.dst, colors, .gp);
+                                        const dst = try abi.regFor(c.dst.operand, colors, .gp);
                                         const src = try abi.regFor(c.src.operand, colors, .f);
                                         try out.print(alloc, "\tfcvtzs {s}, {s}\n", .{ dst, src });
                                     },

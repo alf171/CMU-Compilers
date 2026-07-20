@@ -7,20 +7,24 @@ const Param = @import("alloc.zig").Param;
 const Operand = @import("alloc.zig").Operand;
 
 pub const SeenValue = union(enum) {
-    operand: Operand,
+    top: TypedOperand,
     local: LocalId,
 };
 
-pub const CpuRegisterType = union(enum) {
+pub const RegisterType = union(enum) {
     /// general purpose register
     gp,
     /// floating point register
     f,
+    /// scalar general purpose register
+    sgpr,
+    /// vector general purpose register
+    vgpr,
 };
 
 pub const PhysicalReg = struct {
     id: u8,
-    class: CpuRegisterType,
+    class: RegisterType,
 
     pub fn equal(self: @This(), other: @This()) bool {
         return self.id == other.id and std.meta.activeTag(self.class) == std.meta.activeTag(other.class);
