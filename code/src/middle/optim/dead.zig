@@ -8,7 +8,7 @@ const Function = @import("common").ir.Function;
 const Program = @import("common").program.Program;
 const AllocProgram = @import("common").alloc.AllocProgram;
 const Operand = @import("common").alloc.Operand;
-const Operands = @import("common").alloc.Operands;
+const RegisterOperands = @import("common").alloc.RegisterOperands;
 const LocalId = @import("common").ir.LocalId;
 const Instruction = @import("common").mir.Instruction;
 const SeenValue = @import("common").ir.SeenValue;
@@ -114,12 +114,12 @@ test "basic block elim" {
         .successors = .empty,
     });
     try alloc_program.lines.append(alloc, .{
-        .defines = Operands.init(alloc),
+        .defines = RegisterOperands.init(alloc),
         .instruction_index = 0,
-        .live_out = Operands.init(alloc),
+        .live_out = RegisterOperands.init(alloc),
         .move = false,
         .clobber_caller_saved = false,
-        .uses = Operands.init(alloc),
+        .uses = RegisterOperands.init(alloc),
     });
     defer alloc_program.deinit(alloc);
 

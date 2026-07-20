@@ -1516,11 +1516,16 @@ test "while loop" {
         entry[0],
     );
     try std.testing.expectEqualDeep(
-        Instruction{ .lir = .{ .store_local = .{ .local = LocalInfo{
-            .id = 0,
-            .name = "x",
-            .type = .i64,
-        }, .src = .{ .temp = .{ .id = 0, .function_id = 0 } } } } },
+        Instruction{
+            .lir = .{ .store_local = .{ .local = .{
+                .id = 0,
+                .name = "x",
+                .type = .i64,
+            }, .src = .{
+                .operand = .{ .temp = .{ .id = 0, .function_id = 0 } },
+                .type = .i64,
+            } } },
+        },
         entry[1],
     );
     try std.testing.expectEqualDeep(

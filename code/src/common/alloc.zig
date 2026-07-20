@@ -291,12 +291,12 @@ pub const AllocProgram = struct {
 
 test "operands equal" {
     const alloc = std.testing.allocator;
-    var ops1 = HashMap(Operand, TypeInfo).init(alloc);
+    var ops1 = HashMap(Operand, RegisterType).init(alloc);
     defer ops1.deinit();
     try ops1.put(.{ .temp = .{ .id = 99, .function_id = 0 } }, .gp);
     var a: RegisterOperands = .{ .ops = ops1 };
 
-    var ops2 = HashMap(Operand, TypeInfo).init(alloc);
+    var ops2 = HashMap(Operand, RegisterType).init(alloc);
     defer ops2.deinit();
     try ops2.put(Operand{ .temp = .{ .id = 99, .function_id = 0 } }, .gp);
     const b: RegisterOperands = .{ .ops = ops2 };
