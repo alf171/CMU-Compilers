@@ -34,7 +34,7 @@ const LoopCondition = @import("loop.zig").LoopCondition;
 
 const PyObject = c.PyObject;
 
-const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, Return, Pass, ImportFrom, Unknown };
+const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, Return, Pass, ImportFrom, AugAssign, Unknown };
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Tuple, Subscript, IfExp, Unknown };
 
@@ -84,12 +84,34 @@ pub fn walkStmt(raw_stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloc
         // ignore bc we are building these concepts into language so importants aren't used
         // currently we do this with Callable -- not requiring an import
         .ImportFrom => {},
+        .AugAssign => try walkAugAssignment(raw_stmt, irBuilder, alloc),
         else => {
             std.debug.print("unsupported statement type: {s}: ", .{getPyType(raw_stmt)});
             printAstDump(raw_stmt);
             return error.UnsupportedStatement;
         },
     }
+}
+
+fn walkAugAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !void {
+    const lhs = c.PyObject_GetAttrString(stmt, "target");
+    std.debug.assert(lhs != null);
+    const lhs_value = try walkExpr(lhs, irBuilder, null, alloc);
+
+    const rhs = c.PyObject_GetAttrString(stmt, "value");
+    const rhs_value = try walkExpr(rhs, irBuilder, null, alloc);
+
+    const result: TypedOperand = .{
+        .operand = irBuilder.nextTemp(),
+        .type = lhs_value.type,
+    };
+    try irBuilder.emit(.{ .lir = .{ .binop = .{
+        .dst = result,
+        .lhs = lhs_value,
+        .op = try getBinOp(stmt),
+        .rhs = rhs_value,
+    } } }, alloc);
+    try storeAssignmentTarget(lhs, result, irBuilder, alloc);
 }
 
 fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !void {
@@ -101,7 +123,10 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
 
     const rhs = c.PyObject_GetAttrString(stmt, "value");
     const rhs_value = try walkExpr(rhs, irBuilder, null, alloc);
+    try storeAssignmentTarget(lhs, rhs_value, irBuilder, alloc);
+}
 
+fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *IrBuilder, alloc: std.mem.Allocator) !void {
     const expr = getExprKind(lhs);
     switch (expr) {
         // Assign(targets=[Name(id='x', ctx=Store())], value=Constant(value=3))
@@ -194,7 +219,6 @@ fn walkAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocat
             }
         },
         else => {
-            printAstDump(stmt);
             return error.NotImpl;
         },
     }
@@ -1312,6 +1336,7 @@ fn getStmtKind(stmt: *PyObject) StmtKind {
     if (std.mem.eql(u8, name, "Return")) return .Return;
     if (std.mem.eql(u8, name, "Pass")) return .Pass;
     if (std.mem.eql(u8, name, "ImportFrom")) return .ImportFrom;
+    if (std.mem.eql(u8, name, "AugAssign")) return .AugAssign;
     return .Unknown;
 }
 
