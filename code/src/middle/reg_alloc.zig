@@ -8,6 +8,7 @@ const AllocBlock = common.alloc.AllocBlock;
 const AllocLine = common.alloc.AllocLine;
 const RegisterOperands = common.alloc.RegisterOperands;
 const Function = common.ir.Function;
+const FunctionKind = common.ir.FunctionKind;
 const FrontEndProgram = common.program.Program;
 const TypedOperand = common.alloc.TypedOperand;
 
@@ -20,9 +21,23 @@ pub fn build(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProgram {
 
     var instruction_index: usize = 0;
     for (program.functions.items, 0..) |function, i| {
-        try appendBlocks(function.blocks.items, &res, &instruction_index, i + 1, alloc);
+        try appendBlocks(
+            function.blocks.items,
+            &res,
+            &instruction_index,
+            i + 1,
+            function.kind,
+            alloc,
+        );
     }
-    try appendBlocks(program.main.blocks.items, &res, &instruction_index, 0, alloc);
+    try appendBlocks(
+        program.main.blocks.items,
+        &res,
+        &instruction_index,
+        0,
+        program.main.kind,
+        alloc,
+    );
 
     return res;
 }
@@ -32,6 +47,7 @@ fn appendBlocks(
     res: *AllocProgram,
     instruction_index: *usize,
     function_id: usize,
+    function_kind: FunctionKind,
     alloc: std.mem.Allocator,
 ) !void {
     var locals = std.AutoHashMap(LocalId, TypedOperand).init(alloc);
@@ -69,7 +85,7 @@ fn appendBlocks(
             const maybeDefines = instruction.getDefines();
             if (maybeDefines) |defines| {
                 switch (defines) {
-                    .top => |top| try line.defines.ops.put(top.operand, top.type.toCpuRegisterType()),
+                    .top => |top| try line.defines.ops.put(top.operand, top.type.toRegisterType(function_kind)),
                     .local => {},
                 }
             }
@@ -78,12 +94,12 @@ fn appendBlocks(
             defer uses.deinit(alloc);
             for (uses.items) |use| {
                 switch (use) {
-                    .top => |top| try line.uses.ops.put(top.operand, top.type.toCpuRegisterType()),
+                    .top => |top| try line.uses.ops.put(top.operand, top.type.toRegisterType(function_kind)),
                     .local => |id| {
                         const src = locals.get(id) orelse {
                             return error.LocalNotFound;
                         };
-                        try line.uses.ops.put(src.operand, src.type.toCpuRegisterType());
+                        try line.uses.ops.put(src.operand, src.type.toRegisterType(function_kind));
                     },
                 }
             }
