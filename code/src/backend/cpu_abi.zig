@@ -124,7 +124,7 @@ pub const CpuAbi = struct {
         return allocatable_regs[index];
     }
 
-    pub fn regFor(self: @This(), op: Operand, colors: *const ColoredGraph, reg_type: RegisterType) ![]const u8 {
+    pub fn regFor(self: @This(), op: Operand, colors: *const ColoredGraph) ![]const u8 {
         switch (op) {
             .temp => {
                 const node = colors.nodes.get(op) orelse {
@@ -134,7 +134,7 @@ pub const CpuAbi = struct {
                     return error.MissingColor;
                 };
                 const reg_id = node.register orelse return error.MissingColor;
-                return try regForFromIndex(self, reg_id, reg_type);
+                return try regForFromIndex(self, reg_id, node.reg_type);
             },
             .reg => |reg| {
                 return try regForFromIndex(self, reg.id, reg.class);

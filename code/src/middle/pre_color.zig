@@ -34,7 +34,7 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                             .operand = .{
                                 .reg = .{
                                     .id = id,
-                                    .class = fp.dst.type.toCpuRegisterType(),
+                                    .class = fp.dst.type.toRegisterType(function.kind),
                                 },
                             },
                             .type = try fp.dst.type.clone(alloc),
@@ -47,7 +47,7 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                         const reg: TypedOperand = .{
                             .operand = .{ .reg = .{
                                 .id = abi.getFunctionReturnIdx(function.return_type),
-                                .class = function.return_type.toCpuRegisterType(),
+                                .class = function.return_type.toRegisterType(function.kind),
                             } },
                             .type = function.return_type,
                         };
@@ -76,7 +76,7 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                     for (fc.args, 0..) |arg, i| {
                         const reg = Operand{ .reg = .{
                             .id = @intCast(i),
-                            .class = arg.type.toCpuRegisterType(),
+                            .class = arg.type.toRegisterType(function.kind),
                         } };
                         copies[i] = .{
                             .dst = .{
@@ -106,7 +106,7 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                                 .src = .{ .top = .{
                                     .operand = .{ .reg = .{
                                         .id = abi.getFunctionReturnIdx(dst.type),
-                                        .class = dst.type.toCpuRegisterType(),
+                                        .class = dst.type.toRegisterType(function.kind),
                                     } },
                                     .type = try dst.type.clone(alloc),
                                 } },

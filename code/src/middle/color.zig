@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
 const RegisterFile = @import("common").register.RegisterFile;
 const Operand = @import("common").alloc.Operand;
+const RegisterType = @import("common").register.RegisterType;
 
 pub fn Set(comptime K: type) type {
     return std.AutoHashMap(K, void);
@@ -33,6 +34,7 @@ pub const Node = struct {
 pub const ColoredNode = struct {
     node: Node,
     register: ?u8,
+    reg_type: RegisterType,
 };
 
 pub const ColoredGraph = struct {
@@ -55,7 +57,7 @@ pub const ColoredGraph = struct {
 
             // hacky way to have different nodes
             // TODO: consider sharing memory between igraph and ColoredGraph to avoid cloning memory
-            const moved_node = Node{
+            const moved_node: Node = .{
                 .moves = moves,
                 .neighbors = neighbors,
                 .val = node_ptr.val,
@@ -64,6 +66,7 @@ pub const ColoredGraph = struct {
             try cg.nodes.put(key, ColoredNode{
                 .node = moved_node,
                 .register = null,
+                .reg_type = node_ptr.reg_type,
             });
         }
         return cg;
@@ -234,6 +237,7 @@ pub fn colorGraph(input: *graph.IGraph, register_file: RegisterFile, allocator: 
                     .val = old,
                 },
                 .register = reg,
+                .reg_type = rep_colors.reg_type,
             });
         }
     }

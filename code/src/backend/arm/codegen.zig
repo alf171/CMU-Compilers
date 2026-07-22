@@ -63,12 +63,12 @@ fn emitFunction(
                     switch (l) {
                         // str: src, dst (register -> memory)
                         .store_local => |sl| {
-                            const src = try abi.regFor(sl.src.operand, colors, .gp);
+                            const src = try abi.regFor(sl.src.operand, colors);
                             try emitStackStore(out, src, localOffset(sl.local.id), try abi.scratchReg(0, .gp), alloc);
                         },
                         .store_offset => |so| {
-                            const dst = try abi.regFor(so.dst.operand, colors, .gp);
-                            const src = try abi.regFor(so.src.operand, colors, .gp);
+                            const dst = try abi.regFor(so.dst.operand, colors);
+                            const src = try abi.regFor(so.src.operand, colors);
                             switch (so.offset) {
                                 .constant => |c| switch (c) {
                                     .i64 => |offset| {
@@ -78,14 +78,14 @@ fn emitFunction(
                                 },
                                 .top => |top| {
                                     std.debug.assert(top.type == .i64);
-                                    const offset = try abi.regFor(top.operand, colors, .gp);
+                                    const offset = try abi.regFor(top.operand, colors);
                                     try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, offset });
                                 },
                             }
                         },
                         .load_offset => |lo| {
-                            const dst = try abi.regFor(lo.dst.operand, colors, .gp);
-                            const src = try abi.regFor(lo.src.operand, colors, .gp);
+                            const dst = try abi.regFor(lo.dst.operand, colors);
+                            const src = try abi.regFor(lo.src.operand, colors);
                             switch (lo.offset) {
                                 .constant => |c| switch (c) {
                                     .i64 => |offset| {
@@ -94,7 +94,7 @@ fn emitFunction(
                                     else => return error.NotImpl,
                                 },
                                 .top => |top| {
-                                    const offset = try abi.regFor(top.operand, colors, .gp);
+                                    const offset = try abi.regFor(top.operand, colors);
                                     switch (lo.dst.type) {
                                         .i32 => {
                                             try out.print(alloc, "\tldrsw {s}, [{s}, {s}]\n", .{ dst, src, offset });
@@ -108,7 +108,7 @@ fn emitFunction(
                         },
                         // ldr: dst, src (memory -> register)
                         .load_local => |ll| {
-                            const dst = try abi.regFor(ll.dst.operand, colors, .gp);
+                            const dst = try abi.regFor(ll.dst.operand, colors);
                             try emitStackLoad(out, dst, localOffset(ll.local.id), try abi.scratchReg(0, .gp), alloc);
                         },
                         .move => |m| {
@@ -116,19 +116,19 @@ fn emitFunction(
                                 .constant => |c| {
                                     switch (c) {
                                         .i64, .i32 => |value| {
-                                            const dst = try abi.regFor(m.dst.operand, colors, .gp);
+                                            const dst = try abi.regFor(m.dst.operand, colors);
                                             try emitMov(out, dst, value, alloc);
                                         },
                                         .bool => |value| {
-                                            const dst = try abi.regFor(m.dst.operand, colors, .gp);
+                                            const dst = try abi.regFor(m.dst.operand, colors);
                                             try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, @intFromBool(value) });
                                         },
                                         .char => |value| {
-                                            const dst = try abi.regFor(m.dst.operand, colors, .gp);
+                                            const dst = try abi.regFor(m.dst.operand, colors);
                                             try out.print(alloc, "\tmov {s}, #{d}\n", .{ dst, value });
                                         },
                                         .float => |value| {
-                                            const dst = try abi.regFor(m.dst.operand, colors, .f);
+                                            const dst = try abi.regFor(m.dst.operand, colors);
                                             const bits: u64 = @bitCast(value);
                                             const scratch_reg = try abi.scratchReg(0, .gp);
                                             try emitMovUnsigned(out, scratch_reg, bits, alloc);
@@ -139,11 +139,11 @@ fn emitFunction(
                                 .top => |src_top| {
                                     switch (m.dst.operand) {
                                         .temp => {
-                                            const dst = try abi.regFor(m.dst.operand, colors, m.dst.type.toCpuRegisterType());
+                                            const dst = try abi.regFor(m.dst.operand, colors);
                                             switch (src_top.operand) {
                                                 // temp <- temp
                                                 .temp => {
-                                                    const src = try abi.regFor(src_top.operand, colors, m.dst.type.toCpuRegisterType());
+                                                    const src = try abi.regFor(src_top.operand, colors);
                                                     if (std.mem.eql(u8, dst, src)) continue;
                                                     switch (m.dst.type) {
                                                         .float => try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, src }),
@@ -173,7 +173,7 @@ fn emitFunction(
                                                 // mem <- reg
                                                 .temp => {
                                                     const offset = spillOffset(local_stack_size, slot.id);
-                                                    const src = try abi.regFor(src_top.operand, colors, .gp);
+                                                    const src = try abi.regFor(src_top.operand, colors);
                                                     try emitStackStore(out, src, offset, try abi.scratchReg(0, .gp), alloc);
                                                 },
                                                 .mem => {
@@ -186,8 +186,8 @@ fn emitFunction(
                                             switch (src_top.operand) {
                                                 // reg <- temp
                                                 .temp => {
-                                                    const dst = try abi.regFor(m.dst.operand, colors, reg.class);
-                                                    const src = try abi.regFor(src_top.operand, colors, reg.class);
+                                                    const dst = try abi.regFor(m.dst.operand, colors);
+                                                    const src = try abi.regFor(src_top.operand, colors);
                                                     switch (reg.class) {
                                                         .f => {
                                                             try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, src });
@@ -224,9 +224,9 @@ fn emitFunction(
                             }
                         },
                         .binop => |binop| {
-                            const dst = try abi.regFor(binop.dst.operand, colors, binop.dst.type.toCpuRegisterType());
-                            const lhs = try abi.regFor(binop.lhs.operand, colors, binop.lhs.type.toCpuRegisterType());
-                            const rhs = try abi.regFor(binop.rhs.operand, colors, binop.rhs.type.toCpuRegisterType());
+                            const dst = try abi.regFor(binop.dst.operand, colors);
+                            const lhs = try abi.regFor(binop.lhs.operand, colors);
+                            const rhs = try abi.regFor(binop.rhs.operand, colors);
 
                             switch (binop.op) {
                                 .add => {
@@ -273,7 +273,7 @@ fn emitFunction(
                             }
                         },
                         .branch => |b| {
-                            const cond = try abi.regFor(b.condition.operand, colors, .gp);
+                            const cond = try abi.regFor(b.condition.operand, colors);
                             try out.print(alloc, "\tcmp {s}, #0\n", .{cond});
                             try out.print(alloc, "\tb.ne _{s}_L{d}\n", .{ function.name, b.then_block });
                             try out.print(alloc, "\tb _{s}_L{d}\n", .{ function.name, b.else_block });
@@ -282,30 +282,30 @@ fn emitFunction(
                             try out.print(alloc, "\tb _{s}_L{d}\n", .{ function.name, j.target });
                         },
                         .compare => |c| {
-                            const dst = try abi.regFor(c.dst.operand, colors, .gp);
+                            const dst = try abi.regFor(c.dst.operand, colors);
                             switch (c.lhs.type) {
                                 .float => {
-                                    const lhs = try abi.regFor(c.lhs.operand, colors, .f);
-                                    const rhs = try abi.regFor(c.rhs.operand, colors, .f);
+                                    const lhs = try abi.regFor(c.lhs.operand, colors);
+                                    const rhs = try abi.regFor(c.rhs.operand, colors);
                                     try out.print(alloc, "\tfcmp {s}, {s}\n", .{ lhs, rhs });
                                     try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
                                 },
                                 else => {
-                                    const lhs = try abi.regFor(c.lhs.operand, colors, .gp);
-                                    const rhs = try abi.regFor(c.rhs.operand, colors, .gp);
+                                    const lhs = try abi.regFor(c.lhs.operand, colors);
+                                    const rhs = try abi.regFor(c.rhs.operand, colors);
                                     try out.print(alloc, "\tcmp {s}, {s}\n", .{ lhs, rhs });
                                     try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
                                 },
                             }
                         },
                         .select => |s| {
-                            const dst = try abi.regFor(s.dst.operand, colors, .gp);
+                            const dst = try abi.regFor(s.dst.operand, colors);
                             const scratch_reg = try abi.scratchReg(0, .gp);
                             const if_reg = try valueToReg(s.if_value, out, scratch_reg, colors, abi, alloc);
                             const scratch_reg_2 = try abi.scratchReg(1, .gp);
                             const else_reg = try valueToReg(s.else_value, out, scratch_reg_2, colors, abi, alloc);
 
-                            const condition = try abi.regFor(s.condition.operand, colors, .gp);
+                            const condition = try abi.regFor(s.condition.operand, colors);
                             try out.print(alloc, "\tcmp {s}, #0\n", .{condition});
                             try out.print(alloc, "\tcsel {s}, {s}, {s}, ne\n", .{ dst, if_reg, else_reg });
                         },
@@ -313,13 +313,13 @@ fn emitFunction(
                             switch (u.op) {
                                 .neg => switch (u.dst.type) {
                                     .float => {
-                                        const dst = try abi.regFor(u.dst.operand, colors, .f);
-                                        const src = try abi.regFor(u.src.operand, colors, .f);
+                                        const dst = try abi.regFor(u.dst.operand, colors);
+                                        const src = try abi.regFor(u.src.operand, colors);
                                         try out.print(alloc, "\tfneg {s}, {s}\n", .{ dst, src });
                                     },
                                     else => {
-                                        const dst = try abi.regFor(u.dst.operand, colors, .gp);
-                                        const src = try abi.regFor(u.src.operand, colors, .gp);
+                                        const dst = try abi.regFor(u.dst.operand, colors);
+                                        const src = try abi.regFor(u.src.operand, colors);
                                         try out.print(alloc, "\tneg {s}, {s}\n", .{ dst, src });
                                     },
                                 },
@@ -330,8 +330,8 @@ fn emitFunction(
                             switch (c.src.type) {
                                 .i64 => switch (c.dst_target_type) {
                                     .float => {
-                                        const dst = try abi.regFor(c.dst.operand, colors, .f);
-                                        const src = try abi.regFor(c.src.operand, colors, .gp);
+                                        const dst = try abi.regFor(c.dst.operand, colors);
+                                        const src = try abi.regFor(c.src.operand, colors);
                                         try out.print(alloc, "\tscvtf {s}, {s}\n", .{ dst, src });
                                     },
                                     else => {
@@ -344,8 +344,8 @@ fn emitFunction(
                                 },
                                 .float => switch (c.dst_target_type) {
                                     .i64 => {
-                                        const dst = try abi.regFor(c.dst.operand, colors, .gp);
-                                        const src = try abi.regFor(c.src.operand, colors, .f);
+                                        const dst = try abi.regFor(c.dst.operand, colors);
+                                        const src = try abi.regFor(c.src.operand, colors);
                                         try out.print(alloc, "\tfcvtzs {s}, {s}\n", .{ dst, src });
                                     },
                                     else => return error.UnsupportedCast,
@@ -354,7 +354,7 @@ fn emitFunction(
                             }
                         },
                         .stack_alloc => |sa| {
-                            const dst = try abi.regFor(sa.dst.operand, colors, sa.dst.type.toCpuRegisterType());
+                            const dst = try abi.regFor(sa.dst.operand, colors);
                             next_stack_alloc_byte += sa.bytes;
                             const bytes = local_count * 8 + next_stack_alloc_byte;
 
@@ -367,8 +367,8 @@ fn emitFunction(
                     }
                 },
                 .len => |l| {
-                    const dst = try abi.regFor(l.dst.operand, colors, .gp);
-                    const src = try abi.regFor(l.value.operand, colors, .gp);
+                    const dst = try abi.regFor(l.dst.operand, colors);
+                    const src = try abi.regFor(l.value.operand, colors);
                     switch (l.value.type) {
                         .list => {
                             try out.print(alloc, "\tldr {s}, [{s}]\n", .{ dst, src });
@@ -386,7 +386,7 @@ fn emitFunction(
                             try out.print(alloc, "\tbl _{s}\n", .{function_name});
                         },
                         .indirect => |ind| {
-                            const addr = try abi.regFor(ind.operand, colors, .gp);
+                            const addr = try abi.regFor(ind.operand, colors);
                             try out.print(alloc, "\tblr {s}\n", .{addr});
                         },
                     }
@@ -396,7 +396,7 @@ fn emitFunction(
                     try out.print(alloc, "\tb _{s}_epilogue\n", .{function.name});
                 },
                 .function_ref => |fr| {
-                    const dst = try abi.regFor(fr.dst.operand, colors, .gp);
+                    const dst = try abi.regFor(fr.dst.operand, colors);
                     try out.print(alloc, "\tadrp {s}, _{s}@PAGE\n", .{ dst, fr.function_name });
                     try out.print(alloc, "\tadd {s}, {s}, _{s}@PAGEOFF\n", .{ dst, dst, fr.function_name });
                 },
@@ -647,7 +647,7 @@ fn valueToReg(
     alloc: std.mem.Allocator,
 ) ![]const u8 {
     switch (value) {
-        .top => |top| return abi.regFor(top.operand, colors, top.type.toCpuRegisterType()),
+        .top => |top| return abi.regFor(top.operand, colors),
         .constant => |c| {
             switch (c) {
                 .float => |f| {
