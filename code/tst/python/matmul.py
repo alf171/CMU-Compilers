@@ -10,7 +10,7 @@ def matmul(
         for k in range(len(_N[0])):
             acc = 0
             for n in range(len(_M[0])):
-                acc = acc + (_M[m][n] * _N[n][k])
+                acc += (_M[m][n] * _N[n][k])
             _P[m][k] = acc
     print(_P[0][0])
     print(_P[1][1])
