@@ -6,6 +6,7 @@ const spill = @import("spill.zig");
 const live = @import("live.zig");
 const coalesce = @import("coalesce.zig");
 const reg_alloc = @import("reg_alloc.zig");
+const reg_class = @import("reg_class.zig");
 
 const Allocator = std.mem.Allocator;
 const AllocProgram = @import("common").alloc.AllocProgram;
@@ -50,21 +51,32 @@ pub fn run(
         // });
         color_attemps.getPtr(function.origin).* += 1;
 
-        // free previous graph
-        graph.deinit();
         // spill in ir
         try spill.spillRegInIr(ir_program, graph_attempt.spill_register, alloc);
+        // select register types
+        var reg_classes = try reg_class.classify(ir_program.*, alloc);
+        defer reg_classes.deinit();
         // rebuild alloc according to our spill
-        var new_program = try reg_alloc.build(ir_program.*, alloc);
+        var new_program = try reg_alloc.build(ir_program.*, &reg_classes, alloc);
+        errdefer new_program.deinit(alloc);
+
         try live.calculateLiveOut(&new_program, alloc);
+        var new_graph = try igraph.createIgraph(
+            new_program.lines,
+            register_file,
+            alloc,
+        );
+        errdefer new_graph.deinit();
+        if (should_coalesce) {
+            try coalesce.run(&new_graph, register_file, alloc);
+        }
+        const new_graph_attempt = try color.colorGraph(&new_graph, register_file, alloc);
+        // commit replacements
         program.deinit(alloc);
         program.* = new_program;
-        // try program.print(stdout);
-        graph.* = try igraph.createIgraph(program.lines, register_file, alloc);
-        if (should_coalesce) {
-            try coalesce.run(graph, register_file, alloc);
-        }
-        graph_attempt = try color.colorGraph(graph, register_file, alloc);
+        graph.deinit();
+        graph.* = new_graph;
+        graph_attempt = new_graph_attempt;
     }
 
     // return graph_attempt.graph;

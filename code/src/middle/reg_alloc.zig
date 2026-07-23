@@ -9,11 +9,12 @@ const AllocLine = common.alloc.AllocLine;
 const RegisterOperands = common.alloc.RegisterOperands;
 const Function = common.ir.Function;
 const FunctionKind = common.ir.FunctionKind;
-const FrontEndProgram = common.program.Program;
+const Program = common.program.Program;
 const TypedOperand = common.alloc.TypedOperand;
+const RegisterClasses = @import("common").register.RegisterClasses;
 
 /// generate the necessary information such that we do register selection eventually
-pub fn build(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProgram {
+pub fn build(program: Program, reg_classes: *const RegisterClasses, alloc: std.mem.Allocator) !AllocProgram {
     var res = AllocProgram{
         .lines = .empty,
         .blocks = .empty,
@@ -26,7 +27,7 @@ pub fn build(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProgram {
             &res,
             &instruction_index,
             i + 1,
-            function.kind,
+            reg_classes,
             alloc,
         );
     }
@@ -35,7 +36,7 @@ pub fn build(program: FrontEndProgram, alloc: std.mem.Allocator) !AllocProgram {
         &res,
         &instruction_index,
         0,
-        program.main.kind,
+        reg_classes,
         alloc,
     );
 
@@ -47,7 +48,7 @@ fn appendBlocks(
     res: *AllocProgram,
     instruction_index: *usize,
     function_id: usize,
-    function_kind: FunctionKind,
+    reg_classes: *const RegisterClasses,
     alloc: std.mem.Allocator,
 ) !void {
     var locals = std.AutoHashMap(LocalId, TypedOperand).init(alloc);
@@ -66,8 +67,6 @@ fn appendBlocks(
             };
             // set move flag and store locals for later use
             switch (instruction) {
-                // HACK: leaking MIR instruction
-                // invoke a function therefore the clobber caller save registers
                 .function_call => line.clobber_caller_saved = true,
                 .lir => |lir| {
                     switch (lir) {
@@ -85,7 +84,10 @@ fn appendBlocks(
             const maybeDefines = instruction.getDefines();
             if (maybeDefines) |defines| {
                 switch (defines) {
-                    .top => |top| try line.defines.ops.put(top.operand, top.type.toRegisterType(function_kind)),
+                    .top => |top| try line.defines.ops.put(
+                        top.operand,
+                        try reg_classes.get(top.operand),
+                    ),
                     .local => {},
                 }
             }
@@ -94,12 +96,15 @@ fn appendBlocks(
             defer uses.deinit(alloc);
             for (uses.items) |use| {
                 switch (use) {
-                    .top => |top| try line.uses.ops.put(top.operand, top.type.toRegisterType(function_kind)),
+                    .top => |top| try line.uses.ops.put(
+                        top.operand,
+                        try reg_classes.get(top.operand),
+                    ),
                     .local => |id| {
                         const src = locals.get(id) orelse {
                             return error.LocalNotFound;
                         };
-                        try line.uses.ops.put(src.operand, src.type.toRegisterType(function_kind));
+                        try line.uses.ops.put(src.operand, try reg_classes.get(src.operand));
                     },
                 }
             }

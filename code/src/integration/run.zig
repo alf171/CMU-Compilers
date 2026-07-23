@@ -14,6 +14,7 @@ const CompilationArifacts = backend.CompilationArifacts;
 const metrics = @import("metrics.zig");
 const loop = middle.loop;
 const reg_alloc = middle.reg_alloc;
+const reg_class = middle.reg_class;
 const live = middle.live;
 const igraph = middle.igraph;
 const color = middle.color;
@@ -89,7 +90,7 @@ pub fn main(init: std.process.Init) !void {
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
 
-    const host_platform = try target.host.getPlatform();
+    const host_platform = target.host.getPlatform();
     try precolor.apply(&ir_program, host_platform.abi, alloc);
     try parallel_copies.lower(&ir_program, alloc);
 
@@ -108,14 +109,18 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
-    var alloc_program = try reg_alloc.build(ir_program, alloc);
+    var reg_classes = try reg_class.classify(ir_program, alloc);
+    defer reg_classes.deinit();
+    var alloc_program = try reg_alloc.build(ir_program, &reg_classes, alloc);
     try live.calculateLiveOut(&alloc_program, alloc);
 
     // run optimzation passes
     if (should_optim) {
         try dead.run(&ir_program, &alloc_program, alloc);
         alloc_program.deinit(alloc);
-        alloc_program = try reg_alloc.build(ir_program, alloc);
+        reg_classes.deinit();
+        reg_classes = try reg_class.classify(ir_program, alloc);
+        alloc_program = try reg_alloc.build(ir_program, &reg_classes, alloc);
         try live.calculateLiveOut(&alloc_program, alloc);
     }
 
@@ -156,9 +161,34 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
+    var device_colors = color.ColoredGraph.initEmpty(alloc);
+    defer device_colors.deinit();
+    switch (target.device) {
+        .host => {},
+        .gfx1103 => {
+            const device_platform = target.device.getPlatform();
+
+            for (device_platform.abi.registerFiles()) |register_file| {
+                var graph = try igraph.createIgraph(alloc_program.lines, register_file, alloc);
+                defer graph.deinit();
+                var result = try loop.run(
+                    &ir_program,
+                    &graph,
+                    &alloc_program,
+                    register_file,
+                    should_optim,
+                    alloc,
+                );
+                defer result.graph.deinit();
+                try device_colors.absorb(&result.graph);
+            }
+        },
+    }
+
     var artifacts = try (backend.CompileRequest{
         .program = &ir_program,
         .host_colors = &host_colors,
+        .device_colors = &device_colors,
         .target = target,
     }).compile(alloc);
     defer artifacts.deinit(alloc);

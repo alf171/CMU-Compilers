@@ -1,6 +1,25 @@
 pub const GpuAbi = @import("../gpu_abi.zig").GpuAbi;
 
-const sgpr_allocatable_regs = [_][]const u8{ "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11", "s12", "s13", "s14", "s15", "s16", "s17" };
-const vgpr_allocatable_regs = [_][]const u8{ "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17" };
+// in order to support 64 bit data types, reserve to registers per color
+const sgpr_allocatable_regs = [_]u16{
+    4,
+    6,
+    8,
+    10,
+    12,
+    14,
+    16,
+};
+// v0 is work_items
+const vgpr_allocatable_regs = [_]u16{
+    1,
+    3,
+    5,
+    7,
+    9,
+    11,
+    13,
+    15,
+};
 
-pub const rdna3Abi = GpuAbi.init(sgpr_allocatable_regs, vgpr_allocatable_regs);
+pub const Rdna3Abi = GpuAbi.init(&sgpr_allocatable_regs, &vgpr_allocatable_regs);

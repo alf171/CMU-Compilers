@@ -13,8 +13,6 @@ const ArrayList = std.ArrayList;
 const HashMap = std.AutoHashMap;
 const Writer = std.io.Writer;
 
-pub const REG_COUNT = 10;
-
 pub const RegisterOperands = struct {
     ops: HashMap(Operand, RegisterType),
 
