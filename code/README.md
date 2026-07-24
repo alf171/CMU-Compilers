@@ -30,17 +30,7 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 `--regen`
 - regenerate all snapshot results based on current output
 
-## Design Choices
-- leverage python
-  - subset of its syntax
-- modular
-- compiled not interpreted
-- arrays are currently fixed size on the heap
-  - tuples are fixed on the stack
-- tuples are mutable also
-- function types are enforced
-
-## Goals
+## Short term goals
 
 ### Compiler
 - [ ] [critical edge splitting](https://nickdesaulniers.github.io/blog/2023/01/27/critical-edge-splitting/)

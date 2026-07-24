@@ -1,24 +1,21 @@
 # Overview
 
-- Going through CMU compilers course from online lectures
-- The plan is to write the compiler in Zig
-- I have went through crafting interpreters so somewhat familiar with compilers
-- don't understand things more on the backend side of things
-- takes notes on lectures and doing best effort to do labs/hws
-- might be slightly challenging since won't be using one of main langs + project class
-- Zig should be able to interface nicely with C/C++ though I'm hoping
+Goal of this project is to create a python like language which can write gpu/ai accelerator kernels without the hassle of things like cuda.
 
-## Interesting Ideas Worth Exploring
+This is a project to learn more about the implementations of a compilers, linkers, hardware, and more!
 
-- [ ] python for loop syntax(s)
-- [ ] advanced loop optimization(s): https://en.wikipedia.org/wiki/polytope_model 
-- [ ] type checking
+## Design Choices
+- leverage python
+  - subset of its syntax
+- modular
+- compiled not interpreted
+- arrays are currently fixed size on the heap
+  - tuples are fixed on the stack
+- tuples are mutable also
+- function types are enforced
 
 ## Compilers Specs
-- ir/coalescing
-  - complexity O(nm) where n is nodes and m is their neighbors
-  - look at size(nbor(n) U nbor(k)) < register count
-- tuples are fixed size regardless of type `list[int, str, bool]`
+- TODO
 
 ## Reading Materials
 - [phi function vs block args](https://mlir.llvm.org/docs/Rationale/Rationale/#block-arguments-vs-phi-nodes)
