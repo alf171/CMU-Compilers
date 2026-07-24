@@ -9,6 +9,7 @@ const print = @import("frontend").print;
 const func = @import("frontend").func;
 const middle = @import("middle");
 const backend = @import("backend");
+const linker = @import("linker");
 const Target = backend.Target;
 const CompilationArifacts = backend.CompilationArifacts;
 const metrics = @import("metrics.zig");
@@ -236,34 +237,15 @@ pub fn main(init: std.process.Init) !void {
         const obj_file = try std.fs.path.join(alloc, &.{ dir, obj_name });
         defer alloc.free(obj_file);
 
-        // clang -c src/host.s -o /tmp/host.o
-        const clang_object_result = try runCommand(alloc, io, &.{ "clang", "-c", output_file, "-o", obj_file });
-        defer alloc.free(clang_object_result.stdout);
-        defer alloc.free(clang_object_result.stderr);
-        // clang -c src/malloc.c -o /tmp/malloc.o
-        const clang_malloc_result = try runCommand(alloc, io, &.{ "clang", "-c", "src/malloc.c", "-o", "/tmp/malloc.o" });
-        defer alloc.free(clang_malloc_result.stdout);
-        defer alloc.free(clang_malloc_result.stderr);
+        const hsa_runtime_path = init.environ_map.get("HSA_RUNTIME_PATH");
+        try linker.Linker.assemble(.clang, .{
+            .input_file = output_file,
+            .output_file = obj_file,
+            .target = target,
+            .hsa_runtime_path = hsa_runtime_path,
+        }, io, alloc);
 
-        //include hsa
-        if (target.device != .host) {
-            const hsa_runtime_path = init.environ_map.get("HSA_RUNTIME_PATH") orelse return error.CantFindHsaPath;
-            const hsa_include = try std.fs.path.join(alloc, &.{ hsa_runtime_path, "include" });
-            defer alloc.free(hsa_include);
-            // clang -I ($HSA_RUNTIME_PATH)/include -c src/gpu.c -o /tmp/gpu.o
-            const gpu_result = try runCommand(alloc, io, &.{
-                "clang",
-                "-I",
-                hsa_include,
-                "-c",
-                "src/gpu.c",
-                "-o",
-                "/tmp/gpu.o",
-            });
-            defer alloc.free(gpu_result.stdout);
-            defer alloc.free(gpu_result.stderr);
-        }
-
+        // clang is doing all assembling
         // create /tmp/integration_out
         const clang_final_result = if (target.device == .host)
             try runCommand(alloc, io, &.{

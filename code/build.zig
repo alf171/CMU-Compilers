@@ -37,6 +37,15 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    const linker = b.addExecutable(.{
+        .name = "linker",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/linker/shared.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
     const snapshot_test = b.addExecutable(.{
         .name = "snapshot_test",
         .root_module = b.createModule(.{
@@ -64,6 +73,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const linker_mod = b.createModule(.{
+        .root_source_file = b.path("src/linker/shared.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     // share irs between stages
     frontend.root_module.addImport("common", common);
     frontend_mod.addImport("common", common);
@@ -73,11 +88,15 @@ pub fn build(b: *std.Build) void {
     backend.root_module.addImport("middle", middle_mod);
     backend_mod.addImport("common", common);
     backend_mod.addImport("middle", middle_mod);
+    linker_mod.addImport("backend", backend_mod);
 
     integration_test.root_module.addImport("common", common);
     integration_test.root_module.addImport("frontend", frontend_mod);
     integration_test.root_module.addImport("middle", middle_mod);
     integration_test.root_module.addImport("backend", backend_mod);
+    integration_test.root_module.addImport("linker", linker_mod);
+    linker.root_module.addImport("backend", backend_mod);
+    linker_mod.addImport("backend", backend_mod);
 
     snapshot_test.root_module.addImport("backend", backend_mod);
 
