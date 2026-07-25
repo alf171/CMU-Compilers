@@ -509,10 +509,17 @@ fn emitStackStoreByte(
     try out.print(alloc, "\tmovq %{s}, -{d}(%rbp)\n", .{ src, offset });
 }
 
-fn createFunctionFooter(out: *ArrayList(u8), name: []const u8, local_stack_size: usize, is_main: bool, abi: Abi, alloc: std.mem.Allocator) !void {
+fn createFunctionFooter(
+    out: *ArrayList(u8),
+    name: []const u8,
+    local_stack_size: usize,
+    is_main: bool,
+    abi: Abi,
+    alloc: std.mem.Allocator,
+) !void {
     try out.print(alloc, "{s}_epilogue:\n", .{name});
     if (is_main) {
-        try out.appendSlice(alloc, "\tcallq arena_free\n");
+        // return 0 at end of main
         try out.appendSlice(alloc, "\tmovq $0, %rax\n");
     }
 

@@ -12,6 +12,7 @@ pub fn walkAstWithRuntime(
     user_file_name: []const u8,
     should_optim: bool,
     use_escape_codes: bool,
+    std_lib_enabled: bool,
     io: std.Io,
     alloc: std.mem.Allocator,
 ) !Program {
@@ -19,8 +20,10 @@ pub fn walkAstWithRuntime(
     defer irBuilder.deinit(alloc);
     errdefer irBuilder.program.deinit(alloc);
     // iterate through files in runtime/*
-    const runtime_obj = try readFile("src/runtime/print.py", false, should_optim, use_escape_codes, io, alloc);
-    try walkAstIntoBuilder(runtime_obj, &irBuilder, alloc);
+    if (std_lib_enabled) {
+        const runtime_obj = try readFile("src/runtime/print.py", false, should_optim, use_escape_codes, io, alloc);
+        try walkAstIntoBuilder(runtime_obj, &irBuilder, alloc);
+    }
 
     // walk UserFile
     irBuilder.function_origin = .user;

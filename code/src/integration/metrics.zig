@@ -93,7 +93,7 @@ pub fn get(
                 if (std.mem.startsWith(u8, trim, "j") or std.mem.startsWith(u8, trim, "ret")) current.branches += 1;
                 if (std.mem.startsWith(u8, trim, "call")) current.calls += 1;
             },
-            .UNKNOWN => unreachable,
+            else => unreachable,
         }
     }
 

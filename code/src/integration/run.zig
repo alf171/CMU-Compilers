@@ -7,6 +7,7 @@ const lazy = @import("frontend").lazy;
 const list = @import("frontend").list;
 const print = @import("frontend").print;
 const func = @import("frontend").func;
+const runtime = @import("frontend").runtime;
 const middle = @import("middle");
 const backend = @import("backend");
 const linker = @import("linker");
@@ -59,6 +60,7 @@ pub fn main(init: std.process.Init) !void {
     var should_dump_ir = false;
     var should_dump_stats = false;
     var use_escape_codes = true;
+    var std_lib_enabled = true;
     // default target
     var target: Target = .{
         .host = .X86,
@@ -70,6 +72,7 @@ pub fn main(init: std.process.Init) !void {
         if (std.mem.eql(u8, arg, "--dump-ir")) should_dump_ir = true;
         if (std.mem.eql(u8, arg, "--dump-stats")) should_dump_stats = true;
         if (std.mem.eql(u8, arg, "--omit-escape-codes")) use_escape_codes = false;
+        if (std.mem.eql(u8, arg, "--no-stdlib")) std_lib_enabled = false;
         // allow caller to decide their platform
         if (std.mem.eql(u8, arg, "--host=arm")) target.host = .ARM;
         if (std.mem.eql(u8, arg, "--host=x86")) target.host = .X86;
@@ -78,7 +81,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     // walk user program
-    var ir_program = try walkAstWithRuntime(input_file, should_optim, use_escape_codes, io, alloc);
+    var ir_program = try walkAstWithRuntime(input_file, should_optim, use_escape_codes, std_lib_enabled, io, alloc);
     defer ir_program.deinit(alloc);
 
     // rewrite layer
@@ -87,6 +90,10 @@ pub fn main(init: std.process.Init) !void {
     try list.rewrite(&ir_program, alloc);
     try print.rewrite(&ir_program, alloc);
     try func.rewrite(&ir_program, alloc);
+
+    if (std_lib_enabled) {
+        try runtime.injectCleanup(&ir_program, alloc);
+    }
 
     // phi cleanup
     try phi.eliminatePhi(&ir_program, alloc);
@@ -197,7 +204,7 @@ pub fn main(init: std.process.Init) !void {
     if (should_dump_stats) {
         const stats = metrics.get(artifacts.host_asm, spill_rounds, target);
         stats.user.print(use_escape_codes);
-        stats.runtime.print(use_escape_codes);
+        if (std_lib_enabled) stats.runtime.print(use_escape_codes);
     }
 
     const output_file = "/tmp/host.s";

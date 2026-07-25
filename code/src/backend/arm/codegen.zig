@@ -515,7 +515,7 @@ fn emitStackStoreByte(
 fn createFunctionFooter(out: *ArrayList(u8), name: []const u8, local_stack_size: usize, is_main: bool, abi: Abi, alloc: std.mem.Allocator) !void {
     try out.print(alloc, "_{s}_epilogue:\n", .{name});
     if (is_main) {
-        try out.appendSlice(alloc, "\tbl _arena_free\n");
+        // return 0 at end of main
         try out.appendSlice(alloc, "\tmov w0, #0\n");
     }
 
