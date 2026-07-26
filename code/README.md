@@ -44,7 +44,7 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - [ ] tuples elems not always being 8 bytes
 - [ ] strings as tuples (stack allocation!)
 
-### Linker
+### Assembler/Linker
 - [ ] remove clang on linux/x86
 - [ ] replace bespoke c scripts
 
