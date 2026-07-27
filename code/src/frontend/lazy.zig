@@ -3,9 +3,15 @@ const HashMap = std.AutoHashMap;
 const Operand = @import("common").alloc.Operand;
 const TypedOperand = @import("common").alloc.TypedOperand;
 const Function = @import("common").ir.Function;
+const LocalId = @import("common").ir.LocalId;
 const Program = @import("common").program.Program;
 const Instruction = @import("common").mir.Instruction;
 const ownedPointer = @import("common").types.ownedPointer;
+
+const LazyKey = union(enum) {
+    operand: Operand,
+    local: LocalId,
+};
 
 const LazyProducers = union(enum) {
     range: struct {
@@ -16,7 +22,7 @@ const LazyProducers = union(enum) {
 
 /// currently handles range rewrites
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
-    var producers = HashMap(Operand, LazyProducers).init(alloc);
+    var producers = HashMap(LazyKey, LazyProducers).init(alloc);
     defer producers.deinit();
 
     try rewriteFunction(&program.main, &producers, alloc);
@@ -26,7 +32,7 @@ pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
     }
 }
 
-fn rewriteFunction(function: *Function, producers: *HashMap(Operand, LazyProducers), alloc: std.mem.Allocator) !void {
+fn rewriteFunction(function: *Function, producers: *HashMap(LazyKey, LazyProducers), alloc: std.mem.Allocator) !void {
     for (function.blocks.items) |*block| {
         var new_instructions = std.ArrayList(Instruction).empty;
         errdefer new_instructions.deinit(alloc);
@@ -34,14 +40,14 @@ fn rewriteFunction(function: *Function, producers: *HashMap(Operand, LazyProduce
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
                 .range => |r| {
-                    try producers.put(r.dst.operand, .{ .range = .{
+                    try producers.put(.{ .operand = r.dst.operand }, .{ .range = .{
                         .start = r.start.operand,
                         .end = r.end.operand,
                     } });
                     instruction.deinit(alloc);
                 },
                 .lazy_load => |ll| {
-                    const lhs = producers.get(ll.lazy.operand) orelse {
+                    const lhs = producers.get(.{ .operand = ll.lazy.operand }) orelse {
                         try new_instructions.append(alloc, instruction.*);
                         continue;
                     };
@@ -64,7 +70,7 @@ fn rewriteFunction(function: *Function, producers: *HashMap(Operand, LazyProduce
                     instruction.deinit(alloc);
                 },
                 .len => |l| {
-                    const producer = producers.get(l.value.operand) orelse {
+                    const producer = producers.get(.{ .operand = l.value.operand }) orelse {
                         try new_instructions.append(alloc, instruction.*);
                         continue;
                     };
@@ -85,6 +91,22 @@ fn rewriteFunction(function: *Function, producers: *HashMap(Operand, LazyProduce
                         },
                     }
                     instruction.deinit(alloc);
+                },
+                .lir => |lir| switch (lir) {
+                    .store_local => |sl| {
+                        if (producers.get(.{ .operand = sl.src.operand })) |producer| {
+                            try producers.put(
+                                .{ .local = sl.local.id },
+                                producer,
+                            );
+                            instruction.deinit(alloc);
+                            continue;
+                        }
+                        try new_instructions.append(alloc, instruction.*);
+                    },
+                    else => {
+                        try new_instructions.append(alloc, instruction.*);
+                    },
                 },
                 else => {
                     try new_instructions.append(alloc, instruction.*);
