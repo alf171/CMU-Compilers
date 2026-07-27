@@ -6,6 +6,7 @@ const Operand = @import("alloc.zig").Operand;
 const ConstValue = @import("ir.zig").ConstValue;
 const BinOp = @import("ir.zig").BinOp;
 const BlockId = @import("ir.zig").BlockId;
+const ClassId = @import("ir.zig").ClassId;
 const LocalId = @import("ir.zig").LocalId;
 const CmpOp = @import("ir.zig").CmpOp;
 const UnaryOp = @import("ir.zig").UnaryOp;
@@ -120,6 +121,24 @@ pub const Instruction = union(enum) {
         lazy: TypedOperand,
         index: Operand,
     },
+    class_init: struct {
+        dst: TypedOperand,
+        class_id: ClassId,
+        args: []TypedOperand,
+    },
+    // instance <- *(src + offset)
+    field_store: struct {
+        instance: TypedOperand,
+        offset: usize,
+        src: TypedOperand,
+    },
+    // dst <- *(instance + offset)
+    field_load: struct {
+        dst: TypedOperand,
+        instance: TypedOperand,
+        offset: usize,
+    },
+    // gpu method
     global_idx: struct {
         dst: TypedOperand,
     },
@@ -183,6 +202,17 @@ pub const Instruction = union(enum) {
             .gpu_launch => |gl| {
                 alloc.free(gl.kernel);
                 alloc.free(gl.args);
+            },
+            .class_init => |ci| {
+                for (ci.args) |arg| {
+                    arg.type.deinit(alloc);
+                }
+                alloc.free(ci.args);
+                ci.dst.type.deinit(alloc);
+            },
+            .field_store => |fs| {
+                fs.instance.type.deinit(alloc);
+                fs.src.type.deinit(alloc);
             },
             .lir => |*lir| lir.deinit(alloc),
             else => {},

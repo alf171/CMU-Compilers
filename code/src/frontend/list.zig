@@ -37,7 +37,9 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     });
                     try new_instructions.append(alloc, .{ .function_call = .{
                         .dst = try ll.dst.clone(alloc),
-                        .callee = .{ .direct = try alloc.dupe(u8, "arena_malloc") },
+                        .callee = .{
+                            .direct = try alloc.dupe(u8, "arena_malloc"),
+                        },
                         .args = args,
                     } });
                     // store list size

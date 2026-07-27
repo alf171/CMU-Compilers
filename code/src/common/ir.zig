@@ -30,13 +30,82 @@ pub const LocalInfo = struct {
     type: TypeInfo,
 
     pub fn duplicate(self: @This(), alloc: std.mem.Allocator) !@This() {
-        return LocalInfo{
+        return .{
             .id = self.id,
             .name = try alloc.dupe(u8, self.name),
             .type = self.type,
         };
     }
 };
+
+pub const Field = struct {
+    name: []const u8,
+    type: TypeInfo,
+    offset: usize,
+};
+pub const Method = struct {
+    name: []const u8,
+    function_name: []const u8,
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        alloc.free(self.name);
+        alloc.free(self.function_name);
+    }
+};
+// classes hold methods and fields
+pub const ClassId = u32;
+pub const ClassInfo = struct {
+    id: ClassId,
+    name: []const u8,
+    fields: ArrayList(Field),
+    methods: ArrayList(Method),
+    // size to create an instance of this class
+    size: usize,
+
+    pub fn init(id: ClassId, name: []const u8, alloc: std.mem.Allocator) !@This() {
+        return .{
+            .id = id,
+            .name = try alloc.dupe(u8, name),
+            .fields = .empty,
+            .methods = .empty,
+            .size = 0,
+        };
+    }
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        alloc.free(self.name);
+        for (self.fields.items) |*field| {
+            alloc.free(field.name);
+            field.type.deinit(alloc);
+        }
+        self.fields.deinit(alloc);
+        for (self.methods.items) |*method| {
+            method.deinit(alloc);
+        }
+        self.methods.deinit(alloc);
+    }
+
+    // O(n) scan for field
+    pub fn findField(self: *@This(), name: []const u8) ?*Field {
+        for (self.fields.items) |*field| {
+            if (std.mem.eql(u8, field.name, name)) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    // O(n) scan for method
+    pub fn findMethod(self: *@This(), name: []const u8) ?*Method {
+        for (self.methods.items) |*method| {
+            if (std.mem.eql(u8, method.name, name)) {
+                return method;
+            }
+        }
+        return null;
+    }
+};
+
 // compiler defined variable
 pub const TempId = u16;
 

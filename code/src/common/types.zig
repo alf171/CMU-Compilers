@@ -1,6 +1,7 @@
 const std = @import("std");
 pub const RegisterType = @import("register.zig").RegisterType;
 pub const FunctionKind = @import("ir.zig").FunctionKind;
+pub const ClassId = @import("ir.zig").ClassId;
 
 // use a pointer on element type for recursive purposes
 // things like range dont know their size at comptime
@@ -31,6 +32,7 @@ pub const TypeInfo = union(enum) {
         params: []const TypeInfo,
         returns: *const TypeInfo,
     },
+    instance: ClassId,
     any,
 
     pub fn deinit(self: @This(), alloc: std.mem.Allocator) void {
@@ -103,7 +105,7 @@ pub const TypeInfo = union(enum) {
                     .element = try ownedPointer(try i.element.*.clone(alloc), alloc),
                 } };
             },
-            .void, .i64, .i32, .bool, .char, .float, .any => return self,
+            .void, .i64, .i32, .bool, .char, .float, .any, .instance => return self,
             else => |e| {
                 std.debug.print("clone does support {s}\n", .{@tagName(e)});
                 return error.NotImpl;
@@ -113,6 +115,8 @@ pub const TypeInfo = union(enum) {
 
     pub fn sizeOfType(self: @This()) !usize {
         return switch (self) {
+            // instances are just pointers
+            .instance => 8,
             .i64, .list, .tuple, .ptr => 8,
             .i32 => 4,
             .bool, .char => 1,

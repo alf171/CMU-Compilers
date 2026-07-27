@@ -2,6 +2,7 @@ const std = @import("std");
 const debugPrint = std.debug.print;
 const ArrayList = std.ArrayList;
 const BasicBlock = @import("ir.zig").BasicBlock;
+const ClassInfo = @import("ir.zig").ClassInfo;
 const Function = @import("ir.zig").Function;
 const FunctionType = @import("ir.zig").FunctionType;
 const Param = @import("alloc.zig").Param;
@@ -9,6 +10,7 @@ const Param = @import("alloc.zig").Param;
 pub const Program = struct {
     main: Function,
     functions: ArrayList(Function),
+    classes: ArrayList(ClassInfo),
 
     pub fn init(alloc: std.mem.Allocator) !Program {
         var blocks = ArrayList(BasicBlock).empty;
@@ -29,6 +31,7 @@ pub const Program = struct {
                 .kind = .host,
             },
             .functions = .empty,
+            .classes = .empty,
         };
     }
 
@@ -38,6 +41,10 @@ pub const Program = struct {
             func.deinit(alloc);
         }
         self.functions.deinit(alloc);
+        for (self.classes.items) |*class| {
+            class.deinit(alloc);
+        }
+        self.classes.deinit(alloc);
     }
 
     pub fn print(self: @This()) !void {

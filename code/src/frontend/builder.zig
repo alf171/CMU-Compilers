@@ -2,6 +2,8 @@ const std = @import("std");
 
 const BlockId = @import("common").ir.BlockId;
 const LocalId = @import("common").ir.LocalId;
+const ClassId = @import("common").ir.ClassId;
+const ClassInfo = @import("common").ir.ClassInfo;
 const LocalInfo = @import("common").ir.LocalInfo;
 const TempId = @import("common").ir.TempId;
 const Function = @import("common").ir.Function;
@@ -21,9 +23,6 @@ pub const IrBuilder = struct {
     program: Program,
     current_block: BlockId,
     current_function: ?usize,
-    next_local: LocalId,
-    // TODO: dont use usize
-    next_function_idx: usize,
     // name -> LocalId
     locals_by_name: std.StringHashMap(LocalId),
     // LocalId -> TypedOperand
@@ -39,8 +38,6 @@ pub const IrBuilder = struct {
             .program = program,
             .current_function = null,
             .current_block = 0,
-            .next_local = 0,
-            .next_function_idx = 1,
             .locals_by_name = std.StringHashMap(LocalId).init(alloc),
             .local_values = LocalValues.init(alloc),
             .locals = .empty,
@@ -78,16 +75,12 @@ pub const IrBuilder = struct {
         return function.nextTemp();
     }
 
-    pub fn nextFunctionIdx(self: *@This()) usize {
-        const idx = self.next_function_idx;
-        self.next_function_idx += 1;
-        return idx;
+    pub fn nextFunctionId(self: *@This()) usize {
+        return self.program.functions.items.len + 1;
     }
 
     pub fn nextClassIdx(self: *@This()) ClassId {
-        const idx = self.next_class;
-        self.next_class += 1;
-        return idx;
+        return @intCast(self.program.classes.items.len);
     }
 
     // O(function) scan looking for matching name
@@ -98,6 +91,11 @@ pub const IrBuilder = struct {
             }
         }
         return null;
+    }
+
+    // get class from index
+    pub fn getClass(self: *@This(), class_id: ClassId) *ClassInfo {
+        return &self.program.classes.items[class_id];
     }
 
     // O(class) scan looking for matching name
@@ -123,7 +121,7 @@ pub const IrBuilder = struct {
             return local;
         }
         // needs to get created
-        const id = self.next_local;
+        const id: LocalId = @intCast(self.locals.items.len);
         const owned_name = try alloc.dupe(u8, name);
         try self.locals_by_name.put(owned_name, id);
         try self.locals.append(alloc, .{
@@ -131,7 +129,6 @@ pub const IrBuilder = struct {
             .name = owned_name,
             .type = typeInfo orelse .any,
         });
-        self.next_local += 1;
         return id;
     }
 

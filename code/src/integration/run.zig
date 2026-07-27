@@ -8,6 +8,7 @@ const list = @import("frontend").list;
 const print = @import("frontend").print;
 const func = @import("frontend").func;
 const runtime = @import("frontend").runtime;
+const class = @import("frontend").class;
 const middle = @import("middle");
 const backend = @import("backend");
 const linker = @import("linker");
@@ -89,6 +90,7 @@ pub fn main(init: std.process.Init) !void {
     try tuple.rewrite(&ir_program, alloc);
     try list.rewrite(&ir_program, alloc);
     try print.rewrite(&ir_program, alloc);
+    try class.rewrite(&ir_program, alloc);
     try func.rewrite(&ir_program, alloc);
 
     if (std_lib_enabled) {
