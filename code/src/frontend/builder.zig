@@ -13,7 +13,6 @@ const Operand = @import("common").alloc.Operand;
 const TypedOperand = @import("common").alloc.TypedOperand;
 const Program = @import("common").program.Program;
 const Instruction = @import("common").mir.Instruction;
-const SpecialRegs = @import("common").ir.SpecialRegs;
 
 const ArrayList = std.ArrayList;
 pub const LocalValues = std.AutoHashMap(LocalId, TypedOperand);
@@ -22,7 +21,6 @@ pub const IrBuilder = struct {
     program: Program,
     current_block: BlockId,
     current_function: ?usize,
-    next_block: BlockId,
     next_local: LocalId,
     // TODO: dont use usize
     next_function_idx: usize,
@@ -41,7 +39,6 @@ pub const IrBuilder = struct {
             .program = program,
             .current_function = null,
             .current_block = 0,
-            .next_block = 1,
             .next_local = 0,
             .next_function_idx = 1,
             .locals_by_name = std.StringHashMap(LocalId).init(alloc),
@@ -87,11 +84,27 @@ pub const IrBuilder = struct {
         return idx;
     }
 
+    pub fn nextClassIdx(self: *@This()) ClassId {
+        const idx = self.next_class;
+        self.next_class += 1;
+        return idx;
+    }
+
     // O(function) scan looking for matching name
     pub fn findFunction(self: *@This(), name: []const u8) ?*Function {
         for (self.program.functions.items) |*function| {
             if (std.mem.eql(u8, function.name, name)) {
                 return function;
+            }
+        }
+        return null;
+    }
+
+    // O(class) scan looking for matching name
+    pub fn findClass(self: *@This(), name: []const u8) ?*ClassInfo {
+        for (self.program.classes.items) |*class| {
+            if (std.mem.eql(u8, class.name, name)) {
+                return class;
             }
         }
         return null;
@@ -113,7 +126,7 @@ pub const IrBuilder = struct {
         const id = self.next_local;
         const owned_name = try alloc.dupe(u8, name);
         try self.locals_by_name.put(owned_name, id);
-        try self.locals.append(alloc, LocalInfo{
+        try self.locals.append(alloc, .{
             .id = id,
             .name = owned_name,
             .type = typeInfo orelse .any,
@@ -127,15 +140,15 @@ pub const IrBuilder = struct {
     }
 
     pub fn newBlock(self: *@This(), alloc: std.mem.Allocator) !BlockId {
-        const id = self.next_block;
-        self.next_block += 1;
+        const blocks = self.currentBlocks();
+        const id: BlockId = @intCast(blocks.items.len);
         const new_block = BasicBlock{
             .id = id,
             .instructions = .empty,
             .successors = .empty,
         };
 
-        try self.currentBlocks().append(alloc, new_block);
+        try blocks.append(alloc, new_block);
         return id;
     }
 

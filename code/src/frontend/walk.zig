@@ -1223,14 +1223,12 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     // save function state
     const saved_current_function = irBuilder.current_function;
     const saved_current_block = irBuilder.current_block;
-    const saved_next_block = irBuilder.next_block;
     var saved_local_values = try irBuilder.cloneLocalValues(alloc);
     defer saved_local_values.deinit();
 
     // set function state
     irBuilder.current_function = irBuilder.program.functions.items.len - 1;
     irBuilder.current_block = 0;
-    irBuilder.next_block = 1;
     irBuilder.local_values.clearRetainingCapacity();
 
     // load function params
@@ -1257,7 +1255,6 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Alloca
     // restore function state
     irBuilder.current_function = saved_current_function;
     irBuilder.current_block = saved_current_block;
-    irBuilder.next_block = saved_next_block;
     try irBuilder.restoreLocalValues(&saved_local_values);
 }
 
