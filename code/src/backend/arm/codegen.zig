@@ -79,7 +79,23 @@ fn emitFunction(
                                 .top => |top| {
                                     std.debug.assert(top.type == .i64);
                                     const offset = try abi.regFor(top.operand, colors);
-                                    try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, offset });
+                                    switch (so.src.type) {
+                                        .i64, .list => {
+                                            try out.print(alloc, "\tstr {s}, [{s}, {s}]\n", .{ src, dst, offset });
+                                        },
+                                        .i32 => {
+                                            std.debug.assert(src[0] == 'x');
+                                            try out.print(alloc, "\tstr w{s}, [{s}, {s}]\n", .{ src[1..], dst, offset });
+                                        },
+                                        .char => {
+                                            std.debug.assert(src[0] == 'x');
+                                            try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ src[1..], dst, offset });
+                                        },
+                                        else => |e| {
+                                            std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                            return error.NotImpl;
+                                        },
+                                    }
                                 },
                             }
                         },

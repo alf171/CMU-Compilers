@@ -24,6 +24,7 @@ pub const Host = union(enum) {
             else => return error.InvalidTarget,
         };
     }
+
     pub fn getPlatform(self: @This()) HostPlatform {
         return switch (self) {
             .ARM => .{
@@ -42,6 +43,7 @@ pub const Host = union(enum) {
 pub const Device = union(enum) {
     host,
     gfx1103,
+
     pub fn getPlatform(self: @This()) DevicePlatform {
         return switch (self) {
             .gfx1103 => .{
@@ -49,6 +51,13 @@ pub const Device = union(enum) {
                 .emit = rdna3_emit,
             },
             else => unreachable,
+        };
+    }
+
+    pub fn toString(self: @This()) ![]const u8 {
+        return switch (self) {
+            .host => "host",
+            .gfx1103 => "gfx1103",
         };
     }
 };

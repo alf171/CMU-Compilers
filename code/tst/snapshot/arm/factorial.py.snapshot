@@ -8,21 +8,21 @@ def factorial(n: int) -> int:
 print(factorial(15))
 
 performance report: (ORIGIN=user)
-number of asm lines: 23
-mov count: 6
+number of asm lines: 58
+mov count: 14
 memory load count: 0
 memory store count: 0
-branch count: 2
-call count: 3
+branch count: 9
+call count: 4
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 535
-mov count: 224
+number of asm lines: 500
+mov count: 216
 memory load count: 4
 memory store count: 44
-branch count: 43
-call count: 29
+branch count: 36
+call count: 28
 spill count: 0
 
 actual output:

@@ -43,6 +43,19 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - [ ] support arbitrary transformations like `map`
 - [ ] tuples elems not always being 8 bytes
 - [ ] strings as tuples (stack allocation!)
+- [ ] better type inference on y
+```
+  xs: list[i32] = [0]
+  y = 123 # infer i64
+  xs[0] = y
+```
+  - maybe we need to push width down into our backend
+  - consider
+```
+_P: list[list[i32]]
+_P[m]: list[i32]
+_P[m][k]: i32
+```
 
 ### Assembler/Linker
 - [ ] remove clang on linux/x86

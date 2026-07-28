@@ -11,12 +11,18 @@ pub fn run(
     io: std.Io,
 ) !void {
     std.debug.print("running {s}", .{file_name});
-    const platform_arg = try std.fmt.allocPrint(
+    const host_arg = try std.fmt.allocPrint(
         alloc,
         "--host={s}",
         .{try target.host.toString()},
     );
-    defer alloc.free(platform_arg);
+    defer alloc.free(host_arg);
+    const device_arg = try std.fmt.allocPrint(
+        alloc,
+        "--device={s}",
+        .{try target.device.toString()},
+    );
+    defer alloc.free(device_arg);
 
     const result = try runCommand(alloc, io, &.{
         compiler_path,
@@ -26,7 +32,8 @@ pub fn run(
         "--dump-stats",
         "--omit-escape-codes",
         "--optim",
-        platform_arg,
+        host_arg,
+        device_arg,
     });
     defer alloc.free(result.stdout);
     defer alloc.free(result.stderr);
@@ -112,6 +119,7 @@ pub fn main(init: std.process.Init) !void {
         if (std.mem.eql(u8, arg, "--regen")) should_regen_snapshot = true;
         if (std.mem.eql(u8, arg, "--host=arm")) target.host = .ARM;
         if (std.mem.eql(u8, arg, "--host=x86")) target.host = .X86;
+        if (std.mem.eql(u8, arg, "--device=host")) target.device = .host;
     }
     const compiler_path = args[1];
 

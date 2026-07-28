@@ -64,7 +64,10 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                 break :blk ValueRef{ .constant = c };
                             },
                             .top => |top| blk: {
-                                const src: TypedOperand = .{ .operand = function.nextTemp(), .type = .any };
+                                const src: TypedOperand = .{
+                                    .operand = function.nextTemp(),
+                                    .type = try top.type.clone(alloc),
+                                };
                                 try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                                     .dst = src,
                                     .src = .{ .top = try top.clone(alloc) },

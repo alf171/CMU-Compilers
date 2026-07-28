@@ -10,7 +10,8 @@ def matmul(
 ) -> None:
     for m in range(len(_M)):
         for k in range(len(_N[0])):
-            acc = 0
+            # i64 is chosen otherwise
+            acc: i32 = 0
             for n in range(len(_M[0])):
                 acc += (_M[m][n] * _N[n][k])
             _P[m][k] = acc
@@ -27,21 +28,21 @@ matmul(
 )
 
 performance report: (ORIGIN=user)
-number of asm lines: 726
-mov count: 404
-memory load count: 0
-memory store count: 108
-branch count: 2
-call count: 20
-spill count: 0
+number of asm lines: 926
+mov count: 476
+memory load count: 34
+memory store count: 111
+branch count: 14
+call count: 25
+spill count: 2
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 682
-mov count: 288
-memory load count: 24
-memory store count: 45
-branch count: 48
-call count: 33
+number of asm lines: 500
+mov count: 216
+memory load count: 4
+memory store count: 44
+branch count: 36
+call count: 28
 spill count: 0
 
 actual output:

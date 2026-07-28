@@ -8,7 +8,8 @@ def matmul(
 ) -> None:
     for m in range(len(_M)):
         for k in range(len(_N[0])):
-            acc = 0
+            # i64 is chosen otherwise
+            acc: i32 = 0
             for n in range(len(_M[0])):
                 acc += (_M[m][n] * _N[n][k])
             _P[m][k] = acc
