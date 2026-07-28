@@ -83,7 +83,7 @@ pub const IrBuilder = struct {
         return @intCast(self.program.classes.items.len);
     }
 
-    // O(function) scan looking for matching name
+    /// O(function) scan looking for matching name
     pub fn findFunction(self: *@This(), name: []const u8) ?*Function {
         for (self.program.functions.items) |*function| {
             if (std.mem.eql(u8, function.name, name)) {
@@ -93,12 +93,17 @@ pub const IrBuilder = struct {
         return null;
     }
 
-    // get class from index
+    /// get function from index
+    pub fn getFunction(self: *@This(), id: usize) ?*Function {
+        return &self.program.functions.items[id];
+    }
+
+    /// get class from index
     pub fn getClass(self: *@This(), class_id: ClassId) *ClassInfo {
         return &self.program.classes.items[class_id];
     }
 
-    // O(class) scan looking for matching name
+    /// O(class) scan looking for matching name
     pub fn findClass(self: *@This(), name: []const u8) ?*ClassInfo {
         for (self.program.classes.items) |*class| {
             if (std.mem.eql(u8, class.name, name)) {

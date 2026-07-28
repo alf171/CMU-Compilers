@@ -1,6 +1,6 @@
 # simple class example
 class Car:
-    def __init__(self, name: str, speed: int) -> None:
+    def __init__(self: "Car", name: str, speed: int) -> None:
         self.name = name 
         self.speed = speed
 
@@ -8,5 +8,11 @@ class Car:
         # print(f"we are driving a {self.name} at {self.speed} mph")
         print(self.speed)
 
+    def __add__(self: "Car", other: "Car") -> int:
+        return self.speed + other.speed
+
 audi = Car("audi", 30)
+vw = Car("vw", 20)
 audi.print_speed()
+vw.print_speed()
+print(vw + audi)

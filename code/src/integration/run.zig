@@ -89,8 +89,8 @@ pub fn main(init: std.process.Init) !void {
     try lazy.rewrite(&ir_program, alloc);
     try tuple.rewrite(&ir_program, alloc);
     try list.rewrite(&ir_program, alloc);
-    try print.rewrite(&ir_program, alloc);
     try class.rewrite(&ir_program, alloc);
+    try print.rewrite(&ir_program, alloc);
     try func.rewrite(&ir_program, alloc);
 
     if (std_lib_enabled) {

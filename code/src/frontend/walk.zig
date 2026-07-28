@@ -133,6 +133,7 @@ fn walkClassDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                 try class.methods.append(alloc, .{
                     .name = try alloc.dupe(u8, method_name),
                     .function_name = try alloc.dupe(u8, function.name),
+                    .function_id = function.id,
                 });
             },
             else => return error.NotImpl,
@@ -321,7 +322,7 @@ fn walkAnnotatedAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.me
     const target_id = c.PyUnicode_AsUTF8(target_id_obj);
 
     const annotation = c.PyObject_GetAttrString(stmt, "annotation");
-    const annotation_type = try parseTypeAnnotation(annotation, alloc);
+    const annotation_type = try parseTypeAnnotation(annotation, irBuilder, alloc);
     defer annotation_type.deinit(alloc);
     const rhs = c.PyObject_GetAttrString(stmt, "value");
     const rhs_value = try walkExpr(rhs, irBuilder, annotation_type, alloc);
@@ -349,15 +350,39 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             const lhs = try walkExpr(left, irBuilder, null, alloc);
             const rhs = try walkExpr(right, irBuilder, null, alloc);
 
-            const dst = irBuilder.nextTemp();
+            const result_type: TypeInfo = switch (lhs.type) {
+                .instance => |class_id| blk: {
+                    const class = irBuilder.getClass(class_id);
+                    const func = switch (op) {
+                        .add => "__add__",
+                        .sub => "__sub__",
+                        .mul => "__mul__",
+                        else => return error.NotImpl,
+                    };
+                    const method = class.findMethod(func) orelse {
+                        return error.CantFindMethod;
+                    };
+                    // FIXME: use function_id
+                    const function = irBuilder.findFunction(method.function_name) orelse {
+                        return error.CantFindFunction;
+                    };
+                    break :blk try function.return_type.clone(alloc);
+                },
+                else => try lhs.type.clone(alloc),
+            };
+
+            const dst: TypedOperand = .{
+                .operand = irBuilder.nextTemp(),
+                .type = result_type,
+            };
             const instruction = Instruction{ .lir = .{ .binop = .{
-                .dst = .{ .operand = dst, .type = lhs.type },
+                .dst = dst,
                 .op = op,
                 .lhs = lhs,
                 .rhs = rhs,
             } } };
             try irBuilder.emit(instruction, alloc);
-            return TypedOperand{ .operand = dst, .type = lhs.type };
+            return dst;
         },
         .UnaryOp => {
             const operand_obj = c.PyObject_GetAttrString(stmt, "operand");
@@ -1367,7 +1392,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
         std.debug.assert(annotation != null);
         // only param 0 for classes becomes instance
         const arg_type: TypeInfo = if (class_id == null or i != 0)
-            try parseTypeAnnotation(annotation, alloc)
+            try parseTypeAnnotation(annotation, irBuilder, alloc)
         else
             .{ .instance = class_id.? };
         const raw_name = c.PyUnicode_AsUTF8(arg_obj_name);
@@ -1403,7 +1428,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
 
     // return type
     const returns = c.PyObject_GetAttrString(stmt, "returns");
-    const return_type = try parseTypeAnnotation(returns, alloc);
+    const return_type = try parseTypeAnnotation(returns, irBuilder, alloc);
     // walk annotation to get function kind
     const kind: FunctionKind = blk: {
         const decorators = c.PyObject_GetAttrString(stmt, "decorator_list");
@@ -1575,7 +1600,11 @@ fn getPyType(stmt: *PyObject) []const u8 {
     return std.mem.span(c.PyUnicode_AsUTF8(name_ptr));
 }
 
-fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInfo {
+fn parseTypeAnnotation(
+    annotation: *PyObject,
+    irBuilder: *IrBuilder,
+    alloc: std.mem.Allocator,
+) !TypeInfo {
     const kind = getPyType(annotation);
     // Name(id='int', ctx=Load())
     if (std.mem.eql(u8, kind, "Name")) {
@@ -1605,7 +1634,7 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
             // Subscript(value=Name(id='list', ctx=Load()), slice=Name(id='int', ctx=Load()), ctx=Load())
             .list => {
                 // recursively get type
-                const elem_type = try parseTypeAnnotation(slice_obj, alloc);
+                const elem_type = try parseTypeAnnotation(slice_obj, irBuilder, alloc);
                 return .{ .list = .{
                     .element = try ownedPointer(elem_type, alloc),
                     .size = null,
@@ -1620,7 +1649,7 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
                 for (0..len) |i| {
                     const elt = c.PyList_GetItem(elts, @intCast(i));
                     std.debug.assert(elt != null);
-                    elem_types[i] = try parseTypeAnnotation(elt, alloc);
+                    elem_types[i] = try parseTypeAnnotation(elt, irBuilder, alloc);
                 }
                 return .{ .tuple = .{
                     .elements = elem_types,
@@ -1644,12 +1673,12 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
                 for (0..input_len) |i| {
                     const elt = c.PyList_GetItem(params_elts, @intCast(i));
                     std.debug.assert(elt != null);
-                    elem_types[i] = try parseTypeAnnotation(elt, alloc);
+                    elem_types[i] = try parseTypeAnnotation(elt, irBuilder, alloc);
                 }
 
                 return .{ .callable = .{
                     .params = elem_types,
-                    .returns = try ownedPointer(try parseTypeAnnotation(return_obj, alloc), alloc),
+                    .returns = try ownedPointer(try parseTypeAnnotation(return_obj, irBuilder, alloc), alloc),
                 } };
             },
         }
@@ -1658,13 +1687,19 @@ fn parseTypeAnnotation(annotation: *PyObject, alloc: std.mem.Allocator) !TypeInf
         if (value_obj == c.Py_None()) {
             return .void;
         }
+        if (!std.mem.eql(u8, getPyType(value_obj), "str")) {
+            return error.ExpectedString;
+        }
+        // classes support string type lookup
+        const raw_class_name = c.PyUnicode_AsUTF8(value_obj);
+        const class = irBuilder.findClass(std.mem.span(raw_class_name)) orelse {
+            return error.CantFindClass;
+        };
+        return .{ .instance = class.id };
     }
     std.debug.print("kind not supported {s}\n", .{kind});
     return error.NotImpl;
 }
-
-// TODO: impl
-// fn parseConstant(obj: *PyObject) void{}
 
 fn getSubscriberType(annotation: *PyObject) !SubscriberTypes {
     const value_obj = c.PyObject_GetAttrString(annotation, "value");

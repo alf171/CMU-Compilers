@@ -87,6 +87,48 @@ pub fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Al
                     } });
                     instruction.deinit(alloc);
                 },
+                .lir => |lir| switch (lir) {
+                    .binop => |bop| {
+                        const class_id = switch (bop.lhs.type) {
+                            .instance => |id| id,
+                            else => {
+                                try new_instructions.append(alloc, instruction.*);
+                                continue;
+                            },
+                        };
+                        const class = &program.classes.items[class_id];
+                        const method_name = switch (bop.op) {
+                            .add => "__add__",
+                            .sub => "__sub__",
+                            .mul => "__mul__",
+                            else => return error.CantFindBuiltin,
+                        };
+                        const method = class.findMethod(method_name) orelse {
+                            return error.CantFindBuiltin;
+                        };
+                        var arguments: ArrayList(TypedOperand) = .empty;
+                        errdefer {
+                            for (arguments.items) |*arg| {
+                                arg.type.deinit(alloc);
+                            }
+                            arguments.deinit(alloc);
+                        }
+
+                        // replace + with __add__(self, other)
+                        try arguments.append(alloc, try bop.lhs.clone(alloc));
+                        try arguments.append(alloc, try bop.rhs.clone(alloc));
+                        try new_instructions.append(alloc, .{
+                            .function_call = .{
+                                .dst = try bop.dst.clone(alloc),
+                                .callee = .{ .direct = try alloc.dupe(u8, method.function_name) },
+                                .args = try arguments.toOwnedSlice(alloc),
+                            },
+                        });
+
+                        instruction.deinit(alloc);
+                    },
+                    else => try new_instructions.append(alloc, instruction.*),
+                },
                 else => try new_instructions.append(alloc, instruction.*),
             }
         }
