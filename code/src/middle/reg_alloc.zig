@@ -15,10 +15,11 @@ const RegisterClasses = @import("common").register.RegisterClasses;
 
 /// generate the necessary information such that we do register selection eventually
 pub fn build(program: Program, reg_classes: *const RegisterClasses, alloc: std.mem.Allocator) !AllocProgram {
-    var res = AllocProgram{
+    var res: AllocProgram = .{
         .lines = .empty,
         .blocks = .empty,
     };
+    errdefer res.deinit(alloc);
 
     var instruction_index: usize = 0;
     for (program.functions.items, 0..) |function, i| {
@@ -65,6 +66,7 @@ fn appendBlocks(
                 .move = false,
                 .clobber_caller_saved = false,
             };
+            errdefer line.deinit();
             // set move flag and store locals for later use
             switch (instruction) {
                 .function_call => line.clobber_caller_saved = true,
@@ -113,10 +115,11 @@ fn appendBlocks(
             instruction_index.* += 1;
         }
         const end = res.lines.items.len;
-        var successors = ArrayList(u32).empty;
+        var successors: ArrayList(u32) = .empty;
+        errdefer successors.deinit(alloc);
         try successors.appendSlice(alloc, block.successors.items);
 
-        try res.blocks.append(alloc, AllocBlock{
+        try res.blocks.append(alloc, .{
             .id = block.id,
             .start = start,
             .end = end,
