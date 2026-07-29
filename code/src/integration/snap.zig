@@ -5,6 +5,7 @@ const Target = @import("backend").Target;
 pub fn run(
     compiler_path: []const u8,
     file_name: []const u8,
+    snapshot_name: []const u8,
     update: bool,
     target: Target,
     alloc: std.mem.Allocator,
@@ -46,9 +47,13 @@ pub fn run(
     );
     defer alloc.free(snapshot_dir_path);
 
-    const dir = try std.Io.Dir.cwd().openDir(io, snapshot_dir_path, .{ .iterate = true });
+    const dir = try std.Io.Dir.cwd().createDirPathOpen(
+        io,
+        snapshot_dir_path,
+        .{ .open_options = .{ .iterate = true } },
+    );
     defer dir.close(io);
-    const snapshot_file_name = try std.fmt.allocPrint(alloc, "{s}.snapshot", .{std.fs.path.basename(file_name)});
+    const snapshot_file_name = try std.fmt.allocPrint(alloc, "{s}.snapshot", .{snapshot_name});
     defer alloc.free(snapshot_file_name);
 
     // verify
@@ -91,6 +96,15 @@ pub fn run(
         return;
     }
 
+    // snapshot missing
+    dir.access(io, snapshot_file_name, .{}) catch |err| switch (err) {
+        error.FileNotFound => {
+            std.debug.print(" [[SNAPSHOT MISSING]]\n", .{});
+            return error.MissingSnapshot;
+        },
+        else => return err,
+    };
+
     if (code == 1) {
         std.debug.print(" [[NOT EQUAL]]\n", .{});
         std.debug.print("{s}", .{diff.stdout});
@@ -130,11 +144,18 @@ pub fn main(init: std.process.Init) !void {
     defer walker.deinit();
 
     while (try walker.next(io)) |entry| {
-        std.debug.assert(entry.kind == .file);
-
-        const path = try std.fs.path.join(alloc, &.{ "tst/python", entry.path });
-        defer alloc.free(path);
-        run(compiler_path, path, should_regen_snapshot, target, alloc, io) catch {
+        if (entry.kind != .file) continue;
+        const flattened_name = try std.mem.replaceOwned(
+            u8,
+            alloc,
+            entry.path,
+            std.fs.path.sep_str,
+            "__",
+        );
+        defer alloc.free(flattened_name);
+        const file_name = try std.fs.path.join(alloc, &.{ "tst/python", entry.path });
+        defer alloc.free(file_name);
+        run(compiler_path, file_name, flattened_name, should_regen_snapshot, target, alloc, io) catch {
             std.debug.print(" [[ERROR]]\n", .{});
         };
     }
