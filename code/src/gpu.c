@@ -7,6 +7,12 @@
 #include <string.h>
 #include <unistd.h>
 
+typedef struct {
+  uint32_t x;
+  uint32_t y;
+  uint32_t z;
+} LaunchDims;
+
 struct KernelArgs {
   void *out;
   uint64_t n;
@@ -56,7 +62,38 @@ static hsa_status_t find_kernarg_region(hsa_region_t region, void *data) {
   return status;
 }
 
-void gpu_launch(void *out, uint64_t n) {
+void gpu_launch(void *out, const uint64_t *shape, const uint64_t *kernel_name_slots) {
+  // TEMP: hack kernel name pass through having wrong type
+    char symbol_name[256] = {0};
+    size_t i = 0;
+
+    for (; i < sizeof(symbol_name) - 1; ++i) {
+      const uint8_t ch =
+          ((const uint8_t *)kernel_name_slots)[i * sizeof(uint64_t)];
+
+      symbol_name[i] = (char)ch;
+
+      if (ch == '\0')
+        break;
+    }
+  const LaunchDims dims = {
+    .x = (uint32_t)shape[0],
+    .y = (uint32_t)shape[1],
+    .z = (uint32_t)shape[2],
+  };
+
+  uint16_t rank;
+  if (dims.z != 1) {
+    rank = 3;
+  } else if (dims.y != 1) {
+    rank = 2;
+  } else {
+    rank = 1;
+  }
+
+  // TODO: do some validation on launch
+
+  const uint64_t n = dims.x * dims.y * dims.z;
   check(hsa_init(), "hsa_init");
 
   hsa_agent_t gpu = {0};
@@ -90,7 +127,7 @@ void gpu_launch(void *out, uint64_t n) {
   check(hsa_executable_freeze(executable, NULL), "hsa_executable_freeze");
 
   hsa_executable_symbol_t kernel_symbol;
-  check(hsa_executable_get_symbol_by_name(executable, "kernel.kd", &gpu, &kernel_symbol), "hsa_executable_get_symbol_by_name");
+  check(hsa_executable_get_symbol_by_name(executable, symbol_name, &gpu, &kernel_symbol), "hsa_executable_get_symbol_by_name");
 
   uint64_t kernel_object = 0;
   check(hsa_executable_symbol_get_info(kernel_symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_OBJECT, &kernel_object), "hsa_executable_symbol_get_info");
@@ -129,14 +166,14 @@ void gpu_launch(void *out, uint64_t n) {
   uint32_t packet_index = packet_id & (queue->size - 1);
   hsa_kernel_dispatch_packet_t *packet = &((hsa_kernel_dispatch_packet_t*)queue->base_address)[packet_index];
   memset(packet, 0, sizeof(*packet));
-  packet->setup = 1 << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS;
-  packet->workgroup_size_x = n;
-  packet->workgroup_size_y = 1;
-  packet->workgroup_size_z = 1;
+  packet->setup = rank << HSA_KERNEL_DISPATCH_PACKET_SETUP_DIMENSIONS;
+  packet->workgroup_size_x = (uint16_t)dims.x;
+  packet->workgroup_size_y = (uint16_t)dims.y;
+  packet->workgroup_size_z = (uint16_t)dims.z;
 
-  packet->grid_size_x = n;
-  packet->grid_size_y = 1;
-  packet->grid_size_z = 1;
+  packet->grid_size_x = dims.x;
+  packet->grid_size_y = dims.y;
+  packet->grid_size_z = dims.z;
 
   packet->private_segment_size = 0;
   packet->group_segment_size = 0;

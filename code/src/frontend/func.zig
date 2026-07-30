@@ -146,7 +146,6 @@ fn gpuKernelRewrite(
         .function_call = .{
             .dst = null,
             .args = new_args,
-            // .callee = .{ .direct = try alloc.dupe(u8, target_function.name) },
             .callee = .{ .direct = try alloc.dupe(u8, "gpu_launch") },
         },
     });

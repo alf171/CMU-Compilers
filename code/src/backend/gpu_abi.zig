@@ -86,7 +86,7 @@ pub const GpuAbi = struct {
 
     pub fn registerUsage(self: @This(), colors: *const ColoredGraph) !RegisterUsage {
         var usage: RegisterUsage = .{
-            // v0 is work-item id
+            // v0 contains work items (x=bits[0-9],y=bits[10,19],z=bits[20-20])
             .vgpr_next = 1,
             //s[0:1] = kernarg pointer, s[2] work gorup
             .sgpr_next = 4,

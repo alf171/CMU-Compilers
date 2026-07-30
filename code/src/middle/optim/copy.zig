@@ -145,6 +145,9 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
                 arg.*.operand = try resolveOperand(arg.*.operand, copyMap);
             }
         },
+        .global_idx => |*gi| {
+            gi.axis = try resolve(gi.axis, copyMap);
+        },
         else => {},
     }
 }

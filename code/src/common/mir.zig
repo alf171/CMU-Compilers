@@ -86,6 +86,7 @@ pub const Instruction = union(enum) {
         dst: TypedOperand,
         function_name: []const u8,
     },
+    // not used today
     gpu_launch: struct {
         kernel: []const u8,
         args: []TypedOperand,
@@ -141,6 +142,8 @@ pub const Instruction = union(enum) {
     // gpu method
     global_idx: struct {
         dst: TypedOperand,
+        // x=0, y=1, z=2
+        axis: ValueRef,
     },
     // deglate to LIR impl
     lir: LirInstruction,
@@ -347,6 +350,21 @@ pub const Instruction = union(enum) {
                 ll.index.print();
                 debugPrint("]\n", .{});
             },
+            .gpu_launch => |gl| {
+                debugPrint("{s}(", .{gl.kernel});
+                for (gl.args) |arg| {
+                    arg.operand.print();
+                    debugPrint(", ", .{});
+                }
+                gl.work_items.operand.print();
+                debugPrint(")\n", .{});
+            },
+            .global_idx => |gi| {
+                gi.dst.operand.print();
+                debugPrint(" <- global_id(", .{});
+                gi.axis.print();
+                debugPrint(")\n", .{});
+            },
             // delegate to lir
             .lir => |l| try l.printFn(),
             else => |term| {
@@ -412,6 +430,16 @@ pub const Instruction = union(enum) {
                 }
                 for (fc.args) |*arg| {
                     if (arg.operand.equal(old)) arg.operand = new;
+                }
+            },
+            .global_idx => |*gi| {
+                switch (gi.axis) {
+                    .top => |*top| {
+                        if (top.operand.equal(old)) {
+                            top.operand = new;
+                        }
+                    },
+                    else => {},
                 }
             },
             // delegate to lir
@@ -565,7 +593,14 @@ pub const Instruction = union(enum) {
                     try res.append(alloc, .{ .top = top });
                 }
             },
-            .global_idx => {},
+            .global_idx => |gi| {
+                switch (gi.axis) {
+                    .top => |top| {
+                        try res.append(alloc, .{ .top = top });
+                    },
+                    else => {},
+                }
+            },
             .gpu_launch => |gl| {
                 // no need to append arg.work_items since its contained in args already
                 for (gl.args) |arg| {

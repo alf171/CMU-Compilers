@@ -43,8 +43,21 @@ pub fn emit(
                         .global_idx => |gi| {
                             const dst = try abi.regFor(gi.dst.operand, colors);
                             if (dst.class != .vgpr) return error.InvalidGpuRegisterClass;
-                            try out.print(alloc, "\tv_mov_b32_e32 v{d}, v0\n", .{dst.base});
-                            try out.print(alloc, "\tv_mov_b32_e32 v{d}, 0\n", .{dst.base + 1});
+                            switch (gi.axis) {
+                                .constant => |c| {
+                                    const axis = try c.valueAsIntImm();
+                                    const bit_offset: u8 = @intCast(axis * 10);
+                                    // bit field extract work item asked for
+                                    // x=0 (bits 0-9), y=1 (bits 10-19), z=2 (bits 20-29)
+                                    try out.print(alloc, "\tv_bfe_u32 v{d}, v0, {d}, {d}\n", .{ dst.base, bit_offset, 10 });
+                                    // TODO: remove once global_id returns i32
+                                    try out.print(alloc, "\tv_mov_b32_e32 v{d}, 0\n", .{dst.base + 1});
+                                },
+                                else => |e| {
+                                    std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                    return error.NotImpl;
+                                },
+                            }
                         },
                         .lir => |lir| switch (lir) {
                             .move => |m| {
@@ -158,8 +171,9 @@ fn emitKernelDescriptor(
     try out.print(alloc, "\t.amdhsa_kernarg_size {d}\n", .{16});
     try out.appendSlice(alloc, "\t.amdhsa_user_sgpr_kernarg_segment_ptr 1\n");
     try out.appendSlice(alloc, "\t.amdhsa_system_sgpr_workgroup_id_x 1\n");
-    // we are placing global_idx in v0
-    try out.appendSlice(alloc, "\t.amdhsa_system_vgpr_workitem_id 0\n");
+    // we are placing global_idx in v0, v1, v2
+    // FIXME: we should avoid hardcoding here
+    try out.appendSlice(alloc, "\t.amdhsa_system_vgpr_workitem_id 2\n");
     try out.print(alloc, "\t.amdhsa_next_free_vgpr {d}\n", .{register_usage.vgpr_next});
     try out.print(alloc, "\t.amdhsa_next_free_sgpr {d}\n", .{register_usage.sgpr_next});
     try out.appendSlice(alloc, "\t.amdhsa_wavefront_size32 1\n");

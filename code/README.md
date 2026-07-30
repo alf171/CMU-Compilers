@@ -56,6 +56,8 @@ _P: list[list[i32]]
 _P[m]: list[i32]
 _P[m][k]: i32
 ```
+- [ ] support multiple GPU work-groups per dispatch
+  - max workgroup: total=1024 dimensions=(1024, 1024, 1024)
 
 ### Assembler/Linker
 - [ ] remove clang on linux/x86

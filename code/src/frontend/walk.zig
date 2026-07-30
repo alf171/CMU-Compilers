@@ -425,10 +425,25 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                 } } }, alloc);
                 return TypedOperand{ .operand = dst, .type = .bool };
             } else if (std.mem.eql(u8, value_type, "str")) {
-                const raw = c.PyUnicode_AsUTF8(value_obj);
+                var raw_len: isize = 0;
+                const raw = c.PyUnicode_AsUTF8AndSize(value_obj, &raw_len);
                 std.debug.assert(raw != null);
-                const bytes = std.mem.span(raw);
+                const bytes = raw[0..@intCast(raw_len)];
                 const dst = irBuilder.nextTemp();
+
+                if (expectedType) |t| {
+                    if (t == .char) {
+                        std.debug.assert(bytes.len == 1);
+                        try irBuilder.emit(.{ .lir = .{
+                            .move = .{
+                                .dst = .{ .operand = dst, .type = .char },
+                                .src = .{ .constant = .{ .char = bytes[0] } },
+                            },
+                        } }, alloc);
+                        return .{ .operand = dst, .type = .char };
+                    }
+                }
+
                 var elements: ArrayList(ValueRef) = .empty;
                 // var element_types: ArrayList(TypeInfo) = .empty;
                 for (bytes) |char| {
@@ -522,12 +537,26 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             const elts_obj = c.PyObject_GetAttrString(stmt, "elts");
             std.debug.assert(elts_obj != null);
             const len: usize = @intCast(c.PyList_Size(elts_obj));
+            const expected_elements = if (expectedType) |t|
+                switch (t) {
+                    .tuple => |tup| blk: {
+                        if (tup.elements.len != len) return error.MismatchingTypes;
+                        break :blk tup.elements;
+                    },
+                    else => null,
+                }
+            else
+                null;
             var elements = try alloc.alloc(ValueRef, len);
             var element_types = try alloc.alloc(TypeInfo, len);
             for (0..len) |i| {
                 const elem_obj = c.PyList_GetItem(elts_obj, @intCast(i));
                 std.debug.assert(elem_obj != null);
-                const elem_op = try walkExpr(elem_obj, irBuilder, null, alloc);
+                const expected_elem_type: ?TypeInfo = if (expected_elements) |elem|
+                    elem[i]
+                else
+                    null;
+                const elem_op = try walkExpr(elem_obj, irBuilder, expected_elem_type, alloc);
                 elements[i] = ValueRef{
                     .top = elem_op,
                 };
@@ -916,6 +945,10 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
                 return dst;
             },
             .GlobalIdx => {
+                std.debug.assert(c.PyList_Size(args) == 1);
+                const arg_obj = c.PyList_GetItem(args, 0);
+                const arg = try walkExpr(arg_obj, irBuilder, null, alloc);
+
                 const dst: TypedOperand = .{
                     .operand = irBuilder.nextTemp(),
                     .type = .i64,
@@ -923,6 +956,7 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
 
                 try irBuilder.emit(.{ .global_idx = .{
                     .dst = dst,
+                    .axis = .{ .top = arg },
                 } }, alloc);
 
                 return dst;
@@ -1622,6 +1656,8 @@ fn parseTypeAnnotation(
             return .bool;
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "float")) {
             return .float;
+        } else if (std.mem.eql(u8, std.mem.span(annotation_id), "char")) {
+            return .char;
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "str")) {
             return .{ .list = .{ .element = try ownedPointer(.char, alloc), .size = null } };
         }

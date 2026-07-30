@@ -10,7 +10,7 @@ const sgpr_allocatable_regs = [_]u16{
     14,
     16,
 };
-// v0 is work_items
+// v0 contains workgroup info
 const vgpr_allocatable_regs = [_]u16{
     1,
     3,
