@@ -420,10 +420,6 @@ fn emitFunction(
                         },
                     }
                 },
-                .gpu_launch => |gl| {
-                    try out.print(alloc, "\t# gpu launch: {s}\n", .{gl.kernel});
-                    try out.print(alloc, "\tcallq gpu_launch\n", .{});
-                },
                 else => |ir| {
                     std.debug.panic("ir instruction doesnt have a mapping in x86 backend: {s}\n", .{@tagName(ir)});
                     return error.NotSupported;

@@ -63,19 +63,21 @@ static hsa_status_t find_kernarg_region(hsa_region_t region, void *data) {
 }
 
 void gpu_launch(void *out, const uint64_t *shape, const uint64_t *kernel_name_slots) {
-  // TEMP: hack kernel name pass through having wrong type
-    char symbol_name[256] = {0};
-    size_t i = 0;
+  // TEMP: hack since tuples dont map 1 to 1 with strings (namely always 8 bytes)
+  char symbol_name[256] = {0};
+  size_t i = 0;
 
-    for (; i < sizeof(symbol_name) - 1; ++i) {
-      const uint8_t ch =
-          ((const uint8_t *)kernel_name_slots)[i * sizeof(uint64_t)];
+  for (; i < sizeof(symbol_name) - 1; ++i) {
+    const uint8_t ch = ((const uint8_t *)kernel_name_slots)[i * sizeof(uint64_t)];
 
-      symbol_name[i] = (char)ch;
+    symbol_name[i] = (char)ch;
 
-      if (ch == '\0')
-        break;
-    }
+    if (ch == '\0')
+      break;
+  }
+  static const char suffix[] = ".kd";
+  memcpy(symbol_name + i, suffix, sizeof(suffix));
+  fprintf(stderr, "Looking up kernel symbol: '%s'\n", symbol_name);
   const LaunchDims dims = {
     .x = (uint32_t)shape[0],
     .y = (uint32_t)shape[1],

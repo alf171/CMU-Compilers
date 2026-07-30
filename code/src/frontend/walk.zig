@@ -1006,6 +1006,17 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
     }
 
     if (irBuilder.findFunction(std.mem.span(name))) |function| {
+        if (function.kind == .gpu_kernel) {
+            const gpu_args = try arguments.toOwnedSlice(alloc);
+            try irBuilder.emit(.{
+                .gpu_launch = .{
+                    .kernel = try alloc.dupe(u8, name_slice),
+                    .args = gpu_args,
+                    .work_items = try gpu_args[gpu_args.len - 1].clone(alloc),
+                },
+            }, alloc);
+            return TypedOperand{ .operand = .unknown, .type = .void };
+        }
         const maybe_dst: ?TypedOperand = if (function.return_type == .void)
             null
         else

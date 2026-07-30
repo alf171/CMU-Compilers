@@ -1,6 +1,6 @@
 
 @gpu
-def fill(out: list[i32], shape: tuple[int, int, int], kernel_name: tuple[char, char, char, char, char, char, char, char]) -> None:
+def fill(out: list[i32], shape: tuple[int, int, int]) -> None:
     row = global_id(0)
     col = global_id(1)
     out[row * 5 + col] = 42
@@ -8,10 +8,8 @@ def fill(out: list[i32], shape: tuple[int, int, int], kernel_name: tuple[char, c
 
 # out: list[list[int]] = [[0] * 5] * 5
 out: list[i32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-kernel_name: tuple[char, char, char, char, char, char, char, char] = (
-  'f', 'i', 'l', 'l', '.', 'k', 'd', '\0'
-)
-fill(out, (5, 5, 1), kernel_name)
+
+fill(out, (5, 5, 1))
 print(out[12])
 print(out[24])
 # for i in range(25):

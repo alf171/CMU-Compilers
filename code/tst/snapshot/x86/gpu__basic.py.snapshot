@@ -1,18 +1,18 @@
 running program: (OPTIM=true)
 
 @gpu
-def kernel(out: list[int], n: int) -> None:
-    out[global_id()] = 42
+def kernel(out: list[int], shape: tuple[int, int, int]) -> None:
+    out[global_id(0)] = 42
     return
 
 out: list[int] = [0, 0, 0, 0, 0]
 
-kernel(out, len(out))
+kernel(out, (len(out), 1, 1))
 print(out)
 
 performance report: (ORIGIN=user)
-number of asm lines: 68
-mov count: 35
+number of asm lines: 92
+mov count: 55
 memory load count: 0
 memory store count: 0
 branch count: 2

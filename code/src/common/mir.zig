@@ -86,12 +86,6 @@ pub const Instruction = union(enum) {
         dst: TypedOperand,
         function_name: []const u8,
     },
-    // not used today
-    gpu_launch: struct {
-        kernel: []const u8,
-        args: []TypedOperand,
-        work_items: TypedOperand,
-    },
     // heap based variable size
     list_literal: struct {
         dst: TypedOperand,
@@ -139,7 +133,13 @@ pub const Instruction = union(enum) {
         instance: TypedOperand,
         offset: usize,
     },
-    // gpu method
+    /// gpu method
+    gpu_launch: struct {
+        kernel: []const u8,
+        args: []TypedOperand,
+        work_items: TypedOperand,
+    },
+    /// gpu method
     global_idx: struct {
         dst: TypedOperand,
         // x=0, y=1, z=2
@@ -204,7 +204,11 @@ pub const Instruction = union(enum) {
             },
             .gpu_launch => |gl| {
                 alloc.free(gl.kernel);
+                for (gl.args) |arg| {
+                    arg.type.deinit(alloc);
+                }
                 alloc.free(gl.args);
+                gl.work_items.type.deinit(alloc);
             },
             .class_init => |ci| {
                 for (ci.args) |arg| {
