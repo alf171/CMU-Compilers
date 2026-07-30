@@ -286,9 +286,8 @@ pub const Function = struct {
         // function metadata
         self.return_type.deinit(alloc);
         alloc.free(self.name);
-        for (self.params) |param| {
-            alloc.free(param.name);
-            param.type.deinit(alloc);
+        for (self.params) |*param| {
+            param.deinit(alloc);
         }
         alloc.free(self.params);
     }

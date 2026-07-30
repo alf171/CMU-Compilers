@@ -1416,6 +1416,12 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
 
     // function params
     var params: ArrayList(Param) = .empty;
+    errdefer {
+        for (params.items) |*param| {
+            param.deinit(alloc);
+        }
+        params.deinit(alloc);
+    }
     for (0..@intCast(c.PyList_Size(args_list))) |i| {
         const arg_obj = c.PyList_GetItem(args_list, @intCast(i));
         std.debug.assert(arg_obj != null);

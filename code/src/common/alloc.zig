@@ -207,6 +207,11 @@ pub const Param = struct {
     name: []const u8,
     type: TypeInfo,
     default: ?ConstValue = null,
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        alloc.free(self.name);
+        self.type.deinit(alloc);
+    }
 };
 
 pub const TypedOperand = struct {
