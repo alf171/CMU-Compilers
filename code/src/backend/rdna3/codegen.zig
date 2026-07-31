@@ -104,13 +104,26 @@ pub fn emit(
                                 const src = try abi.regFor(so.src.operand, colors);
                                 if (base.class != .sgpr or offset.class != .vgpr or src.class != .vgpr) return error.InvalidGpuRegisterClass;
                                 // *(base + offset) = src
-                                try out.print(alloc, "\tglobal_store_b64 v{d}, v[{d}:{d}], s[{d}:{d}]\n", .{
-                                    offset.base,
-                                    src.base,
-                                    src.base + 1,
-                                    base.base,
-                                    base.base + 1,
-                                });
+                                switch (so.src.type) {
+                                    .i64 => {
+                                        try out.print(alloc, "\tglobal_store_b64 v{d}, v[{d}:{d}], s[{d}:{d}]\n", .{
+                                            offset.base,
+                                            src.base,
+                                            src.base + 1,
+                                            base.base,
+                                            base.base + 1,
+                                        });
+                                    },
+                                    .i32 => {
+                                        try out.print(alloc, "\tglobal_store_b32 v{d}, v{d}, s[{d}:{d}]\n", .{
+                                            offset.base,
+                                            src.base,
+                                            base.base,
+                                            base.base + 1,
+                                        });
+                                    },
+                                    else => return error.NotImpl,
+                                }
                             },
                             else => |e| {
                                 std.debug.print("cant handle {s}\n", .{@tagName(e)});
@@ -171,7 +184,6 @@ fn emitKernelDescriptor(
     try out.print(alloc, "\t.amdhsa_kernarg_size {d}\n", .{16});
     try out.appendSlice(alloc, "\t.amdhsa_user_sgpr_kernarg_segment_ptr 1\n");
     try out.appendSlice(alloc, "\t.amdhsa_system_sgpr_workgroup_id_x 1\n");
-    // we are placing global_idx in v0, v1, v2
     // FIXME: we should avoid hardcoding here
     try out.appendSlice(alloc, "\t.amdhsa_system_vgpr_workitem_id 2\n");
     try out.print(alloc, "\t.amdhsa_next_free_vgpr {d}\n", .{register_usage.vgpr_next});

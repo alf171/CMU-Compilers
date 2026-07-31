@@ -193,15 +193,18 @@ fn rewriteListStore(
         .rhs = eight,
     } } });
 
-    const src = switch (ls.src) {
-        .top => |top| top,
+    const src: TypedOperand = switch (ls.src) {
+        .top => |top| .{
+            .operand = top.operand,
+            .type = try elem_type.clone(alloc),
+        },
         .constant => |c| blk: {
             const tmp = function.nextTemp();
             try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                 .dst = .{ .operand = tmp, .type = c.toType() },
                 .src = .{ .constant = c },
             } } });
-            break :blk TypedOperand{ .operand = tmp, .type = elem_type };
+            break :blk .{ .operand = tmp, .type = elem_type };
         },
     };
 
