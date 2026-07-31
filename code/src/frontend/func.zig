@@ -68,12 +68,26 @@ fn rewriteFunction(
 
                         const default_arg: TypedOperand = .{
                             .operand = function.nextTemp(),
-                            .type = default.toType(),
+                            .type = try default.toType().clone(alloc),
                         };
-                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                            .dst = default_arg,
-                            .src = .{ .constant = default },
-                        } } });
+
+                        switch (default) {
+                            .immediate => |value| {
+                                try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                                    .dst = try default_arg.clone(alloc),
+                                    .src = .{ .constant = value },
+                                } } });
+                            },
+                            .composite => |comp| {
+                                const elements = try alloc.dupe(ValueRef, comp.elements);
+                                errdefer alloc.free(elements);
+
+                                try new_instructions.append(alloc, .{ .list_literal = .{
+                                    .dst = try default_arg.clone(alloc),
+                                    .elements = elements,
+                                } });
+                            },
+                        }
                         new_args[i] = default_arg;
                     }
 

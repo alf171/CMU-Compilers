@@ -3,6 +3,7 @@ const std = @import("std");
 const PhysicalReg = @import("ir.zig").PhysicalReg;
 const BlockId = @import("ir.zig").BlockId;
 const ConstValue = @import("ir.zig").ConstValue;
+const ParsedConstant = @import("ir.zig").ParsedConstant;
 const TempId = @import("ir.zig").TempId;
 const MemoryId = @import("ir.zig").MemoryId;
 const TypeInfo = @import("types.zig").TypeInfo;
@@ -11,7 +12,6 @@ const RegisterType = @import("types.zig").RegisterType;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const HashMap = std.AutoHashMap;
-const Writer = std.io.Writer;
 
 pub const RegisterOperands = struct {
     ops: HashMap(Operand, RegisterType),
@@ -206,11 +206,14 @@ pub const Operand = union(enum) {
 pub const Param = struct {
     name: []const u8,
     type: TypeInfo,
-    default: ?ConstValue = null,
+    default: ?ParsedConstant = null,
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         alloc.free(self.name);
         self.type.deinit(alloc);
+        if (self.default) |*def| {
+            def.deinit(alloc);
+        }
     }
 };
 

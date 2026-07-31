@@ -55,6 +55,7 @@ pub const FunctionCallInst = struct {
 pub const Instruction = union(enum) {
     print: struct {
         src: TypedOperand,
+        end: ?TypedOperand,
     },
     len: struct {
         dst: TypedOperand,

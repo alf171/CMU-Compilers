@@ -10,7 +10,6 @@ def fill(out: list[i32], shape: tuple[int, int, int]) -> None:
 out: list[i32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 fill(out, (5, 5, 1))
-print(out[12])
-print(out[24])
-# for i in range(25):
-#     print(out[i], end="")
+for i in range(25):
+    print(out[i], end=" ")
+print("\n", end="")

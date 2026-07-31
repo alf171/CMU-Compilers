@@ -5,6 +5,7 @@ const c = @import("python.zig").c;
 const Function = @import("common").ir.Function;
 const FunctionKind = @import("common").ir.FunctionKind;
 const ConstValue = @import("common").ir.ConstValue;
+const ParsedConstant = @import("common").ir.ParsedConstant;
 const BasicBlock = @import("common").ir.BasicBlock;
 const types = @import("common").types;
 const getElementType = @import("common").types.getElementType;
@@ -399,82 +400,31 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
         .Constant => {
             const value_obj = c.PyObject_GetAttrString(stmt, "value");
             std.debug.assert(value_obj != null);
-            const value_type = getPyType(value_obj);
-            if (std.mem.eql(u8, value_type, "int")) {
-                const value = ConstValue{ .i64 = c.PyLong_AsLong(value_obj) };
-                const dst = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .lir = .{ .move = .{
-                    .dst = .{ .operand = dst, .type = .i64 },
-                    .src = .{ .constant = value },
-                } } }, alloc);
-                return TypedOperand{ .operand = dst, .type = .i64 };
-            } else if (std.mem.eql(u8, value_type, "float")) {
-                const value: ConstValue = .{ .float = c.PyFloat_AsDouble(value_obj) };
-                const dst = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .lir = .{ .move = .{
-                    .dst = .{ .operand = dst, .type = .float },
-                    .src = .{ .constant = value },
-                } } }, alloc);
-                return TypedOperand{ .operand = dst, .type = .float };
-            } else if (std.mem.eql(u8, value_type, "bool")) {
-                const value: ConstValue = .{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
-                const dst = irBuilder.nextTemp();
-                try irBuilder.emit(Instruction{ .lir = .{ .move = .{
-                    .dst = .{ .operand = dst, .type = .bool },
-                    .src = .{ .constant = value },
-                } } }, alloc);
-                return TypedOperand{ .operand = dst, .type = .bool };
-            } else if (std.mem.eql(u8, value_type, "str")) {
-                var raw_len: isize = 0;
-                const raw = c.PyUnicode_AsUTF8AndSize(value_obj, &raw_len);
-                std.debug.assert(raw != null);
-                const bytes = raw[0..@intCast(raw_len)];
-                const dst = irBuilder.nextTemp();
-
-                if (expectedType) |t| {
-                    if (t == .char) {
-                        std.debug.assert(bytes.len == 1);
-                        try irBuilder.emit(.{ .lir = .{
-                            .move = .{
-                                .dst = .{ .operand = dst, .type = .char },
-                                .src = .{ .constant = .{ .char = bytes[0] } },
-                            },
-                        } }, alloc);
-                        return .{ .operand = dst, .type = .char };
-                    }
-                }
-
-                var elements: ArrayList(ValueRef) = .empty;
-                // var element_types: ArrayList(TypeInfo) = .empty;
-                for (bytes) |char| {
-                    try elements.append(alloc, .{ .constant = .{
-                        .char = char,
-                    } });
-                    // try element_types.append(alloc, .char);
-                }
-                // null terminator
-                try elements.append(alloc, .{ .constant = .{
-                    .char = 0,
-                } });
-                // try element_types.append(alloc, .char);
-
-                const _type = TypeInfo{
-                    .list = .{
-                        // .elements = try element_types.toOwnedSlice(alloc),
-                        .element = try ownedPointer(.char, alloc),
-                        .size = elements.items.len,
-                    },
-                };
-
-                const typed_dst = TypedOperand{ .operand = dst, .type = _type };
-                // TODO: migrate to tuple once tuple[type] is passed through stack more gracefully
-                try irBuilder.emit(Instruction{ .list_literal = .{
-                    .dst = typed_dst,
-                    .elements = try elements.toOwnedSlice(alloc),
-                } }, alloc);
-                return typed_dst;
+            const parsed_constant = try parseConstant(value_obj, expectedType, alloc);
+            switch (parsed_constant) {
+                .immediate => |imm| {
+                    const dst: TypedOperand = .{
+                        .operand = irBuilder.nextTemp(),
+                        .type = imm.toType(),
+                    };
+                    try irBuilder.emit(.{ .lir = .{ .move = .{
+                        .dst = dst,
+                        .src = .{ .constant = imm },
+                    } } }, alloc);
+                    return dst;
+                },
+                .composite => |comp| {
+                    const dst: TypedOperand = .{
+                        .operand = irBuilder.nextTemp(),
+                        .type = comp.type,
+                    };
+                    try irBuilder.emit(.{ .list_literal = .{
+                        .dst = dst,
+                        .elements = comp.elements,
+                    } }, alloc);
+                    return dst;
+                },
             }
-            return error.TypeNotImpl;
         },
         // List(elts=[Constant(value=1), Constant(value=2), Constant(value=3)], ctx=Load())
         .List => {
@@ -795,8 +745,28 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
                 std.debug.assert(arg0 != null);
                 const src = try walkExpr(arg0, irBuilder, null, alloc);
 
+                const keywords = c.PyObject_GetAttrString(stmt, "keywords");
+                std.debug.assert(keywords != null);
+                var end: ?TypedOperand = null;
+                const keyword_length = c.PyList_Size(keywords);
+                std.debug.assert(keyword_length == 0 or keyword_length == 1);
+                if (keyword_length == 1) {
+                    const end_obj = c.PyList_GetItem(keywords, 0);
+                    std.debug.assert(end_obj != null);
+                    const arg_obj = c.PyObject_GetAttrString(end_obj, "arg");
+                    std.debug.assert(arg_obj != null);
+                    const label = c.PyUnicode_AsUTF8(arg_obj);
+                    if (!std.mem.eql(u8, std.mem.span(label), "end")) {
+                        return error.ExpectedEnd;
+                    }
+                    const end_value_obj = c.PyObject_GetAttrString(end_obj, "value");
+                    std.debug.assert(end_value_obj != null);
+                    end = try walkExpr(end_value_obj, irBuilder, null, alloc);
+                }
+
                 try irBuilder.emit(Instruction{ .print = .{
                     .src = src,
+                    .end = end,
                 } }, alloc);
                 return src;
             },
@@ -1462,19 +1432,12 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     for (0..default_len) |i| {
         const default_obj = c.PyList_GetItem(default_objs, @intCast(i));
         std.debug.assert(default_obj != null);
-        // list aren't consts today...
-        if (getExprKind(default_obj) != .Constant)
-            return error.InvalidDefault;
-        // TODO: share parseConstant with walkExpr
         const value_obj = c.PyObject_GetAttrString(default_obj, "value");
         std.debug.assert(value_obj != null);
-        // HACK: assume bool type or fast fail
-        if (!std.mem.eql(u8, getPyType(value_obj), "bool")) {
-            return error.UnsupportedDefaultType;
-        }
 
         const param_index = params.items.len - default_len + i;
-        params.items[param_index].default = .{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
+        const param = &params.items[param_index];
+        params.items[param_index].default = try parseConstant(value_obj, param.type, alloc);
     }
 
     // return type
@@ -1546,6 +1509,64 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     irBuilder.current_function = saved_current_function;
     irBuilder.current_block = saved_current_block;
     try irBuilder.restoreLocalValues(&saved_local_values);
+}
+
+pub fn parseConstant(
+    value_obj: *PyObject,
+    expectedType: ?TypeInfo,
+    alloc: std.mem.Allocator,
+) !ParsedConstant {
+    const value_type = getPyType(value_obj);
+    if (std.mem.eql(u8, value_type, "int")) {
+        const value: ConstValue = .{ .i64 = c.PyLong_AsLong(value_obj) };
+        return .{ .immediate = value };
+    } else if (std.mem.eql(u8, value_type, "float")) {
+        const value: ConstValue = .{ .float = c.PyFloat_AsDouble(value_obj) };
+        return .{ .immediate = value };
+    } else if (std.mem.eql(u8, value_type, "bool")) {
+        const value: ConstValue = .{ .bool = c.PyObject_IsTrue(value_obj) == 1 };
+        return .{ .immediate = value };
+    } else if (std.mem.eql(u8, value_type, "str")) {
+        var raw_len: isize = 0;
+        const raw = c.PyUnicode_AsUTF8AndSize(value_obj, &raw_len);
+        std.debug.assert(raw != null);
+        const bytes = raw[0..@intCast(raw_len)];
+
+        if (expectedType) |t| {
+            if (t == .char) {
+                std.debug.assert(bytes.len == 1);
+                return .{ .immediate = .{ .char = bytes[0] } };
+            }
+        }
+
+        var elements: ArrayList(ValueRef) = .empty;
+        // var element_types: ArrayList(TypeInfo) = .empty;
+        for (bytes) |char| {
+            try elements.append(alloc, .{ .constant = .{
+                .char = char,
+            } });
+            // try element_types.append(alloc, .char);
+        }
+        // null terminator
+        try elements.append(alloc, .{ .constant = .{
+            .char = 0,
+        } });
+        // try element_types.append(alloc, .char);
+
+        const _type = TypeInfo{
+            .list = .{
+                // .elements = try element_types.toOwnedSlice(alloc),
+                .element = try ownedPointer(.char, alloc),
+                .size = elements.items.len,
+            },
+        };
+
+        return .{ .composite = .{
+            .elements = try elements.toOwnedSlice(alloc),
+            .type = _type,
+        } };
+    }
+    return error.TypeNotImpl;
 }
 
 // Return(value=BinOp(left=Name(id='x', ctx=Load()), op=Add(), right=Name(id='y', ctx=Load())))

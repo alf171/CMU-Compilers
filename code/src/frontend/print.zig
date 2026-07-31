@@ -24,9 +24,17 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
                 .print => |p| {
-                    const args = try alloc.alloc(TypedOperand, 1);
+                    const args = if (p.end != null)
+                        try alloc.alloc(TypedOperand, 2)
+                    else
+                        try alloc.alloc(TypedOperand, 1);
+
                     errdefer alloc.free(args);
                     args[0] = try p.src.clone(alloc);
+                    if (p.end) |end| {
+                        args[1] = try end.clone(alloc);
+                    }
+                    // TODO: create better dispatching logic
                     switch (p.src.type) {
                         .list => |l| {
                             if (l.element.* == .char) {

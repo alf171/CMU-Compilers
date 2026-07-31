@@ -7,6 +7,31 @@ const Param = @import("alloc.zig").Param;
 const Operand = @import("alloc.zig").Operand;
 const RegisterType = @import("register.zig").RegisterType;
 
+pub const ParsedConstant = union(enum) {
+    immediate: ConstValue,
+    composite: struct {
+        elements: []ValueRef,
+        type: TypeInfo,
+    },
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        switch (self.*) {
+            .immediate => return,
+            .composite => |comp| {
+                alloc.free(comp.elements);
+                comp.type.deinit(alloc);
+            },
+        }
+    }
+
+    pub fn toType(self: @This()) TypeInfo {
+        switch (self) {
+            .immediate => |imm| return imm.toType(),
+            .composite => |comp| return comp.type,
+        }
+    }
+};
+
 pub const SeenValue = union(enum) {
     top: TypedOperand,
     local: LocalId,
