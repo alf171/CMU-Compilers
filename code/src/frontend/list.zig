@@ -204,13 +204,16 @@ fn rewriteListStore(
                 .dst = .{ .operand = tmp, .type = c.toType() },
                 .src = .{ .constant = c },
             } } });
-            break :blk .{ .operand = tmp, .type = elem_type };
+            break :blk .{
+                .operand = tmp,
+                .type = try elem_type.clone(alloc),
+            };
         },
     };
 
     try new_instructions.append(alloc, .{ .lir = .{ .store_offset = .{
         .dst = try ls.list.clone(alloc),
         .offset = .{ .top = try offset.clone(alloc) },
-        .src = try src.clone(alloc),
+        .src = src,
     } } });
 }

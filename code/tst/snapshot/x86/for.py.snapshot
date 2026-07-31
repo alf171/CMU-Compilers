@@ -9,23 +9,23 @@ for m in range(i):
 print(sum)
 
 performance report: (ORIGIN=user)
-number of asm lines: 67
-mov count: 18
+number of asm lines: 84
+mov count: 32
 memory load count: 0
 memory store count: 0
 branch count: 10
-call count: 2
+call count: 3
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 589
-mov count: 298
+number of asm lines: 637
+mov count: 327
 memory load count: 0
 memory store count: 0
-branch count: 44
-call count: 28
-spill count: 3
+branch count: 48
+call count: 31
+spill count: 10
 
 actual output:
 18
-[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10
+[!!memory report!!]: allocs=2 frees=2 allocated_bytes=19 freed_bytes=19

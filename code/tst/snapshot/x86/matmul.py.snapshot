@@ -28,22 +28,22 @@ matmul(
 )
 
 performance report: (ORIGIN=user)
-number of asm lines: 976
-mov count: 650
+number of asm lines: 1059
+mov count: 718
 memory load count: 0
 memory store count: 0
 branch count: 17
-call count: 25
-spill count: 8
+call count: 30
+spill count: 9
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 592
-mov count: 302
+number of asm lines: 635
+mov count: 326
 memory load count: 0
 memory store count: 0
-branch count: 44
-call count: 28
-spill count: 3
+branch count: 48
+call count: 31
+spill count: 9
 
 actual output:
 215
@@ -51,4 +51,4 @@ actual output:
 895
 1310
 1775
-[!!memory report!!]: allocs=23 frees=23 allocated_bytes=614 freed_bytes=614
+[!!memory report!!]: allocs=28 frees=28 allocated_bytes=659 freed_bytes=659

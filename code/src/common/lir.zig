@@ -236,7 +236,6 @@ pub const Instruction = union(enum) {
                 }
             },
             .cast => |*c| {
-                if (c.dst.operand.equal(old)) c.dst.operand = new;
                 if (c.src.operand.equal(old)) c.src.operand = new;
             },
             .unaryop => |*uop| {
@@ -268,6 +267,9 @@ pub const Instruction = union(enum) {
             },
             .unaryop => |*uop| {
                 if (uop.dst.operand.equal(old)) uop.dst.operand = new;
+            },
+            .cast => |*c| {
+                if (c.dst.operand.equal(old)) c.dst.operand = new;
             },
             else => |e| {
                 debugPrint("defines cant handle {s}\n", .{@tagName(e)});

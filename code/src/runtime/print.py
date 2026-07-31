@@ -32,7 +32,7 @@ def print_string(s: str, end: str = "\n") -> None:
         write(1, end, 1)
 
 # print(l: list[int]) delegates to this method
-def print_int_list(l: list[int]) -> None:
+def print_int_list(l: list[int], end: str = "\n") -> None:
     print_string('[', "")
     for i in range(len(l)):
         d = l[i]
@@ -40,10 +40,10 @@ def print_int_list(l: list[int]) -> None:
         # dont print in last case
         if i != len(l) - 1:
             print_string(', ', "")
-    print_string(']', "\n")
+    print_string(']', end)
 
 # print(f: float) delegates to this method
-def print_float(f: float) -> None:
+def print_float(f: float, end: str = "\n") -> None:
     if (f < 0.0):
         write(1, '-', 1)
         f = -f
@@ -60,4 +60,5 @@ def print_float(f: float) -> None:
         _print_int_helper(whole)
         frac = frac - float(whole)
 
-    write(1, '\n', 1)
+    if (end != ""):
+        write(1, end, 1)

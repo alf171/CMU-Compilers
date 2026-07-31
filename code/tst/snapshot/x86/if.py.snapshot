@@ -19,24 +19,24 @@ def f() -> None:
 f()
 
 performance report: (ORIGIN=user)
-number of asm lines: 71
-mov count: 16
+number of asm lines: 101
+mov count: 40
 memory load count: 0
 memory store count: 0
 branch count: 9
-call count: 4
+call count: 6
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 588
-mov count: 298
+number of asm lines: 636
+mov count: 327
 memory load count: 0
 memory store count: 0
-branch count: 44
-call count: 28
-spill count: 3
+branch count: 48
+call count: 31
+spill count: 10
 
 actual output:
 2
 1
-[!!memory report!!]: allocs=2 frees=2 allocated_bytes=20 freed_bytes=20
+[!!memory report!!]: allocs=4 frees=4 allocated_bytes=38 freed_bytes=38
