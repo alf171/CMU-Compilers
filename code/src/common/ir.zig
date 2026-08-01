@@ -242,6 +242,14 @@ pub const BasicBlock = struct {
             .successors = .empty,
         };
     }
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        for (self.instructions.items) |*instruction| {
+            instruction.deinit(alloc);
+        }
+        self.instructions.deinit(alloc);
+        self.successors.deinit(alloc);
+    }
 };
 
 pub const Function = struct {
@@ -301,11 +309,7 @@ pub const Function = struct {
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         for (self.blocks.items) |*block| {
-            for (block.instructions.items) |*instruction| {
-                instruction.deinit(alloc);
-            }
-            block.instructions.deinit(alloc);
-            block.successors.deinit(alloc);
+            block.deinit(alloc);
         }
         self.blocks.deinit(alloc);
         // function metadata
