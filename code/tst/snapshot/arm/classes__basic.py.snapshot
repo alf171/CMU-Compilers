@@ -1,0 +1,44 @@
+running program: (OPTIM=true)
+
+# simple class example
+class Car:
+    def __init__(self: "Car", name: str, speed: int) -> None:
+        self.name = name 
+        self.speed = speed
+
+    def print_speed(self) -> None:
+        # print(f"we are driving a {self.name} at {self.speed} mph")
+        print(self.speed)
+
+    def __add__(self: "Car", other: "Car") -> int:
+        return self.speed + other.speed
+
+audi = Car("audi", 30)
+vw = Car("vw", 20)
+audi.print_speed()
+vw.print_speed()
+print(vw + audi)
+
+performance report: (ORIGIN=user)
+number of asm lines: 187
+mov count: 81
+memory load count: 3
+memory store count: 18
+branch count: 9
+call count: 14
+spill count: 0
+
+performance report: (ORIGIN=runtime)
+number of asm lines: 525
+mov count: 224
+memory load count: 4
+memory store count: 47
+branch count: 39
+call count: 31
+spill count: 0
+
+actual output:
+30
+20
+50
+[!!memory report!!]: allocs=10 frees=10 allocated_bytes=113 freed_bytes=113

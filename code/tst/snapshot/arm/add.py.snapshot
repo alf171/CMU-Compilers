@@ -1,25 +1,18 @@
 running program: (OPTIM=true)
 
-a = 5
-x = 0
-
-if a < 10: #or False:
-    x = 1
-    y = 100
-    z = 200
-    print(y + z)
-else:
-    x = 2
-
-print(x)
+# literally same as elem.py but doesn't depend on runtime/*
+# used for testing linking atm
+x: int = 2
+y: int = 3
+z: int = x + y
 
 performance report: (ORIGIN=user)
-number of asm lines: 67
-mov count: 30
+number of asm lines: 17
+mov count: 2
 memory load count: 0
-memory store count: 6
-branch count: 5
-call count: 5
+memory store count: 0
+branch count: 2
+call count: 1
 spill count: 0
 
 performance report: (ORIGIN=runtime)
@@ -32,6 +25,3 @@ call count: 31
 spill count: 0
 
 actual output:
-300
-1
-[!!memory report!!]: allocs=4 frees=4 allocated_bytes=38 freed_bytes=38
