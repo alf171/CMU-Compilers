@@ -7,7 +7,6 @@ const TypedOperand = @import("common").alloc.TypedOperand;
 const Function = @import("common").ir.Function;
 const Program = @import("common").program.Program;
 const Instruction = @import("common").mir.Instruction;
-const getElementType = @import("common").types.getElementType;
 
 /// calls malloc and handles layoff buisness logic like size being the first elem
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
@@ -25,7 +24,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
                 .list_literal => |ll| {
-                    const elem_type = try getElementType(ll.dst.type);
+                    const elem_type = try ll.dst.type.getElementType();
                     const byte_count = 8 + ll.elements.len * try elem_type.sizeOfType();
                     const size_temp = function.nextTemp();
                     try new_instructions.append(alloc, .{ .lir = .{ .move = .{
@@ -98,7 +97,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     // dst <- list[index]
                     const scaled: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
                     const offset: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
-                    const elem_type = try getElementType(ll.list.type);
+                    const elem_type = try ll.list.type.getElementType();
                     const elem_size = try elem_type.sizeOfType();
                     // scaled = index
                     if (elem_size == 1) {
@@ -157,7 +156,7 @@ fn rewriteListStore(
 ) !void {
     const scaled: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
     const offset: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
-    const elem_type = try getElementType(ls.list.type);
+    const elem_type = try ls.list.type.getElementType();
     const elem_size = try elem_type.sizeOfType();
     // scaled = index
     if (elem_size == 1) {

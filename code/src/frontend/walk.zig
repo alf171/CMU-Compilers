@@ -7,11 +7,7 @@ const FunctionKind = @import("common").ir.FunctionKind;
 const ConstValue = @import("common").ir.ConstValue;
 const ParsedConstant = @import("common").ir.ParsedConstant;
 const BasicBlock = @import("common").ir.BasicBlock;
-const types = @import("common").types;
-const getElementType = @import("common").types.getElementType;
-const getElementSize = @import("common").types.getElementSize;
-const ownedPointer = @import("common").types.ownedPointer;
-const TypeInfo = types.TypeInfo;
+const TypeInfo = @import("common").types.TypeInfo;
 const Operand = @import("common").alloc.Operand;
 const TypedOperand = @import("common").alloc.TypedOperand;
 const ValueRef = @import("common").ir.ValueRef;
@@ -436,7 +432,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
             for (0..@intCast(len)) |i| {
                 const elem = c.PyList_GetItem(elements, @as(isize, @intCast(i)));
                 std.debug.assert(elem != null);
-                const expected_elem_type: ?TypeInfo = if (expectedType) |t| try getElementType(t) else null;
+                const expected_elem_type: ?TypeInfo = if (expectedType) |t| try t.getElementType() else null;
                 // [conditional] use constant instead of an operand if we can
                 switch (getExprKind(elem)) {
                     .Constant => {
@@ -469,11 +465,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
 
             const first_elem_type = elem_type orelse return error.NoTypeFound;
             const type_ = TypeInfo{ .list = .{
-                .element = try types.ownedPointer(
-                    try first_elem_type.clone(alloc),
-                    alloc,
-                ),
-                .size = @intCast(len),
+                .element = try (try first_elem_type.clone(alloc)).toOwnedPointer(alloc),
             } };
             const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
             try irBuilder.emit(Instruction{ .list_literal = .{
@@ -601,7 +593,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
                     .operand = function.nextTemp(),
                     .type = .{ .callable = .{
                         .params = params,
-                        .returns = try ownedPointer(try function.return_type.clone(alloc), alloc),
+                        .returns = try (try function.return_type.clone(alloc)).toOwnedPointer(alloc),
                     } },
                 };
                 // declare function we will return
@@ -871,8 +863,8 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
 
                 const dst = irBuilder.nextTemp();
 
-                const type_ = TypeInfo{
-                    .lazy = .{ .value = try ownedPointer(.{ .iterable = .{ .element = try ownedPointer(.i64, alloc) } }, alloc) },
+                const type_: TypeInfo = .{
+                    .lazy = .{ .value = try TypeInfo.toOwnedPointer(.{ .iterable = .{ .element = try TypeInfo.toOwnedPointer(.i64, alloc) } }, alloc) },
                 };
                 const typed_dst = TypedOperand{ .operand = dst, .type = type_ };
                 try irBuilder.emit(.{ .range = .{
@@ -1302,7 +1294,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 else => return error.CantIndexInto,
             }
 
-            const elem_type = try getElementType(iterable.type);
+            const elem_type = try iterable.type.getElementType();
             const local = try irBuilder_.getOrCreateLocal(body_.condition_var_name, elem_type, alloc_);
             const typed_value: TypedOperand = .{
                 .operand = value,
@@ -1556,8 +1548,8 @@ pub fn parseConstant(
         const _type = TypeInfo{
             .list = .{
                 // .elements = try element_types.toOwnedSlice(alloc),
-                .element = try ownedPointer(.char, alloc),
-                .size = elements.items.len,
+                .element = try TypeInfo.toOwnedPointer(.char, alloc),
+                // .size = elements.items.len,
             },
         };
 
@@ -1697,7 +1689,7 @@ fn parseTypeAnnotation(
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "char")) {
             return .char;
         } else if (std.mem.eql(u8, std.mem.span(annotation_id), "str")) {
-            return .{ .list = .{ .element = try ownedPointer(.char, alloc), .size = null } };
+            return .{ .list = .{ .element = try TypeInfo.toOwnedPointer(.char, alloc) } };
         }
         return error.TypeNotImplemented;
     } else if (std.mem.eql(u8, kind, "Subscript")) {
@@ -1710,8 +1702,7 @@ fn parseTypeAnnotation(
                 // recursively get type
                 const elem_type = try parseTypeAnnotation(slice_obj, irBuilder, alloc);
                 return .{ .list = .{
-                    .element = try ownedPointer(elem_type, alloc),
-                    .size = null,
+                    .element = try elem_type.toOwnedPointer(alloc),
                 } };
             },
             // Subscript(value=Name(id='tuple', ctx=Load()), slice=Tuple(elts=[Name(id='int', ctx=Load()), Name(id='int', ctx=Load())], ctx=Load()), ctx=Load())
@@ -1752,7 +1743,7 @@ fn parseTypeAnnotation(
 
                 return .{ .callable = .{
                     .params = elem_types,
-                    .returns = try ownedPointer(try parseTypeAnnotation(return_obj, irBuilder, alloc), alloc),
+                    .returns = try (try parseTypeAnnotation(return_obj, irBuilder, alloc)).toOwnedPointer(alloc),
                 } };
             },
         }

@@ -12,9 +12,9 @@ pub const TypeInfo = union(enum) {
     float,
     bool,
     char,
+    /// size is stored in runtime header
     list: struct {
         element: *const TypeInfo,
-        size: ?usize,
     },
     tuple: struct {
         elements: []const TypeInfo,
@@ -81,8 +81,7 @@ pub const TypeInfo = union(enum) {
             },
             .list => |l| {
                 return .{ .list = .{
-                    .element = try ownedPointer(try l.element.*.clone(alloc), alloc),
-                    .size = l.size,
+                    .element = try (try l.element.*.clone(alloc)).toOwnedPointer(alloc),
                 } };
             },
             .callable => |c| {
@@ -92,17 +91,17 @@ pub const TypeInfo = union(enum) {
                 }
                 return .{ .callable = .{
                     .params = params,
-                    .returns = try ownedPointer(try c.returns.*.clone(alloc), alloc),
+                    .returns = try (try c.returns.*.clone(alloc)).toOwnedPointer(alloc),
                 } };
             },
             .lazy => |l| {
                 return .{ .lazy = .{
-                    .value = try ownedPointer(try l.value.*.clone(alloc), alloc),
+                    .value = try (try l.value.*.clone(alloc)).toOwnedPointer(alloc),
                 } };
             },
             .iterable => |i| {
                 return .{ .iterable = .{
-                    .element = try ownedPointer(try i.element.*.clone(alloc), alloc),
+                    .element = try (try i.element.*.clone(alloc)).toOwnedPointer(alloc),
                 } };
             },
             .void, .i64, .i32, .bool, .char, .float, .any, .instance => return self,
@@ -127,6 +126,23 @@ pub const TypeInfo = union(enum) {
         };
     }
 
+    /// expects a list input type
+    pub fn getElementType(typeInfo: TypeInfo) !TypeInfo {
+        return switch (typeInfo) {
+            .list => |list_type| list_type.element.*,
+            .iterable => |it_type| it_type.element.*,
+            .lazy => |lazy| try getElementType(lazy.value.*),
+            else => error.ExpectedListType,
+        };
+    }
+
+    pub fn getElementSize(typeInfo: TypeInfo) ?usize {
+        return switch (typeInfo) {
+            .array => |array_type| array_type.size,
+            else => error.ExpectedArrayType,
+        };
+    }
+
     pub fn isIterable(self: @This()) bool {
         return switch (self) {
             .list, .tuple, .iterable, .any => true,
@@ -148,27 +164,10 @@ pub const TypeInfo = union(enum) {
             .gpu_kernel => .vgpr,
         };
     }
+
+    pub fn toOwnedPointer(self: TypeInfo, alloc: std.mem.Allocator) !*TypeInfo {
+        const ptr = try alloc.create(TypeInfo);
+        ptr.* = self;
+        return ptr;
+    }
 };
-
-/// expects a list input type
-pub fn getElementType(typeInfo: TypeInfo) !TypeInfo {
-    return switch (typeInfo) {
-        .list => |list_type| list_type.element.*,
-        .iterable => |it_type| it_type.element.*,
-        .lazy => |lazy| try getElementType(lazy.value.*),
-        else => error.ExpectedListType,
-    };
-}
-
-pub fn getElementSize(typeInfo: TypeInfo) ?usize {
-    return switch (typeInfo) {
-        .array => |array_type| array_type.size,
-        else => error.ExpectedArrayType,
-    };
-}
-
-pub fn ownedPointer(t: TypeInfo, alloc: std.mem.Allocator) !*TypeInfo {
-    const ptr = try alloc.create(TypeInfo);
-    ptr.* = t;
-    return ptr;
-}
