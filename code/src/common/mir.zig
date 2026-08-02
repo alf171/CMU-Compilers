@@ -146,6 +146,12 @@ pub const Instruction = union(enum) {
         // x=0, y=1, z=2
         axis: ValueRef,
     },
+    // dst <- [lst] * count
+    list_repeat: struct {
+        dst: TypedOperand,
+        list: TypedOperand,
+        count: TypedOperand,
+    },
     // deglate to LIR impl
     lir: LirInstruction,
     unkown,
@@ -154,7 +160,7 @@ pub const Instruction = union(enum) {
         switch (self.*) {
             .parallel_copy => |pc| {
                 for (pc.copies) |copy| {
-                    copy.dst.type.deinit(alloc);
+                    copy.dst.deinit(alloc);
                 }
                 alloc.free(pc.copies);
             },
@@ -162,7 +168,7 @@ pub const Instruction = union(enum) {
                 alloc.free(phi.inputs);
             },
             .function_param => |fp| {
-                fp.dst.type.deinit(alloc);
+                fp.dst.deinit(alloc);
                 alloc.free(fp.name);
             },
             .function_ref => |fr| {
@@ -171,56 +177,65 @@ pub const Instruction = union(enum) {
             },
             .function_call => |fc| {
                 if (fc.dst) |dst| {
-                    dst.type.deinit(alloc);
+                    dst.deinit(alloc);
                 }
                 switch (fc.callee) {
                     .direct => |d| alloc.free(d),
-                    .indirect => |ind| ind.type.deinit(alloc),
+                    .indirect => |ind| ind.deinit(alloc),
                 }
                 for (fc.args) |arg| {
-                    arg.type.deinit(alloc);
+                    arg.deinit(alloc);
                 }
                 alloc.free(fc.args);
             },
             .tuple_literal => |tl| {
-                tl.dst.type.deinit(alloc);
+                tl.dst.deinit(alloc);
                 alloc.free(tl.elements);
             },
             .tuple_load => |tl| {
-                tl.dst.type.deinit(alloc);
-                tl.tuple.type.deinit(alloc);
+                tl.dst.deinit(alloc);
+                tl.tuple.deinit(alloc);
             },
             .list_literal => |ll| {
-                ll.dst.type.deinit(alloc);
+                ll.dst.deinit(alloc);
                 alloc.free(ll.elements);
             },
             .lazy_load => |ll| {
-                ll.lazy.type.deinit(alloc);
+                ll.lazy.deinit(alloc);
             },
             .range => |r| {
-                r.dst.type.deinit(alloc);
+                r.dst.deinit(alloc);
             },
             .global_idx => |gl| {
-                gl.dst.type.deinit(alloc);
+                gl.dst.deinit(alloc);
             },
             .gpu_launch => |gl| {
                 alloc.free(gl.kernel);
                 for (gl.args) |arg| {
-                    arg.type.deinit(alloc);
+                    arg.deinit(alloc);
                 }
                 alloc.free(gl.args);
-                gl.work_items.type.deinit(alloc);
+                gl.work_items.deinit(alloc);
             },
             .class_init => |ci| {
                 for (ci.args) |arg| {
-                    arg.type.deinit(alloc);
+                    arg.deinit(alloc);
                 }
                 alloc.free(ci.args);
-                ci.dst.type.deinit(alloc);
+                ci.dst.deinit(alloc);
             },
             .field_store => |fs| {
-                fs.instance.type.deinit(alloc);
-                fs.src.type.deinit(alloc);
+                fs.instance.deinit(alloc);
+                fs.src.deinit(alloc);
+            },
+            .list_repeat => |lr| {
+                lr.dst.deinit(alloc);
+                lr.list.deinit(alloc);
+                lr.count.deinit(alloc);
+            },
+            .len => |l| {
+                l.dst.deinit(alloc);
+                l.value.deinit(alloc);
             },
             .lir => |*lir| lir.deinit(alloc),
             else => {},
@@ -580,9 +595,6 @@ pub const Instruction = union(enum) {
             .function_ref => {},
             .function_param => {},
             .function_call => |fc| {
-                if (fc.dst) |dst| {
-                    dst.type.deinit(alloc);
-                }
                 switch (fc.callee) {
                     .direct => {},
                     .indirect => |ind| {

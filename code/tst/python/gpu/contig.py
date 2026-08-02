@@ -6,8 +6,7 @@ def fill(out: list[i32], shape: tuple[int, int, int]) -> None:
     out[row * 5 + col] = 42
     return
 
-# out: list[list[int]] = [[0] * 5] * 5
-out: list[i32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+out: list[i32] = [0] * 25
 
 fill(out, (5, 5, 1))
 for i in range(25):

@@ -30,7 +30,6 @@ pub const Instruction = union(enum) {
     },
     move: struct {
         dst: TypedOperand,
-        // trying this out
         src: ValueRef,
     },
     unaryop: struct {

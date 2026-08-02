@@ -229,6 +229,10 @@ pub const TypedOperand = struct {
     pub fn clone(self: @This(), alloc: std.mem.Allocator) !@This() {
         return .{ .operand = self.operand, .type = try self.type.clone(alloc) };
     }
+
+    pub fn deinit(self: @This(), alloc: std.mem.Allocator) void {
+        self.type.deinit(alloc);
+    }
 };
 
 pub const AllocLine = struct {

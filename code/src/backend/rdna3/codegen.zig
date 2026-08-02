@@ -105,7 +105,7 @@ pub fn emit(
                                 if (base.class != .sgpr or offset.class != .vgpr or src.class != .vgpr) return error.InvalidGpuRegisterClass;
                                 // *(base + offset) = src
                                 switch (so.src.type) {
-                                    .i64 => {
+                                    .i64, .list => {
                                         try out.print(alloc, "\tglobal_store_b64 v{d}, v[{d}:{d}], s[{d}:{d}]\n", .{
                                             offset.base,
                                             src.base,
@@ -122,7 +122,43 @@ pub fn emit(
                                             base.base + 1,
                                         });
                                     },
-                                    else => return error.NotImpl,
+                                    else => |e| {
+                                        std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                        return error.NotImpl;
+                                    },
+                                }
+                            },
+                            .load_offset => |lo| {
+                                const dst = try abi.regFor(lo.dst.operand, colors);
+                                const offset = switch (lo.offset) {
+                                    .constant => return error.NotImpl,
+                                    .top => |top| try abi.regFor(top.operand, colors),
+                                };
+                                const src = try abi.regFor(lo.src.operand, colors);
+                                if (dst.class != .vgpr or offset.class != .vgpr or src.class != .sgpr) return error.InvalidGpuRegisterClass;
+                                // dst = *(src + offset)
+                                switch (lo.src.type) {
+                                    .i64, .list => {
+                                        try out.print(alloc, "\tglobal_load_b64 v[{d}:{d}], v{d}, s[{d}:{d}]\n", .{
+                                            dst.base,
+                                            dst.base + 1,
+                                            offset.base,
+                                            src.base,
+                                            src.base + 1,
+                                        });
+                                    },
+                                    .i32 => {
+                                        try out.print(alloc, "\tglobal_load_b32 v[{d}:{d}], v{d}, s{d}\n", .{
+                                            dst.base,
+                                            dst.base + 1,
+                                            offset.base,
+                                            src.base,
+                                        });
+                                    },
+                                    else => |e| {
+                                        std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                        return error.NotImpl;
+                                    },
                                 }
                             },
                             else => |e| {

@@ -23,39 +23,104 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
 
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
+                .list_repeat => |lr| {
+                    const elem_type = try lr.dst.type.getElementType();
+                    const list_length_temp: TypedOperand = .{
+                        .operand = function.nextTemp(),
+                        .type = .i64,
+                    };
+                    try new_instructions.append(alloc, .{
+                        .len = .{
+                            .dst = list_length_temp,
+                            .value = try lr.list.clone(alloc),
+                        },
+                    });
+                    // byte_count = 8 + list_length * elem_size * repeat_count
+                    const list_byte_count: TypedOperand = .{
+                        .operand = function.nextTemp(),
+                        .type = .i64,
+                    };
+                    const elem_size: TypedOperand = .{
+                        .operand = function.nextTemp(),
+                        .type = .i64,
+                    };
+                    try new_instructions.append(alloc, .{ .lir = .{
+                        .move = .{
+                            .dst = elem_size,
+                            .src = .{ .constant = .{ .i64 = @intCast(try elem_type.sizeOfType()) } },
+                        },
+                    } });
+                    // list_byte_count = list_length * elem_size
+                    try new_instructions.append(alloc, .{ .lir = .{
+                        .binop = .{
+                            .dst = list_byte_count,
+                            .lhs = list_length_temp,
+                            .op = .mul,
+                            .rhs = elem_size,
+                        },
+                    } });
+                    const repeat_list_byte_count: TypedOperand = .{
+                        .operand = function.nextTemp(),
+                        .type = .i64,
+                    };
+                    // repeat_list_byte_count = list_byte_count * repeat_count
+                    try new_instructions.append(alloc, .{ .lir = .{
+                        .binop = .{
+                            .dst = repeat_list_byte_count,
+                            .lhs = list_byte_count,
+                            .op = .mul,
+                            .rhs = try lr.count.clone(alloc),
+                        },
+                    } });
+                    const byte_count: TypedOperand = .{
+                        .operand = function.nextTemp(),
+                        .type = .i64,
+                    };
+                    const eight: TypedOperand = .{
+                        .operand = function.nextTemp(),
+                        .type = .i64,
+                    };
+                    try new_instructions.append(alloc, .{ .lir = .{
+                        .move = .{
+                            .dst = eight,
+                            .src = .{ .constant = .{ .i64 = 8 } },
+                        },
+                    } });
+                    // byte_count = repeat_list_byte_count + 8
+                    try new_instructions.append(alloc, .{ .lir = .{
+                        .binop = .{
+                            .dst = byte_count,
+                            .lhs = repeat_list_byte_count,
+                            .op = .add,
+                            .rhs = eight,
+                        },
+                    } });
+
+                    const byte_count_ref: ValueRef = .{ .top = byte_count };
+                    const list_length_ref: ValueRef = .{ .top = repeat_list_byte_count };
+                    try lowerListAlloc(
+                        function,
+                        lr.dst,
+                        byte_count_ref,
+                        list_length_ref,
+                        &new_instructions,
+                        alloc,
+                    );
+                    instruction.deinit(alloc);
+                },
                 .list_literal => |ll| {
                     const elem_type = try ll.dst.type.getElementType();
                     const byte_count = 8 + ll.elements.len * try elem_type.sizeOfType();
-                    const size_temp = function.nextTemp();
-                    try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                        .dst = .{ .operand = size_temp, .type = .i64 },
-                        .src = .{ .constant = .{ .i64 = @intCast(byte_count) } },
-                    } } });
-                    const args = try alloc.dupe(TypedOperand, &.{
-                        .{ .operand = size_temp, .type = .i64 },
-                    });
-                    try new_instructions.append(alloc, .{ .function_call = .{
-                        .dst = try ll.dst.clone(alloc),
-                        .callee = .{
-                            .direct = try alloc.dupe(u8, "arena_malloc"),
-                        },
-                        .args = args,
-                    } });
-                    // store list size
-                    {
-                        const src = function.nextTemp();
-                        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                            .dst = .{ .operand = src, .type = .i64 },
-                            .src = .{ .constant = .{ .i64 = @intCast(ll.elements.len) } },
-                        } } });
-                        try new_instructions.append(alloc, .{
-                            .lir = .{ .store_offset = .{
-                                .dst = try ll.dst.clone(alloc),
-                                .offset = .{ .constant = .{ .i64 = 0 } },
-                                .src = .{ .operand = src, .type = .i64 },
-                            } },
-                        });
-                    }
+                    const byte_count_ref: ValueRef = .{ .constant = .{ .i64 = @intCast(byte_count) } };
+                    const list_length_ref: ValueRef = .{ .constant = .{ .i64 = @intCast(ll.elements.len) } };
+                    try lowerListAlloc(
+                        function,
+                        ll.dst,
+                        byte_count_ref,
+                        list_length_ref,
+                        &new_instructions,
+                        alloc,
+                    );
                     // store elements
                     for (ll.elements, 0..) |elem, i| {
                         const src: ValueRef = switch (elem) {
@@ -145,6 +210,47 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
         }
         block.instructions.deinit(alloc);
         block.instructions = new_instructions;
+    }
+}
+
+/// calls malloc and stores size at index 0
+fn lowerListAlloc(
+    function: *Function,
+    dst: TypedOperand,
+    byte_count: ValueRef,
+    list_length: ValueRef,
+    new_instructions: *std.ArrayList(Instruction),
+    alloc: std.mem.Allocator,
+) !void {
+    const size_temp = function.nextTemp();
+    try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+        .dst = .{ .operand = size_temp, .type = .i64 },
+        .src = byte_count,
+    } } });
+    const args = try alloc.dupe(TypedOperand, &.{
+        .{ .operand = size_temp, .type = .i64 },
+    });
+    try new_instructions.append(alloc, .{ .function_call = .{
+        .dst = try dst.clone(alloc),
+        .callee = .{
+            .direct = try alloc.dupe(u8, "arena_malloc"),
+        },
+        .args = args,
+    } });
+    // store list size
+    {
+        const src = function.nextTemp();
+        try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+            .dst = .{ .operand = src, .type = .i64 },
+            .src = list_length,
+        } } });
+        try new_instructions.append(alloc, .{
+            .lir = .{ .store_offset = .{
+                .dst = try dst.clone(alloc),
+                .offset = .{ .constant = .{ .i64 = 0 } },
+                .src = .{ .operand = src, .type = .i64 },
+            } },
+        });
     }
 }
 

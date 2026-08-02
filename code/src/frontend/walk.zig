@@ -344,8 +344,23 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expectedType: ?TypeInfo,
 
             const op = try getBinOp(stmt);
             // order here will impact temp numbering
-            const lhs = try walkExpr(left, irBuilder, null, alloc);
-            const rhs = try walkExpr(right, irBuilder, null, alloc);
+            const lhs = try walkExpr(left, irBuilder, expectedType, alloc);
+            const rhs = try walkExpr(right, irBuilder, expectedType, alloc);
+
+            if (lhs.type == .list and rhs.type == .i64) {
+                const dst: TypedOperand = .{
+                    .operand = irBuilder.nextTemp(),
+                    .type = .{ .list = .{
+                        .element = try (try lhs.type.list.element.clone(alloc)).toOwnedPointer(alloc),
+                    } },
+                };
+                try irBuilder.emit(.{ .list_repeat = .{
+                    .dst = dst,
+                    .list = try lhs.clone(alloc),
+                    .count = try rhs.clone(alloc),
+                } }, alloc);
+                return dst;
+            }
 
             const result_type: TypeInfo = switch (lhs.type) {
                 .instance => |class_id| blk: {
@@ -829,7 +844,7 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
                 const dst: TypedOperand = .{ .operand = irBuilder.nextTemp(), .type = .i64 };
                 try irBuilder.emit(.{ .len = .{
                     .dst = dst,
-                    .value = value,
+                    .value = try value.clone(alloc),
                 } }, alloc);
                 return dst;
             },
@@ -1342,7 +1357,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
     std.debug.assert(expr.type.isIterable());
     try irBuilder.emit(.{ .len = .{
         .dst = len_temp,
-        .value = expr,
+        .value = try expr.clone(alloc),
     } }, alloc);
 
     // set for j in jj where type(jj) == array

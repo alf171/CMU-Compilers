@@ -151,8 +151,8 @@ test "range behaves lazily" {
     const n = program.main.nextTemp();
     try block0.instructions.append(alloc, .{
         .len = .{
-            .dst = .{ .operand = n, .type = .any },
-            .value = range,
+            .dst = .{ .operand = n, .type = .i64 },
+            .value = try range.clone(alloc),
         },
     });
     const i = program.main.nextTemp();
