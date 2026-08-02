@@ -6,7 +6,7 @@ const Function = @import("common").ir.Function;
 const LocalId = @import("common").ir.LocalId;
 const Program = @import("common").program.Program;
 const Instruction = @import("common").mir.Instruction;
-const ownedPointer = @import("common").types.ownedPointer;
+const TypeInfo = @import("common").types.TypeInfo;
 
 const LazyKey = union(enum) {
     operand: Operand,
@@ -137,8 +137,8 @@ test "range behaves lazily" {
     // we are hardcoding what walk.zig currently passes through here
     const range: TypedOperand = .{
         .operand = program.main.nextTemp(),
-        .type = .{ .lazy = .{ .value = try ownedPointer(.{ .iterable = .{
-            .element = try ownedPointer(.i64, alloc),
+        .type = .{ .lazy = .{ .value = try TypeInfo.toOwnedPointer(.{ .iterable = .{
+            .element = try TypeInfo.toOwnedPointer(.i64, alloc),
         } }, alloc) } },
     };
     try block0.instructions.append(alloc, .{

@@ -134,17 +134,23 @@ test "basic block elim" {
         .src = .{ .top = .{ .operand = .{ .temp = .{ .id = 0, .function_id = 0 } }, .type = .any } },
     } } });
     // print(t0)
-    try instructions.append(alloc, Instruction{ .print = .{ .src = .{
-        .operand = .{ .temp = .{ .id = 0, .function_id = 0 } },
-        .type = .char,
-    } } });
+    try instructions.append(alloc, .{ .print = .{
+        .src = .{
+            .operand = .{ .temp = .{ .id = 0, .function_id = 0 } },
+            .type = .char,
+        },
+        .end = null,
+    } });
 
     try run(&program, &alloc_program, alloc);
     const new_instructions = program.main.blocks.items[0].instructions.items;
     try std.testing.expectEqual(1, new_instructions.len);
     // print(t0)
-    try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .print = .{ .src = .{
-        .operand = .{ .temp = .{ .id = 0, .function_id = 0 } },
-        .type = .char,
-    } } });
+    try std.testing.expectEqualDeep(new_instructions[0], Instruction{ .print = .{
+        .src = .{
+            .operand = .{ .temp = .{ .id = 0, .function_id = 0 } },
+            .type = .char,
+        },
+        .end = null,
+    } });
 }

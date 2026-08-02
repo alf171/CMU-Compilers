@@ -35,11 +35,22 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             .value = try lr.list.clone(alloc),
                         },
                     });
-                    // byte_count = 8 + list_length * elem_size * repeat_count
-                    const list_byte_count: TypedOperand = .{
+                    // byte_count = 8 + elem_size * list_length * repeat_count
+                    const repeat_list_count: TypedOperand = .{
                         .operand = function.nextTemp(),
                         .type = .i64,
                     };
+                    // repeat_list_size = list_length * repeat_count
+                    try new_instructions.append(alloc, .{ .lir = .{
+                        .binop = .{
+                            .dst = repeat_list_count,
+                            .lhs = list_length_temp,
+                            .op = .mul,
+                            .rhs = try lr.count.clone(alloc),
+                        },
+                    } });
+
+                    // repeat_list_byte_count = repeat_list_size * elem_size
                     const elem_size: TypedOperand = .{
                         .operand = function.nextTemp(),
                         .type = .i64,
@@ -50,28 +61,20 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             .src = .{ .constant = .{ .i64 = @intCast(try elem_type.sizeOfType()) } },
                         },
                     } });
-                    // list_byte_count = list_length * elem_size
-                    try new_instructions.append(alloc, .{ .lir = .{
-                        .binop = .{
-                            .dst = list_byte_count,
-                            .lhs = list_length_temp,
-                            .op = .mul,
-                            .rhs = elem_size,
-                        },
-                    } });
                     const repeat_list_byte_count: TypedOperand = .{
                         .operand = function.nextTemp(),
                         .type = .i64,
                     };
-                    // repeat_list_byte_count = list_byte_count * repeat_count
                     try new_instructions.append(alloc, .{ .lir = .{
                         .binop = .{
                             .dst = repeat_list_byte_count,
-                            .lhs = list_byte_count,
+                            .lhs = repeat_list_count,
                             .op = .mul,
-                            .rhs = try lr.count.clone(alloc),
+                            .rhs = elem_size,
                         },
                     } });
+
+                    // byte_count = repeat_list_byte_count + 8
                     const byte_count: TypedOperand = .{
                         .operand = function.nextTemp(),
                         .type = .i64,
@@ -86,7 +89,6 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             .src = .{ .constant = .{ .i64 = 8 } },
                         },
                     } });
-                    // byte_count = repeat_list_byte_count + 8
                     try new_instructions.append(alloc, .{ .lir = .{
                         .binop = .{
                             .dst = byte_count,
@@ -97,7 +99,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     } });
 
                     const byte_count_ref: ValueRef = .{ .top = byte_count };
-                    const list_length_ref: ValueRef = .{ .top = repeat_list_byte_count };
+                    const list_length_ref: ValueRef = .{ .top = repeat_list_count };
                     try lowerListAlloc(
                         function,
                         lr.dst,

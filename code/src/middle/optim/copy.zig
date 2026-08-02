@@ -230,10 +230,13 @@ test "basic block copy prop" {
         .src = .{ .top = .{ .operand = .{ .temp = .{ .id = 1, .function_id = 0 } }, .type = .any } },
     } } });
     // print(t2)
-    try instructions.append(alloc, Instruction{ .print = .{ .src = .{
-        .operand = .{ .temp = .{ .id = 2, .function_id = 0 } },
-        .type = .i64,
-    } } });
+    try instructions.append(alloc, Instruction{ .print = .{
+        .src = .{
+            .operand = .{ .temp = .{ .id = 2, .function_id = 0 } },
+            .type = .i64,
+        },
+        .end = null,
+    } });
 
     try run(&program, alloc);
     const new_instructions = program.main.blocks.items[0].instructions.items;
@@ -259,6 +262,7 @@ test "basic block copy prop" {
             .operand = .{ .temp = .{ .id = 0, .function_id = 0 } },
             .type = .i64,
         },
+        .end = null,
     } });
 }
 
