@@ -108,6 +108,28 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         &new_instructions,
                         alloc,
                     );
+                    // set repeat elements
+                    const args = try alloc.alloc(TypedOperand, 3);
+                    args[0] = try lr.dst.clone(alloc);
+                    args[1] = try lr.list.clone(alloc);
+                    args[2] = try lr.count.clone(alloc);
+                    switch (try lr.dst.type.getElementType()) {
+                        .i32 => {
+                            try new_instructions.append(alloc, .{ .function_call = .{
+                                .dst = null,
+                                .callee = .{ .direct = try alloc.dupe(u8, "list_repeat_i32") },
+                                .args = args,
+                            } });
+                        },
+                        .i64 => {
+                            try new_instructions.append(alloc, .{ .function_call = .{
+                                .dst = null,
+                                .callee = .{ .direct = try alloc.dupe(u8, "list_repeat_int") },
+                                .args = args,
+                            } });
+                        },
+                        else => return error.NotImpl,
+                    }
                     instruction.deinit(alloc);
                 },
                 .list_literal => |ll| {

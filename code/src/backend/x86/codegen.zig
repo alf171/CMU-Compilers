@@ -245,10 +245,13 @@ fn emitFunction(
                                     try out.print(alloc, "\tpopq %rax\n", .{});
                                 },
                                 .mod => {
+                                    const divisor = try abi.scratchReg(0, .gp);
                                     try out.print(alloc, "\tpushq %rax\n", .{});
+                                    // idiv clobbers rax, rdx so save rhs in case
+                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ rhs, divisor });
                                     try out.print(alloc, "\tmovq %{s}, %rax\n", .{lhs});
                                     try out.print(alloc, "\tcqto\n", .{});
-                                    try out.print(alloc, "\tidivq %{s}\n", .{rhs});
+                                    try out.print(alloc, "\tidivq %{s}\n", .{divisor});
                                     // x86 magic :)
                                     try out.print(alloc, "\tmovq %rdx, %{s}\n", .{dst});
                                     try out.print(alloc, "\tpopq %rax\n", .{});
@@ -691,7 +694,7 @@ fn reg32(reg: []const u8) []const u8 {
     if (std.mem.eql(u8, reg, "rbx")) return "ebx";
     if (std.mem.eql(u8, reg, "r8")) return "r8d";
     if (std.mem.eql(u8, reg, "r9")) return "r9d";
-    if (std.mem.eql(u8, reg, "r10")) return "r10b";
+    if (std.mem.eql(u8, reg, "r10")) return "r10d";
     if (std.mem.eql(u8, reg, "r11")) return "r11d";
     if (std.mem.eql(u8, reg, "r12")) return "r12d";
     if (std.mem.eql(u8, reg, "r13")) return "r13d";

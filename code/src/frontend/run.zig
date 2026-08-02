@@ -21,8 +21,20 @@ pub fn walkAstWithRuntime(
     errdefer irBuilder.program.deinit(alloc);
     // iterate through files in runtime/*
     if (std_lib_enabled) {
-        const runtime_obj = try readFile("src/runtime/print.py", false, should_optim, use_escape_codes, io, alloc);
-        try walkAstIntoBuilder(runtime_obj, &irBuilder, alloc);
+        const dir = try std.Io.Dir.cwd().openDir(io, "src/runtime", .{ .iterate = true });
+        defer dir.close(io);
+
+        var walker = try dir.walk(alloc);
+        defer walker.deinit();
+
+        while (try walker.next(io)) |entry| {
+            std.debug.assert(entry.kind == .file);
+            std.debug.print("check {s}\n", .{entry.path});
+            const file_name = try std.fs.path.join(alloc, &.{ "src/runtime", entry.path });
+            defer alloc.free(file_name);
+            const runtime_obj = try readFile(file_name, false, should_optim, use_escape_codes, io, alloc);
+            try walkAstIntoBuilder(runtime_obj, &irBuilder, alloc);
+        }
     }
 
     // walk UserFile
