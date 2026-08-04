@@ -87,7 +87,7 @@ fn emitFunction(
                                             std.debug.assert(src[0] == 'x');
                                             try out.print(alloc, "\tstr w{s}, [{s}, {s}]\n", .{ src[1..], dst, offset });
                                         },
-                                        .char => {
+                                        .char, .bool => {
                                             std.debug.assert(src[0] == 'x');
                                             try out.print(alloc, "\tstrb w{s}, [{s}, {s}]\n", .{ src[1..], dst, offset });
                                         },
