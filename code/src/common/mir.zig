@@ -18,7 +18,17 @@ const TypeInfo = @import("types.zig").TypeInfo;
 const TypeBindings = @import("types.zig").TypeBindings;
 const LirInstruction = @import("lir.zig").Instruction;
 
-pub const PhiInput = struct { pred: BlockId, value: TypedOperand };
+pub const PhiInput = struct {
+    pred: BlockId,
+    value: TypedOperand,
+
+    pub fn clone(self: *@This(), alloc: std.mem.Allocator) !@This() {
+        return .{
+            .pred = self.pred,
+            .value = try self.value.clone(alloc),
+        };
+    }
+};
 
 pub const Copy = struct { dst: TypedOperand, src: Operand };
 
@@ -117,7 +127,7 @@ pub const Instruction = union(enum) {
     lazy_load: struct {
         dst: TypedOperand,
         lazy: TypedOperand,
-        index: Operand,
+        index: TypedOperand,
     },
     class_init: struct {
         dst: TypedOperand,
@@ -167,6 +177,10 @@ pub const Instruction = union(enum) {
                 alloc.free(pc.copies);
             },
             .phi => |phi| {
+                phi.dst.deinit(alloc);
+                for (phi.inputs) |input| {
+                    input.value.deinit(alloc);
+                }
                 alloc.free(phi.inputs);
             },
             .function_param => |fp| {
@@ -207,8 +221,20 @@ pub const Instruction = union(enum) {
                 ll.dst.deinit(alloc);
                 alloc.free(ll.elements);
             },
+            .list_store => |ls| {
+                ls.list.deinit(alloc);
+                ls.index.deinit(alloc);
+                switch (ls.src) {
+                    .top => |top| {
+                        top.deinit(alloc);
+                    },
+                    .constant => {},
+                }
+            },
             .lazy_load => |ll| {
+                ll.dst.deinit(alloc);
                 ll.lazy.deinit(alloc);
+                ll.index.deinit(alloc);
             },
             .range => |r| {
                 r.dst.deinit(alloc);
@@ -378,7 +404,7 @@ pub const Instruction = union(enum) {
                 debugPrint("<- ", .{});
                 ll.lazy.operand.print();
                 debugPrint("[", .{});
-                ll.index.print();
+                ll.index.operand.print();
                 debugPrint("]\n", .{});
             },
             .gpu_launch => |gl| {
@@ -662,6 +688,10 @@ pub const Instruction = union(enum) {
                     try res.append(alloc, .{ .top = arg });
                 }
             },
+            .lazy_load => |*ll| {
+                try res.append(alloc, .{ .top = &ll.lazy });
+                try res.append(alloc, .{ .top = &ll.index });
+            },
             .lir => |*l| {
                 var seen = try l.getUsePtrs(alloc);
                 defer seen.deinit(alloc);
@@ -700,6 +730,37 @@ pub const Instruction = union(enum) {
             .function_return => |fr| .{ .function_return = .{
                 .value = if (fr.value) |value| try value.clone(alloc) else null,
             } },
+            .range => |r| .{ .range = .{
+                .dst = try r.dst.clone(alloc),
+                .start = try r.start.clone(alloc),
+                .end = try r.end.clone(alloc),
+            } },
+            .phi => |p| blk: {
+                var phi_inputs = try alloc.alloc(PhiInput, p.inputs.len);
+                for (p.inputs, 0..) |*input, i| {
+                    phi_inputs[i] = try input.clone(alloc);
+                }
+                break :blk .{
+                    .phi = .{
+                        .dst = try p.dst.clone(alloc),
+                        .inputs = phi_inputs,
+                    },
+                };
+            },
+            .lazy_load => |ll| .{
+                .lazy_load = .{
+                    .dst = try ll.dst.clone(alloc),
+                    .lazy = try ll.lazy.clone(alloc),
+                    .index = ll.index,
+                },
+            },
+            .list_store => |ls| .{
+                .list_store = .{
+                    .list = try ls.list.clone(alloc),
+                    .index = try ls.index.clone(alloc),
+                    .src = try ls.src.clone(alloc),
+                },
+            },
             .lir => |*lir| .{
                 .lir = try lir.clone(alloc),
             },

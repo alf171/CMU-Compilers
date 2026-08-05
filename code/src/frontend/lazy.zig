@@ -60,10 +60,7 @@ fn rewriteFunction(function: *Function, producers: *HashMap(LazyKey, LazyProduce
                                     .type = .i64,
                                 },
                                 .op = .add,
-                                .rhs = .{
-                                    .operand = ll.index,
-                                    .type = .i64,
-                                },
+                                .rhs = ll.index,
                             } } });
                         },
                     }

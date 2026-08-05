@@ -18,8 +18,8 @@ print(x << 3)
 print(x >> 2)
 
 performance report: (ORIGIN=user)
-number of asm lines: 182
-mov count: 117
+number of asm lines: 186
+mov count: 119
 memory load count: 0
 memory store count: 0
 branch count: 2
@@ -27,8 +27,8 @@ call count: 15
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 637
-mov count: 327
+number of asm lines: 641
+mov count: 329
 memory load count: 0
 memory store count: 0
 branch count: 48

@@ -10,6 +10,7 @@ const func = @import("frontend").func;
 const runtime = @import("frontend").runtime;
 const class = @import("frontend").class;
 const generics = @import("frontend").generics;
+const repeat = @import("frontend").repeat;
 const middle = @import("middle");
 const backend = @import("backend");
 const linker = @import("linker");
@@ -87,6 +88,7 @@ pub fn main(init: std.process.Init) !void {
     defer ir_program.deinit(alloc);
 
     // rewrite layer
+    try repeat.rewrite(&ir_program, alloc);
     try generics.rewrite(&ir_program, alloc);
     try print.rewrite(&ir_program, alloc);
     try func.rewrite(&ir_program, alloc);

@@ -76,12 +76,15 @@ pub fn walkLoop(
         const before_val = entry.value_ptr.*;
 
         var inputs = try alloc.alloc(PhiInput, 2);
-        inputs[0] = .{ .pred = entry_block, .value = before_val };
+        inputs[0] = .{
+            .pred = entry_block,
+            .value = try before_val.clone(alloc),
+        };
         inputs[1] = undefined;
 
-        const dst = TypedOperand{
+        const dst: TypedOperand = .{
             .operand = irBuilder.nextTemp(),
-            .type = before_val.type,
+            .type = try before_val.type.clone(alloc),
         };
         try irBuilder.emit(Instruction{ .phi = .{
             .dst = dst,
@@ -89,7 +92,7 @@ pub fn walkLoop(
         } }, alloc);
         try irBuilder.local_values.put(local, dst);
         try loop_values.put(local, dst);
-        try loop_phis.append(LoopPhi{
+        try loop_phis.append(.{
             .local = local,
             .phi_inputs = inputs,
             .dst = dst,
@@ -99,11 +102,14 @@ pub fn walkLoop(
     // callee defined phis
     for (carries) |*carry| {
         var inputs = try alloc.alloc(PhiInput, 2);
-        inputs[0] = .{ .pred = entry_block, .value = carry.initial };
+        inputs[0] = .{
+            .pred = entry_block,
+            .value = try carry.initial.clone(alloc),
+        };
         inputs[1] = undefined;
         const dst = TypedOperand{
             .operand = irBuilder.nextTemp(),
-            .type = carry.initial.type,
+            .type = try carry.initial.type.clone(alloc),
         };
         try irBuilder.emit(Instruction{ .phi = .{
             .dst = dst,
@@ -172,7 +178,7 @@ pub fn walkLoop(
         const value = body_values.get(loop_phi.local) orelse loop_phi.dst;
         loop_phi.phi_inputs[1] = .{
             .pred = backedge_block,
-            .value = value,
+            .value = try value.clone(alloc),
         };
     }
 
@@ -180,7 +186,7 @@ pub fn walkLoop(
         const value = carry.next orelse return error.CarryNotSet;
         carry.inputs[1] = .{
             .pred = backedge_block,
-            .value = value,
+            .value = try value.clone(alloc),
         };
     }
 

@@ -40,8 +40,8 @@ pub const Instruction = union(enum) {
     },
     compare: struct {
         dst: TypedOperand,
-        op: CmpOp,
         lhs: TypedOperand,
+        op: CmpOp,
         rhs: TypedOperand,
     },
     jump: struct {
@@ -455,6 +455,20 @@ pub const Instruction = union(enum) {
                 .lhs = try bop.lhs.clone(alloc),
                 .op = bop.op,
                 .rhs = try bop.rhs.clone(alloc),
+            } },
+            .jump => |j| .{ .jump = .{
+                .target = j.target,
+            } },
+            .compare => |c| .{ .compare = .{
+                .dst = try c.dst.clone(alloc),
+                .lhs = try c.lhs.clone(alloc),
+                .op = c.op,
+                .rhs = try c.rhs.clone(alloc),
+            } },
+            .branch => |b| .{ .branch = .{
+                .condition = try b.condition.clone(alloc),
+                .then_block = b.then_block,
+                .else_block = b.else_block,
             } },
             else => |e| {
                 std.debug.print("cant handle {s}\n", .{@tagName(e)});

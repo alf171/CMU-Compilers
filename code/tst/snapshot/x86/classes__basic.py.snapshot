@@ -20,8 +20,8 @@ vw.print_speed()
 print(vw + audi)
 
 performance report: (ORIGIN=user)
-number of asm lines: 198
-mov count: 99
+number of asm lines: 197
+mov count: 98
 memory load count: 0
 memory store count: 0
 branch count: 9
@@ -29,8 +29,8 @@ call count: 14
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 636
-mov count: 327
+number of asm lines: 640
+mov count: 329
 memory load count: 0
 memory store count: 0
 branch count: 48

@@ -21,8 +21,9 @@ pub fn emit(program: *const Program, colors: *const ColoredGraph, abi: Abi, allo
     std.debug.assert(program.main.kind == .host);
     try emitFunction(&out, colors, &program.main, abi, true, alloc);
     for (program.functions.items) |function| {
-        if (function.kind == .host)
-            try emitFunction(&out, colors, &function, abi, false, alloc);
+        if (function.kind != .host or function.type_params.len > 0)
+            continue;
+        try emitFunction(&out, colors, &function, abi, false, alloc);
     }
 
     try createFooter(&out, alloc);

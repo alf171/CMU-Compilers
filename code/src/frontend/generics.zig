@@ -68,6 +68,9 @@ fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Alloca
                         alloc,
                     );
                     errdefer alloc.free(specialized_func_name);
+
+                    const return_type = try callee.return_type.substitute(&bindings, alloc);
+
                     if (findFunction(program, specialized_func_name) == null) {
                         const specialized_function = try createSpecializedFunction(
                             callee,
@@ -79,12 +82,12 @@ fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Alloca
                         try program.functions.append(alloc, specialized_function);
                     }
 
-                    const return_type = try callee.return_type.substitute(&bindings, alloc);
-
                     if (fc.dst) |*dst| {
                         dst.type.deinit(alloc);
                         dst.type = return_type;
                         try function.setValueType(dst.operand, dst.type, alloc);
+                    } else {
+                        return_type.deinit(alloc);
                     }
 
                     switch (fc.callee) {

@@ -205,9 +205,9 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
             switch (container.type) {
                 .list => {
                     try irBuilder.emit(Instruction{ .list_store = .{
-                        .list = container,
-                        .index = slice,
-                        .src = .{ .top = rhs_value },
+                        .list = try container.clone(alloc),
+                        .index = try slice.clone(alloc),
+                        .src = .{ .top = try rhs_value.clone(alloc) },
                     } }, alloc);
                 },
                 else => return error.UnexpectedType,
@@ -1312,29 +1312,29 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 .tuple => {
                     try irBuilder_.emit(.{ .tuple_load = .{
                         .dst = .{ .operand = value, .type = .any },
-                        .tuple = iterable,
-                        .index = index,
+                        .tuple = try iterable.clone(alloc_),
+                        .index = try index.clone(alloc_),
                     } }, alloc_);
                 },
                 .list => {
                     try irBuilder_.emit(.{ .list_load = .{
                         .dst = .{ .operand = value, .type = .any },
-                        .list = iterable,
-                        .index = index,
+                        .list = try iterable.clone(alloc_),
+                        .index = try index.clone(alloc_),
                     } }, alloc_);
                 },
                 .iterable => {
                     try irBuilder_.emit(.{ .tuple_load = .{
                         .dst = .{ .operand = value, .type = .any },
-                        .tuple = iterable,
-                        .index = index,
+                        .tuple = try iterable.clone(alloc_),
+                        .index = try index.clone(alloc_),
                     } }, alloc_);
                 },
                 .lazy => {
                     try irBuilder_.emit(.{ .lazy_load = .{
                         .dst = .{ .operand = value, .type = .ptr },
                         .lazy = try iterable.clone(alloc_),
-                        .index = index.operand,
+                        .index = try index.clone(alloc_),
                     } }, alloc_);
                 },
                 else => return error.CantIndexInto,
