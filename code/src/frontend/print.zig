@@ -13,8 +13,6 @@ const ownedPointer = @import("common").types.ownedPointer;
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
     try rewriteFunction(&program.main, alloc);
     for (program.functions.items) |*function| {
-        // HACK: avoid lowering generics
-        if (function.type_params.len > 0) continue;
         try rewriteFunction(function, alloc);
     }
 }

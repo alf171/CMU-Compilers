@@ -22,12 +22,12 @@ pub fn build(program: Program, reg_classes: *const RegisterClasses, alloc: std.m
     errdefer res.deinit(alloc);
 
     var instruction_index: usize = 0;
-    for (program.functions.items, 0..) |function, i| {
+    for (program.functions.items) |function| {
         try appendBlocks(
             function.blocks.items,
             &res,
             &instruction_index,
-            i + 1,
+            function.id,
             reg_classes,
             alloc,
         );

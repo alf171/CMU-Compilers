@@ -12,8 +12,6 @@ const Instruction = @import("common").mir.Instruction;
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
     try rewriteFunction(&program.main, alloc);
     for (program.functions.items) |*function| {
-        // FIXME: skip using function.kind or something
-        if (function.type_params.len > 0) continue;
         try rewriteFunction(function, alloc);
     }
 }

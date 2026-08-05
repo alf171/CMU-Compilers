@@ -18,6 +18,7 @@ pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
     for (program.functions.items) |*function| {
         try rewriteFunction(program, function, alloc);
     }
+    dropTemplates(program, alloc);
 }
 
 /// rewrite function distructively
@@ -198,4 +199,20 @@ fn findFunction(program: *const Program, function_name: []const u8) ?*Function {
         }
     }
     return null;
+}
+
+fn dropTemplates(program: *Program, alloc: std.mem.Allocator) void {
+    var write_index: usize = 0;
+    for (program.functions.items, 0..) |*function, read_index| {
+        if (function.type_params.len > 0) {
+            function.deinit(alloc);
+            continue;
+        }
+
+        if (read_index != write_index) {
+            program.functions.items[write_index] = function.*;
+        }
+        write_index += 1;
+    }
+    program.functions.items.len = write_index;
 }

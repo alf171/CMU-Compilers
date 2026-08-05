@@ -125,7 +125,10 @@ pub fn main(init: std.process.Init) !void {
 
     var reg_classes = try reg_class.classify(ir_program, alloc);
     defer reg_classes.deinit();
+
     var alloc_program = try reg_alloc.build(ir_program, &reg_classes, alloc);
+    defer alloc_program.deinit(alloc);
+
     try live.calculateLiveOut(&alloc_program, alloc);
 
     // run optimzation passes
@@ -137,8 +140,6 @@ pub fn main(init: std.process.Init) !void {
         alloc_program = try reg_alloc.build(ir_program, &reg_classes, alloc);
         try live.calculateLiveOut(&alloc_program, alloc);
     }
-
-    defer alloc_program.deinit(alloc);
 
     // setup register specifics
     const register_files = host_platform.abi.registerFiles();
