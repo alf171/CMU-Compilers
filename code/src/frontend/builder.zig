@@ -9,6 +9,7 @@ const TempId = @import("common").ir.TempId;
 const Function = @import("common").ir.Function;
 const FunctionType = @import("common").ir.FunctionType;
 const TypeInfo = @import("common").types.TypeInfo;
+const TypeParam = @import("common").ir.TypeParam;
 
 const BasicBlock = @import("common").ir.BasicBlock;
 const Operand = @import("common").alloc.Operand;
@@ -30,6 +31,7 @@ pub const IrBuilder = struct {
     // LocalId -> LocalValues
     locals: ArrayList(LocalInfo),
     function_origin: FunctionType,
+    active_param_types: []const TypeParam,
 
     pub fn init(origin: FunctionType, alloc: std.mem.Allocator) !IrBuilder {
         const program = try Program.init(alloc);
@@ -42,6 +44,7 @@ pub const IrBuilder = struct {
             .local_values = LocalValues.init(alloc),
             .locals = .empty,
             .function_origin = origin,
+            .active_param_types = &.{},
         };
     }
 
@@ -57,21 +60,19 @@ pub const IrBuilder = struct {
     }
 
     pub fn currentBlocks(self: *@This()) *ArrayList(BasicBlock) {
-        if (self.current_function) |i| {
-            return &self.program.functions.items[i].blocks;
-        }
-        return &self.program.main.blocks;
+        const function = self.currentFunction();
+        return &function.blocks;
     }
 
-    pub fn currentFunction(self: *@This()) !*Function {
+    pub fn currentFunction(self: *@This()) *Function {
         if (self.current_function) |i| {
             return &self.program.functions.items[i];
         }
-        return error.CantFindCurrentFunction;
+        return &self.program.main;
     }
 
     pub fn nextTemp(self: *@This()) Operand {
-        const function = self.currentFunction() catch &self.program.main;
+        const function = self.currentFunction();
         return function.nextTemp();
     }
 
@@ -138,6 +139,13 @@ pub const IrBuilder = struct {
     }
 
     pub fn emit(self: *@This(), instruct: Instruction, alloc: std.mem.Allocator) !void {
+        const function = self.currentFunction();
+        if (instruct.getDefines()) |defines| {
+            switch (defines) {
+                .top => |top| try function.setValueType(top.operand, top.type, alloc),
+                .local => {},
+            }
+        }
         try self.currentBlocks().items[self.current_block].instructions.append(alloc, instruct);
     }
 
@@ -173,6 +181,16 @@ pub const IrBuilder = struct {
         while (it.next()) |entry| {
             try self.local_values.put(entry.key_ptr.*, entry.value_ptr.*);
         }
+    }
+
+    /// fetch the current functions type_param by its name
+    pub fn getActiveParmType(self: *@This(), name: []const u8) ?TypeParam {
+        for (self.active_param_types) |type_param| {
+            if (std.mem.eql(u8, type_param.name, name)) {
+                return type_param;
+            }
+        }
+        return null;
     }
 };
 

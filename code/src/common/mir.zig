@@ -11,9 +11,11 @@ const LocalId = @import("ir.zig").LocalId;
 const CmpOp = @import("ir.zig").CmpOp;
 const UnaryOp = @import("ir.zig").UnaryOp;
 const SeenValue = @import("ir.zig").SeenValue;
+const SeenValuePtr = @import("ir.zig").SeenValuePtr;
 const ValueRef = @import("ir.zig").ValueRef;
 const TypedOperand = @import("alloc.zig").TypedOperand;
 const TypeInfo = @import("types.zig").TypeInfo;
+const TypeBindings = @import("types.zig").TypeBindings;
 const LirInstruction = @import("lir.zig").Instruction;
 
 pub const PhiInput = struct { pred: BlockId, value: TypedOperand };
@@ -196,6 +198,11 @@ pub const Instruction = union(enum) {
                 tl.dst.deinit(alloc);
                 tl.tuple.deinit(alloc);
             },
+            .list_load => |ll| {
+                ll.dst.deinit(alloc);
+                ll.list.deinit(alloc);
+                ll.index.deinit(alloc);
+            },
             .list_literal => |ll| {
                 ll.dst.deinit(alloc);
                 alloc.free(ll.elements);
@@ -236,6 +243,10 @@ pub const Instruction = union(enum) {
             .len => |l| {
                 l.dst.deinit(alloc);
                 l.value.deinit(alloc);
+            },
+            .print => |p| {
+                p.src.deinit(alloc);
+                if (p.end) |*end| end.deinit(alloc);
             },
             .lir => |*lir| lir.deinit(alloc),
             else => {},
@@ -514,23 +525,36 @@ pub const Instruction = union(enum) {
     }
 
     pub fn getDefines(instruction: Instruction) ?SeenValue {
-        return switch (instruction) {
-            .phi => |pi| .{ .top = pi.dst },
-            .range => |r| .{ .top = r.dst },
-            .len => |l| .{ .top = l.dst },
-            .tuple_literal => |tl| .{ .top = tl.dst },
-            .tuple_load => |tl| .{ .top = tl.dst },
-            .list_literal => |ll| .{ .top = ll.dst },
-            .list_load => |ll| .{ .top = ll.dst },
+        var addressable_instruction = instruction;
+        const define = addressable_instruction.getDefinePtrs() orelse {
+            return null;
+        };
+        return define.value();
+    }
+
+    pub fn getDefinePtrs(instruction: *Instruction) ?SeenValuePtr {
+        return switch (instruction.*) {
+            .phi => |*pi| .{ .top = &pi.dst },
+            .range => |*r| .{ .top = &r.dst },
+            .len => |*l| .{ .top = &l.dst },
+            .tuple_literal => |*tl| .{ .top = &tl.dst },
+            .tuple_load => |*tl| .{ .top = &tl.dst },
+            .list_literal => |*ll| .{ .top = &ll.dst },
+            .list_load => |*ll| .{ .top = &ll.dst },
             .list_store => null,
             .print => null,
-            .function_ref => |fr| .{ .top = fr.dst },
-            .function_param => |fp| .{ .top = fp.dst },
-            .function_call => |fc| if (fc.dst) |op| .{ .top = op } else null,
+            .function_ref => |*fr| .{ .top = &fr.dst },
+            .function_param => |*fp| .{ .top = &fp.dst },
+            .function_call => |*fc| if (fc.dst) |*op| .{ .top = op } else null,
             .function_return => null,
-            .global_idx => |gi| .{ .top = gi.dst },
+            .global_idx => |*gi| .{ .top = &gi.dst },
             .gpu_launch => null,
-            .lir => |l| l.getDefines(),
+            .lazy_load => |*ll| .{ .top = &ll.dst },
+            .list_repeat => |*lr| .{ .top = &lr.dst },
+            .field_store => null,
+            .field_load => |*fl| .{ .top = &fl.dst },
+            .class_init => |*ci| .{ .top = &ci.dst },
+            .lir => |*l| return l.getDefinePtrs(),
             else => |e| {
                 debugPrint("getDefines cant handle {s}\n", .{@tagName(e)});
                 unreachable;
@@ -539,54 +563,68 @@ pub const Instruction = union(enum) {
     }
 
     pub fn getUses(instruction: Instruction, alloc: std.mem.Allocator) !ArrayList(SeenValue) {
-        var res = ArrayList(SeenValue).empty;
+        var addressable_instruction = instruction;
+        var uses = try addressable_instruction.getUsePtrs(alloc);
+        defer uses.deinit(alloc);
+
+        var result: ArrayList(SeenValue) = .empty;
+        errdefer result.deinit(alloc);
+
+        for (uses.items) |use| {
+            try result.append(alloc, use.value());
+        }
+        return result;
+    }
+
+    pub fn getUsePtrs(instruction: *Instruction, alloc: std.mem.Allocator) !ArrayList(SeenValuePtr) {
+        var res: ArrayList(SeenValuePtr) = .empty;
         errdefer res.deinit(alloc);
 
-        switch (instruction) {
-            .phi => |pi| {
-                for (pi.inputs) |phi_input| {
-                    try res.append(alloc, .{ .top = phi_input.value });
+        switch (instruction.*) {
+            .phi => |*pi| {
+                for (pi.inputs) |*phi_input| {
+                    try res.append(alloc, .{ .top = &phi_input.value });
                 }
             },
-            .print => |pi| {
-                try res.append(alloc, .{ .top = pi.src });
+            .print => |*pi| {
+                try res.append(alloc, .{ .top = &pi.src });
             },
-            .range => |r| {
-                try res.append(alloc, .{ .top = r.start });
-                try res.append(alloc, .{ .top = r.end });
+            .range => |*r| {
+                try res.append(alloc, .{ .top = &r.start });
+                try res.append(alloc, .{ .top = &r.end });
             },
-            .len => |l| {
-                try res.append(alloc, .{ .top = l.value });
+            .len => |*l| {
+                try res.append(alloc, .{ .top = &l.value });
             },
-            .tuple_literal => |tl| {
-                for (tl.elements) |elem| {
-                    switch (elem) {
-                        .top => |top| try res.append(alloc, .{ .top = top }),
+            .tuple_literal => |*tl| {
+                for (tl.elements) |*elem| {
+                    switch (elem.*) {
+                        .top => |*top| try res.append(alloc, .{ .top = top }),
                         .constant => {},
                     }
                 }
             },
-            .tuple_load => |tl| {
-                try res.append(alloc, .{ .top = tl.tuple });
-                try res.append(alloc, .{ .top = tl.index });
+            .tuple_load => |*tl| {
+                try res.append(alloc, .{ .top = &tl.tuple });
+                try res.append(alloc, .{ .top = &tl.index });
             },
-            .list_literal => |ll| {
-                for (ll.elements) |elem| {
-                    switch (elem) {
-                        .top => |top| try res.append(alloc, .{ .top = top }),
+            .list_literal => |*ll| {
+                for (ll.elements) |*elem| {
+                    switch (elem.*) {
+                        .top => |*top| try res.append(alloc, .{ .top = top }),
                         .constant => {},
                     }
                 }
             },
-            .list_load => |il| {
-                try res.append(alloc, .{ .top = il.list });
-                try res.append(alloc, .{ .top = il.index });
+            .list_load => |*il| {
+                try res.append(alloc, .{ .top = &il.list });
+                try res.append(alloc, .{ .top = &il.index });
             },
-            .list_store => |ls| {
-                try res.append(alloc, .{ .top = ls.list });
-                try res.append(alloc, .{ .top = ls.index });
+            .list_store => |*ls| {
+                try res.append(alloc, .{ .top = &ls.list });
+                try res.append(alloc, .{ .top = &ls.index });
                 switch (ls.src) {
-                    .top => |top| {
+                    .top => |*top| {
                         try res.append(alloc, .{ .top = top });
                     },
                     .constant => {},
@@ -594,38 +632,38 @@ pub const Instruction = union(enum) {
             },
             .function_ref => {},
             .function_param => {},
-            .function_call => |fc| {
+            .function_call => |*fc| {
                 switch (fc.callee) {
                     .direct => {},
-                    .indirect => |ind| {
+                    .indirect => |*ind| {
                         try res.append(alloc, .{ .top = ind });
                     },
                 }
-                for (fc.args) |arg| {
+                for (fc.args) |*arg| {
                     try res.append(alloc, .{ .top = arg });
                 }
             },
-            .function_return => |fc| {
-                if (fc.value) |top| {
+            .function_return => |*fc| {
+                if (fc.value) |*top| {
                     try res.append(alloc, .{ .top = top });
                 }
             },
-            .global_idx => |gi| {
+            .global_idx => |*gi| {
                 switch (gi.axis) {
-                    .top => |top| {
+                    .top => |*top| {
                         try res.append(alloc, .{ .top = top });
                     },
                     else => {},
                 }
             },
-            .gpu_launch => |gl| {
+            .gpu_launch => |*gl| {
                 // no need to append arg.work_items since its contained in args already
-                for (gl.args) |arg| {
+                for (gl.args) |*arg| {
                     try res.append(alloc, .{ .top = arg });
                 }
             },
-            .lir => |l| {
-                var seen = try l.getUses(alloc);
+            .lir => |*l| {
+                var seen = try l.getUsePtrs(alloc);
                 defer seen.deinit(alloc);
                 for (seen.items) |s| {
                     try res.append(alloc, s);
@@ -637,5 +675,71 @@ pub const Instruction = union(enum) {
             },
         }
         return res;
+    }
+
+    pub fn clone(self: *@This(), alloc: std.mem.Allocator) !@This() {
+        return switch (self.*) {
+            .function_param => |fp| .{ .function_param = .{
+                .dst = try fp.dst.clone(alloc),
+                .name = try alloc.dupe(u8, fp.name),
+                .index = fp.index,
+            } },
+            .print => |p| .{ .print = .{
+                .src = try p.src.clone(alloc),
+                .end = if (p.end) |end| try end.clone(alloc) else null,
+            } },
+            .list_load => |ll| .{ .list_load = .{
+                .dst = try ll.dst.clone(alloc),
+                .list = try ll.list.clone(alloc),
+                .index = try ll.index.clone(alloc),
+            } },
+            .len => |l| .{ .len = .{
+                .dst = try l.dst.clone(alloc),
+                .value = try l.value.clone(alloc),
+            } },
+            .function_return => |fr| .{ .function_return = .{
+                .value = if (fr.value) |value| try value.clone(alloc) else null,
+            } },
+            .lir => |*lir| .{
+                .lir = try lir.clone(alloc),
+            },
+            else => |e| {
+                std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                return error.NotImpl;
+            },
+        };
+    }
+
+    pub fn remapInstruction(
+        instruction: *@This(),
+        new_function_id: usize,
+        bindings: *TypeBindings,
+        alloc: std.mem.Allocator,
+    ) !void {
+        if (instruction.getDefinePtrs()) |define| {
+            switch (define) {
+                .top => |top| {
+                    top.operand = top.operand.withFunctionId(new_function_id);
+                    const concrete_type = try top.type.substitute(bindings, alloc);
+                    top.type.deinit(alloc);
+                    top.type = concrete_type;
+                },
+                .local => {},
+            }
+        }
+
+        var uses = try instruction.getUsePtrs(alloc);
+        defer uses.deinit(alloc);
+        for (uses.items) |use| {
+            switch (use) {
+                .top => |top| {
+                    top.operand = top.operand.withFunctionId(new_function_id);
+                    const concrete_type = try top.type.substitute(bindings, alloc);
+                    top.type.deinit(alloc);
+                    top.type = concrete_type;
+                },
+                .local => {},
+            }
+        }
     }
 };

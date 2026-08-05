@@ -3,6 +3,10 @@ pub const RegisterType = @import("register.zig").RegisterType;
 pub const FunctionKind = @import("ir.zig").FunctionKind;
 pub const ClassId = @import("ir.zig").ClassId;
 
+pub const TypeVarId = u32;
+
+pub const TypeBindings = std.AutoHashMap(TypeVarId, TypeInfo);
+
 // use a pointer on element type for recursive purposes
 // things like range dont know their size at comptime
 pub const TypeInfo = union(enum) {
@@ -33,6 +37,7 @@ pub const TypeInfo = union(enum) {
         returns: *const TypeInfo,
     },
     instance: ClassId,
+    type_variable: TypeVarId,
     any,
 
     pub fn deinit(self: @This(), alloc: std.mem.Allocator) void {
@@ -104,11 +109,11 @@ pub const TypeInfo = union(enum) {
                     .element = try (try i.element.*.clone(alloc)).toOwnedPointer(alloc),
                 } };
             },
-            .void, .i64, .i32, .bool, .char, .float, .any, .instance => return self,
-            else => |e| {
-                std.debug.print("clone does support {s}\n", .{@tagName(e)});
-                return error.NotImpl;
-            },
+            .void, .i64, .i32, .bool, .char, .float, .any, .instance, .type_variable, .ptr => return self,
+            // else => |e| {
+            //     std.debug.print("clone does support {s}\n", .{@tagName(e)});
+            //     return error.NotImpl;
+            // },
         }
     }
 
@@ -170,4 +175,64 @@ pub const TypeInfo = union(enum) {
         ptr.* = self;
         return ptr;
     }
+
+    /// verifies generics logic
+    pub fn unify(self: @This(), expected: TypeInfo, bindings: *TypeBindings, alloc: std.mem.Allocator) !void {
+        switch (self) {
+            .type_variable => |tv| {
+                if (bindings.get(tv)) |resolves| {
+                    if (!resolves.equal(expected)) return error.TypeMismatch;
+                    return;
+                }
+                try bindings.put(tv, try expected.clone(alloc));
+            },
+            .list => |generic_l| switch (expected) {
+                .list => |expected_l| {
+                    try unify(generic_l.element.*, expected_l.element.*, bindings, alloc);
+                },
+                else => return error.TypeMistmatch,
+            },
+            .tuple => return error.NotImpl,
+            else => {},
+        }
+    }
+
+    /// returns generics evaluate type
+    pub fn substitute(self: @This(), bindings: *TypeBindings, alloc: std.mem.Allocator) !TypeInfo {
+        switch (self) {
+            .type_variable => |t| {
+                const actual = bindings.get(t) orelse {
+                    return error.ExpectedBinding;
+                };
+                return try actual.clone(alloc);
+            },
+            .list => |l| {
+                const elem = try substitute(l.element.*, bindings, alloc);
+                return .{ .list = .{ .element = try elem.toOwnedPointer(alloc) } };
+            },
+            else => return try self.clone(alloc),
+        }
+    }
+
+    pub fn toString(self: @This(), alloc: std.mem.Allocator) ![]const u8 {
+        return switch (self) {
+            .i64 => try alloc.dupe(u8, "i64"),
+            .i32 => try alloc.dupe(u8, "i32"),
+            .bool => try alloc.dupe(u8, "bool"),
+            .char => try alloc.dupe(u8, "char"),
+            .float => try alloc.dupe(u8, "float"),
+            .list => |l| blk: {
+                const elem = try l.element.*.toString(alloc);
+                defer alloc.free(elem);
+
+                break :blk try std.fmt.allocPrint(alloc, "list_{s}", .{elem});
+            },
+            else => |e| {
+                std.debug.print("cannot stringify type {s}\n", .{@tagName(e)});
+                return error.TypeStringNotImpl;
+            },
+        };
+    }
 };
+
+test "unify + sub" {}

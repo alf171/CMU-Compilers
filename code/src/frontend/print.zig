@@ -13,6 +13,8 @@ const ownedPointer = @import("common").types.ownedPointer;
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
     try rewriteFunction(&program.main, alloc);
     for (program.functions.items) |*function| {
+        // HACK: avoid lowering generics
+        if (function.type_params.len > 0) continue;
         try rewriteFunction(function, alloc);
     }
 }
@@ -21,6 +23,7 @@ pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
 fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
     for (function.blocks.items) |*block| {
         var new_instructions: ArrayList(Instruction) = .empty;
+        errdefer new_instructions.deinit(alloc);
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
                 .print => |p| {
@@ -34,7 +37,6 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     if (p.end) |end| {
                         args[1] = try end.clone(alloc);
                     }
-                    // TODO: create better dispatching logic
                     switch (p.src.type) {
                         .list => |l| {
                             if (l.element.* == .char) {
@@ -77,6 +79,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             return error.UnsupportedPrint;
                         },
                     }
+                    instruction.deinit(alloc);
                 },
                 else => try new_instructions.append(alloc, instruction.*),
             }

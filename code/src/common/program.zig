@@ -5,7 +5,10 @@ const BasicBlock = @import("ir.zig").BasicBlock;
 const ClassInfo = @import("ir.zig").ClassInfo;
 const Function = @import("ir.zig").Function;
 const FunctionType = @import("ir.zig").FunctionType;
-const Param = @import("alloc.zig").Param;
+const Param = @import("ir.zig").Param;
+const TypeParam = @import("ir.zig").TypeParam;
+const Operand = @import("alloc.zig").Operand;
+const TypeInfo = @import("types.zig").TypeInfo;
 
 pub const Program = struct {
     main: Function,
@@ -24,11 +27,13 @@ pub const Program = struct {
                 .blocks = blocks,
                 .entry_block = 0,
                 .params = try alloc.alloc(Param, 0),
+                .type_params = try alloc.alloc(TypeParam, 0),
                 .return_type = .i64,
                 .next_temp = 0,
                 .next_mem = 0,
                 .origin = .user,
                 .kind = .host,
+                .value_to_type = std.AutoHashMap(Operand, TypeInfo).init(alloc),
             },
             .functions = .empty,
             .classes = .empty,

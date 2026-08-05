@@ -10,6 +10,7 @@ const BlockId = @import("ir.zig").BlockId;
 const CmpOp = @import("ir.zig").CmpOp;
 const UnaryOp = @import("ir.zig").UnaryOp;
 const SeenValue = @import("ir.zig").SeenValue;
+const SeenValuePtr = @import("ir.zig").SeenValuePtr;
 const TypeInfo = @import("types.zig").TypeInfo;
 const TypedOperand = @import("alloc.zig").TypedOperand;
 
@@ -277,22 +278,27 @@ pub const Instruction = union(enum) {
         }
     }
 
+    pub fn getDefines(instruction: Instruction) !SeenValue {
+        var addressable_instruction = instruction;
+        return addressable_instruction.getDefinePtrs();
+    }
+
     /// are we generating a new temp for reg coloring
-    pub fn getDefines(instruction: Instruction) ?SeenValue {
-        return switch (instruction) {
-            .store_local => |sl| .{ .local = sl.local.id },
-            .load_local => |ll| .{ .top = ll.dst },
-            .binop => |bop| .{ .top = bop.dst },
-            .move => |m| .{ .top = m.dst },
-            .unaryop => |uop| .{ .top = uop.dst },
-            .compare => |c| .{ .top = c.dst },
+    pub fn getDefinePtrs(instruction: *Instruction) ?SeenValuePtr {
+        return switch (instruction.*) {
+            .store_local => |*sl| .{ .local = &sl.local.id },
+            .load_local => |*ll| .{ .top = &ll.dst },
+            .binop => |*bop| .{ .top = &bop.dst },
+            .move => |*m| .{ .top = &m.dst },
+            .unaryop => |*uop| .{ .top = &uop.dst },
+            .compare => |*c| .{ .top = &c.dst },
             .store_offset => null,
-            .load_offset => |lo| .{ .top = lo.dst },
-            .stack_alloc => |so| .{ .top = so.dst },
-            .select => |s| .{ .top = s.dst },
+            .load_offset => |*lo| .{ .top = &lo.dst },
+            .stack_alloc => |*so| .{ .top = &so.dst },
+            .select => |*s| .{ .top = &s.dst },
             .branch => null,
             .jump => null,
-            .cast => |c| .{ .top = c.dst },
+            .cast => |*c| .{ .top = &c.dst },
             else => |e| {
                 std.debug.print("getDefines does not handle {s}\n", .{@tagName(e)});
                 unreachable;
@@ -301,76 +307,90 @@ pub const Instruction = union(enum) {
     }
 
     pub fn getUses(instruction: Instruction, alloc: std.mem.Allocator) !ArrayList(SeenValue) {
-        var res = ArrayList(SeenValue).empty;
+        var addressable_instruction = instruction;
+        var uses = try addressable_instruction.getUsePtrs(alloc);
+        defer uses.deinit(alloc);
+
+        var result: ArrayList(SeenValue) = .empty;
+        errdefer result.deinit(alloc);
+
+        for (uses.items) |use| {
+            try result.append(alloc, use.value());
+        }
+        return result;
+    }
+
+    pub fn getUsePtrs(instruction: *Instruction, alloc: std.mem.Allocator) !ArrayList(SeenValuePtr) {
+        var res: ArrayList(SeenValuePtr) = .empty;
         errdefer res.deinit(alloc);
 
-        switch (instruction) {
-            .store_local => |sl| {
-                try res.append(alloc, .{ .top = sl.src });
+        switch (instruction.*) {
+            .store_local => |*sl| {
+                try res.append(alloc, .{ .top = &sl.src });
             },
-            .store_offset => |so| {
-                try res.append(alloc, .{ .top = so.dst });
+            .store_offset => |*so| {
+                try res.append(alloc, .{ .top = &so.dst });
                 switch (so.offset) {
-                    .top => |top| {
+                    .top => |*top| {
                         try res.append(alloc, .{ .top = top });
                     },
                     else => {},
                 }
-                try res.append(alloc, .{ .top = so.src });
+                try res.append(alloc, .{ .top = &so.src });
             },
-            .load_offset => |lo| {
+            .load_offset => |*lo| {
                 switch (lo.offset) {
-                    .top => |top| {
+                    .top => |*top| {
                         try res.append(alloc, .{ .top = top });
                     },
                     else => {},
                 }
-                try res.append(alloc, .{ .top = lo.src });
+                try res.append(alloc, .{ .top = &lo.src });
             },
             .stack_alloc => {},
-            .load_local => |ll| {
-                try res.append(alloc, .{ .local = ll.local.id });
+            .load_local => |*ll| {
+                try res.append(alloc, .{ .local = &ll.local.id });
             },
-            .binop => |bop| {
-                try res.append(alloc, .{ .top = bop.lhs });
-                try res.append(alloc, .{ .top = bop.rhs });
+            .binop => |*bop| {
+                try res.append(alloc, .{ .top = &bop.lhs });
+                try res.append(alloc, .{ .top = &bop.rhs });
             },
-            .move => |m| {
+            .move => |*m| {
                 switch (m.src) {
-                    .top => |top| {
+                    .top => |*top| {
                         try res.append(alloc, .{ .top = top });
                     },
                     .constant => {},
                 }
             },
-            .unaryop => |uop| {
-                try res.append(alloc, .{ .top = uop.src });
+            .unaryop => |*uop| {
+                try res.append(alloc, .{ .top = &uop.src });
             },
-            .compare => |c| {
-                try res.append(alloc, .{ .top = c.lhs });
-                try res.append(alloc, .{ .top = c.rhs });
+            .compare => |*c| {
+                try res.append(alloc, .{ .top = &c.lhs });
+                try res.append(alloc, .{ .top = &c.rhs });
             },
-            .branch => |b| {
-                try res.append(alloc, .{ .top = b.condition });
+            .branch => |*b| {
+                try res.append(alloc, .{ .top = &b.condition });
             },
-            .select => |s| {
-                try res.append(alloc, .{ .top = s.condition });
+            .select => |*s| {
+                try res.append(alloc, .{ .top = &s.condition });
                 switch (s.if_value) {
-                    .top => |top| {
+                    .top => |*top| {
                         try res.append(alloc, .{ .top = top });
                     },
                     else => {},
                 }
                 switch (s.else_value) {
-                    .top => |top| {
+                    .top => |*top| {
                         try res.append(alloc, .{ .top = top });
                     },
                     else => {},
                 }
             },
             .jump => {},
-            .cast => |c| {
-                try res.append(alloc, .{ .top = c.src });
+            .cast => |*c| {
+                try res.append(alloc, .{ .top = &c.src });
             },
             else => |e| {
                 std.debug.print("getUses doesn't handle {s}\n", .{@tagName(e)});
@@ -418,5 +438,28 @@ pub const Instruction = union(enum) {
             },
             else => {},
         }
+    }
+
+    pub fn clone(self: *@This(), alloc: std.mem.Allocator) !@This() {
+        return switch (self.*) {
+            .store_local => |sl| .{ .store_local = .{
+                .local = try sl.local.duplicate(alloc),
+                .src = try sl.src.clone(alloc),
+            } },
+            .move => |m| .{ .move = .{
+                .dst = try m.dst.clone(alloc),
+                .src = try m.src.clone(alloc),
+            } },
+            .binop => |bop| .{ .binop = .{
+                .dst = try bop.dst.clone(alloc),
+                .lhs = try bop.lhs.clone(alloc),
+                .op = bop.op,
+                .rhs = try bop.rhs.clone(alloc),
+            } },
+            else => |e| {
+                std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                return error.NotImpl;
+            },
+        };
     }
 };

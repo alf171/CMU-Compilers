@@ -6,6 +6,7 @@ const ConstValue = @import("ir.zig").ConstValue;
 const ParsedConstant = @import("ir.zig").ParsedConstant;
 const TempId = @import("ir.zig").TempId;
 const MemoryId = @import("ir.zig").MemoryId;
+const Function = @import("ir.zig").Function;
 const TypeInfo = @import("types.zig").TypeInfo;
 const RegisterType = @import("types.zig").RegisterType;
 
@@ -201,25 +202,33 @@ pub const Operand = union(enum) {
             else => false,
         };
     }
-};
 
-pub const Param = struct {
-    name: []const u8,
-    type: TypeInfo,
-    default: ?ParsedConstant = null,
-
-    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
-        alloc.free(self.name);
-        self.type.deinit(alloc);
-        if (self.default) |*def| {
-            def.deinit(alloc);
-        }
+    pub fn withFunctionId(self: @This(), function_id: usize) @This() {
+        return switch (self) {
+            .temp => |temp| .{ .temp = .{
+                .id = temp.id,
+                .function_id = function_id,
+            } },
+            .mem => |mem| .{ .mem = .{
+                .id = mem.id,
+                .function_id = function_id,
+            } },
+            .reg, .unknown => self,
+        };
     }
 };
 
 pub const TypedOperand = struct {
     operand: Operand,
+    /// type snapshot
     type: TypeInfo,
+
+    /// current type following aliases
+    pub fn getType(self: @This(), function: *const Function) !*const TypeInfo {
+        return function.value_to_type.getPtr(self.operand) orelse {
+            return error.TypeNotFound;
+        };
+    }
 
     pub fn equal(self: @This(), other: @This()) bool {
         return self.operand.equal(other.operand);

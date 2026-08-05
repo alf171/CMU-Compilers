@@ -49,7 +49,7 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                                 .id = abi.getFunctionReturnIdx(function.return_type),
                                 .class = function.return_type.toRegisterType(function.kind),
                             } },
-                            .type = function.return_type,
+                            .type = try function.return_type.clone(alloc),
                         };
                         try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                             .dst = reg,

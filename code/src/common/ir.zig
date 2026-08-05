@@ -2,8 +2,8 @@ const std = @import("std");
 const Instruction = @import("mir.zig").Instruction;
 const ArrayList = std.ArrayList;
 const TypeInfo = @import("types.zig").TypeInfo;
+const TypeVarId = @import("types.zig").TypeVarId;
 const TypedOperand = @import("alloc.zig").TypedOperand;
-const Param = @import("alloc.zig").Param;
 const Operand = @import("alloc.zig").Operand;
 const RegisterType = @import("register.zig").RegisterType;
 
@@ -30,6 +30,32 @@ pub const ParsedConstant = union(enum) {
             .composite => |comp| return comp.type,
         }
     }
+
+    pub fn clone(self: *const @This(), alloc: std.mem.Allocator) !@This() {
+        return switch (self.*) {
+            .immediate => |imm| .{ .immediate = imm },
+            .composite => |comp| blk: {
+                var elements = try alloc.alloc(ValueRef, comp.elements.len);
+                errdefer alloc.free(elements);
+                for (comp.elements, 0..) |elem, i| {
+                    elements[i] = try elem.clone(alloc);
+                }
+                break :blk .{ .composite = .{ .elements = elements, .type = try comp.type.clone(alloc) } };
+            },
+        };
+    }
+};
+
+pub const SeenValuePtr = union(enum) {
+    top: *TypedOperand,
+    local: *LocalId,
+
+    pub fn value(self: @This()) SeenValue {
+        return switch (self) {
+            .top => |top| .{ .top = top.* },
+            .local => |local| .{ .local = local.* },
+        };
+    }
 };
 
 pub const SeenValue = union(enum) {
@@ -54,10 +80,12 @@ pub const LocalInfo = struct {
     name: []const u8,
     type: TypeInfo,
 
+    // TODO: rename to clone
     pub fn duplicate(self: @This(), alloc: std.mem.Allocator) !@This() {
         return .{
             .id = self.id,
             .name = try alloc.dupe(u8, self.name),
+            // NOTE: should this be clone?
             .type = self.type,
         };
     }
@@ -208,6 +236,13 @@ pub const ValueRef = union(enum) {
             .constant => |c| c.print(),
         }
     }
+
+    pub fn clone(self: *const @This(), alloc: std.mem.Allocator) !@This() {
+        return switch (self.*) {
+            .constant => |constant| .{ .constant = constant },
+            .top => |top| .{ .top = try top.clone(alloc) },
+        };
+    }
 };
 
 pub const CmpOp = enum {
@@ -252,10 +287,35 @@ pub const BasicBlock = struct {
     }
 };
 
+/// a function parameter its type and potentially a default value
+pub const Param = struct {
+    name: []const u8,
+    type: TypeInfo,
+    default: ?ParsedConstant = null,
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        alloc.free(self.name);
+        self.type.deinit(alloc);
+        if (self.default) |*def| {
+            def.deinit(alloc);
+        }
+    }
+};
+
+pub const TypeParam = struct {
+    name: []const u8,
+    id: TypeVarId,
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        alloc.free(self.name);
+    }
+};
+
 pub const Function = struct {
     name: []const u8,
     id: usize,
     params: []Param,
+    type_params: []TypeParam,
     return_type: TypeInfo,
     blocks: ArrayList(BasicBlock),
     entry_block: BlockId,
@@ -263,6 +323,12 @@ pub const Function = struct {
     next_mem: MemoryId,
     origin: FunctionType,
     kind: FunctionKind,
+    /// TODO: a potential solution for having rewrite layers be able to change types that have been propogated
+    /// alternative approaches:
+    /// 1. each rewrite layer walks types for propogations
+    /// 2. create a operand ==> type conversion per function
+    /// 3. keep generics pass in walk (pre propogation)
+    value_to_type: std.AutoHashMap(Operand, TypeInfo),
 
     pub fn nextTemp(self: *@This()) Operand {
         const id = self.next_temp;
@@ -286,6 +352,7 @@ pub const Function = struct {
         func_name: []const u8,
         id: usize,
         params: []Param,
+        type_params: []TypeParam,
         return_type: TypeInfo,
         origin: FunctionType,
         kind: FunctionKind,
@@ -297,6 +364,7 @@ pub const Function = struct {
             .name = try alloc.dupe(u8, func_name),
             .id = id,
             .params = params,
+            .type_params = type_params,
             .return_type = return_type,
             .blocks = blocks,
             .entry_block = 0,
@@ -304,6 +372,7 @@ pub const Function = struct {
             .next_mem = 0,
             .origin = origin,
             .kind = kind,
+            .value_to_type = std.AutoHashMap(Operand, TypeInfo).init(alloc),
         };
     }
 
@@ -319,5 +388,24 @@ pub const Function = struct {
             param.deinit(alloc);
         }
         alloc.free(self.params);
+        for (self.type_params) |*t_param| {
+            t_param.deinit(alloc);
+        }
+        alloc.free(self.type_params);
+        var it = self.value_to_type.valueIterator();
+        while (it.next()) |t| {
+            t.deinit(alloc);
+        }
+        self.value_to_type.deinit();
+    }
+
+    pub fn setValueType(self: *@This(), operand: Operand, type_info: TypeInfo, alloc: std.mem.Allocator) !void {
+        if (self.value_to_type.getPtr(operand)) |existing| {
+            existing.deinit(alloc);
+            existing.* = try type_info.clone(alloc);
+            return;
+        }
+
+        try self.value_to_type.put(operand, try type_info.clone(alloc));
     }
 };

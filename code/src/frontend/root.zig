@@ -10,6 +10,7 @@ pub const func = @import("func.zig");
 pub const print = @import("print.zig");
 pub const class = @import("class.zig");
 pub const runtime = @import("runtime.zig");
+pub const generics = @import("generics.zig");
 
 test {
     std.testing.refAllDecls(@This());

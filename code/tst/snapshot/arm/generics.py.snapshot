@@ -1,3 +1,5 @@
+running program: (OPTIM=true)
+
 
 lst_int: list[int] = [1, 2, 3, 4]
 lst_str: list[str] = ["foo", "bar"]
@@ -25,3 +27,33 @@ print_len(lst_bool)
 print(get_last_item(lst_int))
 print(get_last_item(lst_str))
 print(get_last_item(lst_bool))
+
+performance report: (ORIGIN=user)
+number of asm lines: 524
+mov count: 228
+memory load count: 9
+memory store count: 55
+branch count: 23
+call count: 32
+spill count: 0
+
+performance report: (ORIGIN=runtime)
+number of asm lines: 615
+mov count: 246
+memory load count: 8
+memory store count: 49
+branch count: 49
+call count: 31
+spill count: 0
+
+actual output:
+5
+Hello world
+False
+4
+2
+2
+4
+bar
+True
+[!!memory report!!]: allocs=24 frees=24 allocated_bytes=309 freed_bytes=309

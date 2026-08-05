@@ -12,6 +12,8 @@ const Instruction = @import("common").mir.Instruction;
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
     try rewriteFunction(&program.main, alloc);
     for (program.functions.items) |*function| {
+        // FIXME: skip using function.kind or something
+        if (function.type_params.len > 0) continue;
         try rewriteFunction(function, alloc);
     }
 }
@@ -228,6 +230,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             .offset = .{ .top = try offset.clone(alloc) },
                         },
                     } });
+                    instruction.deinit(alloc);
                 },
                 else => try new_instructions.append(alloc, instruction.*),
             }

@@ -29,7 +29,7 @@ pub fn walkAstWithRuntime(
 
         while (try walker.next(io)) |entry| {
             std.debug.assert(entry.kind == .file);
-            std.debug.print("check {s}\n", .{entry.path});
+            // std.debug.print("check {s}\n", .{entry.path});
             const file_name = try std.fs.path.join(alloc, &.{ "src/runtime", entry.path });
             defer alloc.free(file_name);
             const runtime_obj = try readFile(file_name, false, should_optim, use_escape_codes, io, alloc);
