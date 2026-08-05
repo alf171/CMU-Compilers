@@ -246,16 +246,20 @@ fn emitFunction(
                                     try out.print(alloc, "\tpopq %rax\n", .{});
                                 },
                                 .mod => {
-                                    const divisor = try abi.scratchReg(0, .gp);
+                                    const scratch = try abi.scratchReg(0, .gp);
+                                    // idiv clobbers rax, rdx
                                     try out.print(alloc, "\tpushq %rax\n", .{});
-                                    // idiv clobbers rax, rdx so save rhs in case
-                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ rhs, divisor });
+                                    try out.print(alloc, "\tpushq %rdx\n", .{});
+                                    // save rhs in case its one of two regs above
+                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ rhs, scratch });
                                     try out.print(alloc, "\tmovq %{s}, %rax\n", .{lhs});
                                     try out.print(alloc, "\tcqto\n", .{});
-                                    try out.print(alloc, "\tidivq %{s}\n", .{divisor});
-                                    // x86 magic :)
-                                    try out.print(alloc, "\tmovq %rdx, %{s}\n", .{dst});
+                                    try out.print(alloc, "\tidivq %{s}\n", .{scratch});
+                                    try out.print(alloc, "\tmovq %rdx, %{s}\n", .{scratch});
+                                    // restore
+                                    try out.print(alloc, "\tpopq %rdx\n", .{});
                                     try out.print(alloc, "\tpopq %rax\n", .{});
+                                    try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ scratch, dst });
                                 },
                                 .lshift, .rshift => {
                                     if (bop.lhs.type == .float) {
