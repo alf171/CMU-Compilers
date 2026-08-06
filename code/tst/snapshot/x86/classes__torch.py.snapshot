@@ -1,0 +1,39 @@
+running program: (OPTIM=true)
+
+
+class MiniTorch[T]:
+    def __init__(self, data: list[T]) -> None:
+        self.data = data
+
+    def get_item(self, i: int) -> T:
+        return self.data[i]
+
+
+tensor = MiniTorch[int]([1,2,3,4])
+print(tensor.get_item(0))
+print(tensor.get_item(1))
+print(tensor.get_item(2))
+
+performance report: (ORIGIN=user)
+number of asm lines: 175
+mov count: 90
+memory load count: 0
+memory store count: 0
+branch count: 7
+call count: 13
+spill count: 0
+
+performance report: (ORIGIN=runtime)
+number of asm lines: 640
+mov count: 329
+memory load count: 0
+memory store count: 0
+branch count: 48
+call count: 31
+spill count: 10
+
+actual output:
+1
+2
+3
+[!!memory report!!]: allocs=8 frees=8 allocated_bytes=105 freed_bytes=105

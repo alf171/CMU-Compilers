@@ -446,6 +446,16 @@ pub const Instruction = union(enum) {
                 .local = try sl.local.duplicate(alloc),
                 .src = try sl.src.clone(alloc),
             } },
+            .store_offset => |so| .{ .store_offset = .{
+                .dst = try so.dst.clone(alloc),
+                .offset = try so.offset.clone(alloc),
+                .src = try so.src.clone(alloc),
+            } },
+            .load_offset => |lo| .{ .load_offset = .{
+                .dst = try lo.dst.clone(alloc),
+                .src = try lo.src.clone(alloc),
+                .offset = try lo.offset.clone(alloc),
+            } },
             .move => |m| .{ .move = .{
                 .dst = try m.dst.clone(alloc),
                 .src = try m.src.clone(alloc),

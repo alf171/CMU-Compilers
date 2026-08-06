@@ -108,18 +108,21 @@ pub const Method = struct {
 };
 // classes hold methods and fields
 pub const ClassId = u32;
+
 pub const ClassInfo = struct {
     id: ClassId,
     name: []const u8,
+    type_params: []TypeParam,
     fields: ArrayList(Field),
     methods: ArrayList(Method),
     // size to create an instance of this class
     size: usize,
 
-    pub fn init(id: ClassId, name: []const u8, alloc: std.mem.Allocator) !@This() {
+    pub fn init(id: ClassId, name: []const u8, type_params: []TypeParam, alloc: std.mem.Allocator) !@This() {
         return .{
             .id = id,
             .name = try alloc.dupe(u8, name),
+            .type_params = type_params,
             .fields = .empty,
             .methods = .empty,
             .size = 0,
@@ -128,6 +131,10 @@ pub const ClassInfo = struct {
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         alloc.free(self.name);
+        for (self.type_params) |*type_param| {
+            type_param.deinit(alloc);
+        }
+        alloc.free(self.type_params);
         for (self.fields.items) |*field| {
             alloc.free(field.name);
             field.type.deinit(alloc);
@@ -308,6 +315,13 @@ pub const TypeParam = struct {
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         alloc.free(self.name);
+    }
+
+    pub fn clone(self: *@This(), alloc: std.mem.Allocator) !@This() {
+        return .{
+            .name = try alloc.dupe(u8, self.name),
+            .id = self.id,
+        };
     }
 };
 

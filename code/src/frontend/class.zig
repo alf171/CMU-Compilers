@@ -89,14 +89,14 @@ pub fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Al
                 },
                 .lir => |lir| switch (lir) {
                     .binop => |bop| {
-                        const class_id = switch (bop.lhs.type) {
+                        const instance = switch (bop.lhs.type) {
                             .instance => |id| id,
                             else => {
                                 try new_instructions.append(alloc, instruction.*);
                                 continue;
                             },
                         };
-                        const class = &program.classes.items[class_id];
+                        const class = &program.classes.items[instance.class_id];
                         const method_name = switch (bop.op) {
                             .add => "__add__",
                             .sub => "__sub__",

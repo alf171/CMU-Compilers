@@ -257,6 +257,10 @@ pub const Instruction = union(enum) {
                 alloc.free(ci.args);
                 ci.dst.deinit(alloc);
             },
+            .field_load => |fl| {
+                fl.dst.deinit(alloc);
+                fl.instance.deinit(alloc);
+            },
             .field_store => |fs| {
                 fs.instance.deinit(alloc);
                 fs.src.deinit(alloc);

@@ -7,6 +7,12 @@ pub const TypeVarId = u32;
 
 pub const TypeBindings = std.AutoHashMap(TypeVarId, TypeInfo);
 
+pub const ClassInstance = struct {
+    class_id: ClassId,
+    /// used for generics
+    args: []const TypeInfo,
+};
+
 // use a pointer on element type for recursive purposes
 // things like range dont know their size at comptime
 pub const TypeInfo = union(enum) {
@@ -36,7 +42,7 @@ pub const TypeInfo = union(enum) {
         params: []const TypeInfo,
         returns: *const TypeInfo,
     },
-    instance: ClassId,
+    instance: ClassInstance,
     type_variable: TypeVarId,
     any,
 
@@ -68,6 +74,12 @@ pub const TypeInfo = union(enum) {
 
                 callable.returns.*.deinit(alloc);
                 alloc.destroy(@constCast(callable.returns));
+            },
+            .instance => |instance| {
+                for (instance.args) |arg| {
+                    arg.deinit(alloc);
+                }
+                alloc.free(instance.args);
             },
             else => {},
         }
@@ -109,7 +121,24 @@ pub const TypeInfo = union(enum) {
                     .element = try (try i.element.*.clone(alloc)).toOwnedPointer(alloc),
                 } };
             },
-            .void, .i64, .i32, .bool, .char, .float, .any, .instance, .type_variable, .ptr => return self,
+            .instance => |instance| {
+                var args = try alloc.alloc(TypeInfo, instance.args.len);
+                var initialized: usize = 0;
+                errdefer {
+                    for (args[0..initialized]) |t| t.deinit(alloc);
+                    alloc.free(args);
+                }
+                for (instance.args, 0..) |arg, i| {
+                    args[i] = try arg.clone(alloc);
+                    initialized += 1;
+                }
+
+                return .{ .instance = .{
+                    .class_id = instance.class_id,
+                    .args = args,
+                } };
+            },
+            .void, .i64, .i32, .bool, .char, .float, .any, .type_variable, .ptr => return self,
             // else => |e| {
             //     std.debug.print("clone does support {s}\n", .{@tagName(e)});
             //     return error.NotImpl;
@@ -192,6 +221,20 @@ pub const TypeInfo = union(enum) {
                 },
                 else => return error.TypeMistmatch,
             },
+            .instance => |instance| switch (expected) {
+                .instance => |expected_i| {
+                    if (instance.class_id != expected_i.class_id) {
+                        return error.TypeMismatch;
+                    }
+                    if (instance.args.len != expected_i.args.len) {
+                        return error.TypeMismatch;
+                    }
+                    for (instance.args, expected_i.args) |actual_arg, expected_arg| {
+                        try unify(actual_arg, expected_arg, bindings, alloc);
+                    }
+                },
+                else => return error.TypeMistmatch,
+            },
             .tuple => return error.NotImpl,
             else => {},
         }
@@ -209,6 +252,25 @@ pub const TypeInfo = union(enum) {
             .list => |l| {
                 const elem = try substitute(l.element.*, bindings, alloc);
                 return .{ .list = .{ .element = try elem.toOwnedPointer(alloc) } };
+            },
+            .instance => |i| {
+                var args = try alloc.alloc(TypeInfo, i.args.len);
+                var initialized: usize = 0;
+                errdefer {
+                    for (args[0..initialized]) |arg| {
+                        arg.deinit(alloc);
+                    }
+                    alloc.free(args);
+                }
+                for (i.args, 0..) |arg, arg_i| {
+                    args[arg_i] = try arg.substitute(bindings, alloc);
+                    initialized += 1;
+                }
+
+                return .{ .instance = .{
+                    .class_id = i.class_id,
+                    .args = args,
+                } };
             },
             else => return try self.clone(alloc),
         }

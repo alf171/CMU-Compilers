@@ -17,6 +17,7 @@ const TypeParam = @import("common").ir.TypeParam;
 const LocalInfo = @import("common").ir.LocalInfo;
 const ClassId = @import("common").ir.ClassId;
 const ClassInfo = @import("common").ir.ClassInfo;
+const ClassInstance = @import("common").types.ClassInstance;
 const Field = @import("common").ir.Field;
 const Method = @import("common").ir.Method;
 const LocalId = @import("common").ir.LocalId;
@@ -106,9 +107,11 @@ fn walkClassDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
     const name = std.mem.span(raw_name);
 
     const id: ClassId = irBuilder.nextClassIdx();
+    const class_type_params = try parseTypeParams(stmt, 0, alloc);
+
     try irBuilder.program.classes.append(
         alloc,
-        try ClassInfo.init(id, name, alloc),
+        try ClassInfo.init(id, name, class_type_params, alloc),
     );
     const body_objs = c.PyObject_GetAttrString(stmt, "body");
     std.debug.assert(body_objs != null);
@@ -276,12 +279,12 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
             const field_name: []const u8 = std.mem.span(raw_field_name);
             std.debug.assert(raw_field_name != null);
 
-            const instance = try walkExpr(instance_obj, irBuilder, null, alloc);
-            const class_id = switch (instance.type) {
+            const instance_expr = try walkExpr(instance_obj, irBuilder, null, alloc);
+            const instance = switch (instance_expr.type) {
                 .instance => |id| id,
                 else => return error.ExpectedInstance,
             };
-            const class = irBuilder.getClass(class_id);
+            const class = irBuilder.getClass(instance.class_id);
             var field = class.findField(std.mem.span(raw_field_name));
 
             // first time self so define field
@@ -299,7 +302,7 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
             }
 
             try irBuilder.emit(.{ .field_store = .{
-                .instance = try instance.clone(alloc),
+                .instance = try instance_expr.clone(alloc),
                 .offset = field.?.offset,
                 .src = try rhs_value.clone(alloc),
             } }, alloc);
@@ -365,8 +368,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
             }
 
             const result_type: TypeInfo = switch (lhs.type) {
-                .instance => |class_id| blk: {
-                    const class = irBuilder.getClass(class_id);
+                .instance => |instance| blk: {
+                    const class = irBuilder.getClass(instance.class_id);
                     const func = switch (op) {
                         .add => "__add__",
                         .sub => "__sub__",
@@ -444,7 +447,9 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
             const elements = c.PyObject_GetAttrString(stmt, "elts");
             std.debug.assert(elements != null);
             const len = c.PyList_Size(elements);
-            var result = ArrayList(ValueRef).empty;
+            var result: ArrayList(ValueRef) = .empty;
+            errdefer result.deinit(alloc);
+
             var elem_type: ?TypeInfo = null;
             for (0..@intCast(len)) |i| {
                 const elem = c.PyList_GetItem(elements, @as(isize, @intCast(i)));
@@ -459,9 +464,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
                         switch (constant) {
                             .immediate => |imm| {
                                 try result.append(alloc, .{ .constant = imm });
-                                if (i == 0) elem_type = expected_elem_type orelse {
-                                    return error.ExpectedType;
-                                };
+                                if (i == 0) elem_type = expected_elem_type orelse imm.toType();
                             },
                             .composite => |comp| {
                                 const dst: TypedOperand = .{
@@ -674,8 +677,9 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
                 return walkNamedCall(stmt, func, irBuilder, alloc);
             } else if (std.mem.eql(u8, func_kind, "Attribute")) {
                 return walkMethodCall(stmt, func, irBuilder, alloc);
+            } else if (std.mem.eql(u8, func_kind, "Subscript")) {
+                return walkGenericCall(stmt, func, irBuilder, alloc);
             }
-
             std.debug.print("unsupported callee type: {s}\n", .{func_kind});
             return error.UnsupportedCallee;
         },
@@ -709,8 +713,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
         .Attribute => {
             const value = c.PyObject_GetAttrString(stmt, "value");
             std.debug.assert(value != null);
-            const instance = try walkExpr(value, irBuilder, null, alloc);
-            const class_id = switch (instance.type) {
+            const instance_expr = try walkExpr(value, irBuilder, null, alloc);
+            const instance = switch (instance_expr.type) {
                 .instance => |id| id,
                 else => return error.UnexpectedType,
             };
@@ -720,7 +724,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
             const raw_name = c.PyUnicode_AsUTF8(name_obj);
             std.debug.assert(raw_name != null);
 
-            const class = irBuilder.getClass(class_id);
+            const class = irBuilder.getClass(instance.class_id);
             const field = class.findField(std.mem.span(raw_name)) orelse return error.CantFindField;
 
             const dst: TypedOperand = .{
@@ -729,7 +733,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
             };
             try irBuilder.emit(.{ .field_load = .{
                 .dst = dst,
-                .instance = try instance.clone(alloc),
+                .instance = try instance_expr.clone(alloc),
                 .offset = field.offset,
             } }, alloc);
             return dst;
@@ -1045,9 +1049,17 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
     }
     // class constructor
     if (irBuilder.findClass(std.mem.span(name))) |class| {
+        const instance_args = try alloc.alloc(TypeInfo, 0);
+        errdefer alloc.free(instance_args);
+
         const dst: TypedOperand = .{
             .operand = irBuilder.nextTemp(),
-            .type = .{ .instance = class.id },
+            .type = .{
+                .instance = .{
+                    .class_id = class.id,
+                    .args = instance_args,
+                },
+            },
         };
         try irBuilder.emit(.{ .class_init = .{
             .dst = dst,
@@ -1064,13 +1076,7 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
 fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!TypedOperand {
     const instance_obj = c.PyObject_GetAttrString(func, "value");
     std.debug.assert(instance_obj != null);
-    const instance = try walkExpr(instance_obj, irBuilder, null, alloc);
-    const class_id = switch (instance.type) {
-        .instance => |inst| inst,
-        else => return error.ExpectedInstance,
-    };
-    const class = irBuilder.getClass(class_id);
-    _ = class;
+    const instance_expr = try walkExpr(instance_obj, irBuilder, null, alloc);
 
     const method_obj = c.PyObject_GetAttrString(func, "attr");
     std.debug.assert(method_obj != null);
@@ -1089,8 +1095,8 @@ fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc
         arguments.deinit(alloc);
     }
 
-    // instance, <remaining args>
-    try arguments.append(alloc, try instance.clone(alloc));
+    // instance expression, <remaining args>
+    try arguments.append(alloc, try instance_expr.clone(alloc));
     const args_obj = c.PyObject_GetAttrString(stmt, "args");
     std.debug.assert(args_obj != null);
     for (0..@intCast(c.PyList_Size(args_obj))) |i| {
@@ -1100,13 +1106,32 @@ fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc
         try arguments.append(alloc, try arg.clone(alloc));
     }
 
-    const maybe_dst: ?TypedOperand = if (method.return_type == .void)
-        null
+    // types arent interned so we protect against generic types being propogated here
+    var bindings = TypeBindings.init(alloc);
+    defer {
+        var it = bindings.valueIterator();
+        while (it.next()) |_type| {
+            _type.deinit(alloc);
+        }
+        bindings.deinit();
+    }
+    if (method.type_params.len > 0) {
+        for (method.params, arguments.items) |param, arg| {
+            try param.type.unify(arg.type, &bindings, alloc);
+        }
+    }
+    const return_type = if (method.type_params.len > 0)
+        try method.return_type.substitute(&bindings, alloc)
     else
+        try method.return_type.clone(alloc);
+
+    const maybe_dst: ?TypedOperand = if (method.return_type != .void)
         .{
             .operand = irBuilder.nextTemp(),
-            .type = try method.return_type.clone(alloc),
-        };
+            .type = return_type,
+        }
+    else
+        null;
 
     try irBuilder.emit(
         .{ .function_call = .{
@@ -1121,6 +1146,77 @@ fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc
         .operand = .unknown,
         .type = .void,
     };
+}
+
+// Subscript(value=Name(id='MiniTorch', ctx=Load()), slice=Name(id='int', ctx=Load()), ctx=Load())
+fn walkGenericCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!TypedOperand {
+    const value = PyObject.GetAttrString(func, "value");
+    std.debug.assert(value != null);
+
+    if (!std.mem.eql(u8, getPyType(value), "Name")) {
+        return error.UnsupportedGenericCall;
+    }
+    const name_obj = PyObject.GetAttrString(value, "id");
+    std.debug.assert(name_obj != null);
+    const raw_name = PyObject.PyUnicode_AsUTF8(name_obj);
+    std.debug.assert(raw_name != null);
+    const name = std.mem.span(raw_name);
+
+    const class = irBuilder.findClass(name) orelse {
+        return error.CantFindClass;
+    };
+
+    const slice_obj = PyObject.GetAttrString(func, "slice");
+    std.debug.assert(slice_obj != null);
+
+    var type_args: ArrayList(TypeInfo) = .empty;
+    errdefer {
+        for (type_args.items) |arg| {
+            arg.deinit(alloc);
+        }
+        type_args.deinit(alloc);
+    }
+
+    try type_args.append(
+        alloc,
+        try parseTypeAnnotation(slice_obj, irBuilder, alloc),
+    );
+
+    if (type_args.items.len != class.type_params.len) {
+        return error.InvalidTypeArgumentCount;
+    }
+
+    const args_list = c.PyObject_GetAttrString(stmt, "args");
+    std.debug.assert(args_list != null);
+    var arguments: ArrayList(TypedOperand) = .empty;
+    errdefer {
+        for (arguments.items) |arg| {
+            arg.deinit(alloc);
+        }
+        arguments.deinit(alloc);
+    }
+    for (0..@intCast(c.PyList_Size(args_list))) |i| {
+        const arg_obj = c.PyList_GetItem(args_list, @intCast(i));
+        std.debug.assert(arg_obj != null);
+        const arg = try walkExpr(arg_obj, irBuilder, null, alloc);
+        try arguments.append(alloc, try arg.clone(alloc));
+    }
+
+    const dst: TypedOperand = .{
+        .operand = irBuilder.nextTemp(),
+        .type = .{ .instance = .{
+            .class_id = class.id,
+            .args = try type_args.toOwnedSlice(alloc),
+        } },
+    };
+
+    try irBuilder.emit(.{ .class_init = .{
+        .dst = dst,
+        .args = try arguments.toOwnedSlice(alloc),
+        .class_id = class.id,
+    } }, alloc);
+
+    return dst;
 }
 
 // If(test=Compare(...), body=[...], orelse=[...])
@@ -1442,25 +1538,23 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
         }
         type_params.deinit(alloc);
     }
-    const type_params_obj = c.PyObject_GetAttrString(stmt, "type_params");
-    std.debug.assert(type_params_obj != null);
-    for (0..@intCast(c.PyList_Size(type_params_obj))) |i| {
-        const type_param_obj = c.PyList_GetItem(type_params_obj, @intCast(i));
-        std.debug.assert(type_param_obj != null);
 
-        const name_obj = c.PyObject_GetAttrString(type_param_obj, "name");
-        std.debug.assert(name_obj != null);
+    if (class_id) |id| {
+        const class = irBuilder.getClass(id);
 
-        const name = c.PyUnicode_AsUTF8(name_obj);
-        std.debug.assert(name != null);
-        try type_params.append(alloc, .{
-            .id = @intCast(i),
-            .name = try alloc.dupe(u8, std.mem.span(name)),
-        });
+        for (class.type_params) |*type_param| {
+            try type_params.append(alloc, try type_param.clone(alloc));
+        }
     }
+
+    const function_type_params = try parseTypeParams(stmt, @intCast(type_params.items.len), alloc);
+    defer alloc.free(function_type_params);
+    try type_params.appendSlice(alloc, function_type_params);
+
     const saved_type_params = irBuilder.active_param_types;
     irBuilder.active_param_types = type_params.items;
     defer irBuilder.active_param_types = saved_type_params;
+
     // function params
     var params: ArrayList(Param) = .empty;
     errdefer {
@@ -1480,8 +1574,20 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
         // only param 0 for classes becomes instance
         const arg_type: TypeInfo = if (class_id == null or i != 0)
             try parseTypeAnnotation(annotation, irBuilder, alloc)
-        else
-            .{ .instance = class_id.? };
+        else instance: {
+            const class = irBuilder.getClass(class_id.?);
+            const instance_args = try alloc.alloc(TypeInfo, class.type_params.len);
+
+            for (class.type_params, 0..) |type_param, type_i| {
+                instance_args[type_i] = .{
+                    .type_variable = type_param.id,
+                };
+            }
+            break :instance .{ .instance = .{
+                .class_id = class_id.?,
+                .args = instance_args,
+            } };
+        };
         const raw_name = c.PyUnicode_AsUTF8(arg_obj_name);
         std.debug.assert(raw_name != null);
         const name = std.mem.span(raw_name);
@@ -1839,10 +1945,36 @@ fn parseTypeAnnotation(
         const class = irBuilder.findClass(std.mem.span(raw_class_name)) orelse {
             return error.CantFindClass;
         };
-        return .{ .instance = class.id };
+        return .{ .instance = .{
+            .class_id = class.id,
+            .args = try alloc.alloc(TypeInfo, 0),
+        } };
     }
     std.debug.print("kind not supported {s}\n", .{kind});
     return error.NotImpl;
+}
+
+// ClassDef(name='MiniTorch', type_params=[ TypeVar(name='T')], body=[...])
+fn parseTypeParams(stmt: *PyObject, start_id: u32, alloc: std.mem.Allocator) ![]TypeParam {
+    const type_params = PyObject.GetAttrString(stmt, "type_params");
+    std.debug.assert(type_params != null);
+
+    const type_params_size: usize = @intCast(c.PyList_Size(type_params));
+    const result = try alloc.alloc(TypeParam, type_params_size);
+    for (0..type_params_size) |i| {
+        const type_param = c.PyList_GetItem(type_params, @intCast(i));
+        std.debug.assert(type_param != null);
+        const name_obj = PyObject.GetAttrString(type_param, "name");
+        std.debug.assert(name_obj != null);
+        const name = PyObject.PyUnicode_AsUTF8(name_obj);
+        std.debug.assert(name != null);
+
+        result[i] = .{
+            .name = try alloc.dupe(u8, std.mem.span(name)),
+            .id = start_id + @as(@FieldType(TypeParam, "id"), @intCast(i)),
+        };
+    }
+    return result;
 }
 
 fn getSubscriberType(annotation: *PyObject) !SubscriberTypes {
