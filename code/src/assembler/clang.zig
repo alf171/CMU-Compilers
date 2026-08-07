@@ -1,8 +1,8 @@
 const std = @import("std");
 const runCommand = @import("shared.zig").runCommand;
-const LinkerRequest = @import("shared.zig").LinkerRequest;
+const AssemblerRequest = @import("shared.zig").AssemblerRequest;
 
-pub fn assemble(request: LinkerRequest, io: std.Io, alloc: std.mem.Allocator) !void {
+pub fn run(request: AssemblerRequest, io: std.Io, alloc: std.mem.Allocator) !void {
     // clang -c /tmp/host.s -o /tmp/host.o
     const clang_object_result = try runCommand(
         alloc,

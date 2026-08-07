@@ -1,8 +1,9 @@
 const std = @import("std");
 const clang = @import("clang.zig");
+const elf = @import("elf.zig");
 const Target = @import("backend").Target;
 
-pub const LinkerRequest = struct {
+pub const AssemblerRequest = struct {
     // .s file
     input_file: []const u8,
     // .o file
@@ -13,21 +14,22 @@ pub const LinkerRequest = struct {
     hsa_runtime_path: ?[]const u8,
 };
 
-pub const Linker = union(enum) {
+pub const Assembler = union(enum) {
     clang,
     elf,
 
-    // route to clang or custom linker
+    // route to clang or custom assembler
     // currently owns going from asm to object file, linking malloc, and setting up hsa
-    pub fn assemble(
+    pub fn run(
         self: @This(),
-        request: LinkerRequest,
+        request: AssemblerRequest,
         io: std.Io,
         alloc: std.mem.Allocator,
     ) !void {
         switch (self) {
-            .clang => try clang.assemble(request, io, alloc),
-            else => unreachable,
+            .clang => try clang.run(request, io, alloc),
+            // TODO: rename to native
+            else => try elf.run(request, io, alloc),
         }
     }
 };

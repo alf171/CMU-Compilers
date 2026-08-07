@@ -282,7 +282,7 @@ pub fn main(init: std.process.Init) !void {
         defer alloc.free(obj_file);
 
         const hsa_runtime_path = init.environ_map.get("HSA_RUNTIME_PATH");
-        try linker.Linker.assemble(.clang, .{
+        try Assembler.run(.clang, .{
             .input_file = output_file,
             .output_file = obj_file,
             .target = target,
