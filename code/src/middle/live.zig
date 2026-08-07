@@ -10,19 +10,28 @@ const Operand = common.alloc.Operand;
 
 /// handle case where we are last line in addition to other to rest
 pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.mem.Allocator) !void {
+    var iterations: usize = 0;
+    var live_before = RegisterOperands.init(alloc);
+    defer live_before.free();
+
+    var live_after = RegisterOperands.init(alloc);
+    defer live_after.free();
+
     var changed = true;
+    // TODO: use bitmask 0 = maybe be added to the queue, 1 = block is already in the queue
+    // a worklist algorithm will need to keep track of predecessors also!
+    // today, we are fine since we just walk everything
     while (changed) {
+        iterations += 1;
         changed = false;
+        var changed_lines: usize = 0;
         var block_i = program.blocks.items.len;
         while (block_i > 0) {
             block_i -= 1;
             const block = program.blocks.items[block_i];
 
-            var live_after = RegisterOperands.init(alloc);
-            defer live_after.free();
-
-            var live_before = RegisterOperands.init(alloc);
-            defer live_before.free();
+            live_before.ops.clearRetainingCapacity();
+            live_after.ops.clearRetainingCapacity();
 
             for (block.successors.items) |id| {
                 std.debug.assert(id < program.blocks.items.len);
@@ -45,12 +54,18 @@ pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.me
                     line.live_out.ops.clearRetainingCapacity();
                     try line.live_out.add(&live_after);
                     changed = true;
+                    changed_lines += 1;
                 }
                 live_before.ops.clearRetainingCapacity();
                 try getLiveIn(line, &live_before);
                 std.mem.swap(RegisterOperands, &live_before, &live_after);
             }
         }
+        std.debug.print("liveness {d} iterations, {d} changed lines, {d} lines\n", .{
+            iterations,
+            changed_lines,
+            program.lines.items.len,
+        });
     }
 }
 
