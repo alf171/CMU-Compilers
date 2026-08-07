@@ -275,6 +275,7 @@ pub const CmpOp = enum {
 pub const BasicBlock = struct {
     id: BlockId,
     instructions: ArrayList(Instruction),
+    // [fn A: block 0] [fn A: block 1] [fn B: block 0]...
     successors: ArrayList(BlockId),
 
     pub fn init(id: BlockId) BasicBlock {

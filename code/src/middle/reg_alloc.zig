@@ -55,10 +55,12 @@ fn appendBlocks(
     var locals = std.AutoHashMap(LocalId, TypedOperand).init(alloc);
     defer locals.deinit();
 
-    for (blocks) |block| {
+    const block_offset = res.blocks.items.len;
+    for (blocks, 0..) |block, i| {
+        std.debug.assert(block.id == @as(common.ir.BlockId, @intCast(i)));
         const start = res.lines.items.len;
         for (block.instructions.items) |instruction| {
-            var line = AllocLine{
+            var line: AllocLine = .{
                 .instruction_index = instruction_index.*,
                 .uses = RegisterOperands.init(alloc),
                 .defines = RegisterOperands.init(alloc),
@@ -117,7 +119,11 @@ fn appendBlocks(
         const end = res.lines.items.len;
         var successors: ArrayList(u32) = .empty;
         errdefer successors.deinit(alloc);
-        try successors.appendSlice(alloc, block.successors.items);
+        for (block.successors.items) |block_id| {
+            const idx = block_offset + block_id;
+
+            try successors.append(alloc, @intCast(idx));
+        }
 
         try res.blocks.append(alloc, .{
             .id = block.id,

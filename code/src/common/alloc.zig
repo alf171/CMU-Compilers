@@ -312,6 +312,7 @@ pub const AllocProgram = struct {
         return next_mem;
     }
 
+    /// O(n) scan for block
     pub fn getBlockById(self: *const @This(), id: BlockId, function_id: usize) !AllocBlock {
         for (self.blocks.items) |block| {
             if (block.id == id and block.function_id == function_id) return block;

@@ -21,16 +21,20 @@ pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.me
             var live_after = RegisterOperands.init(alloc);
             defer live_after.free();
 
+            var live_before = RegisterOperands.init(alloc);
+            defer live_before.free();
+
             for (block.successors.items) |id| {
-                const succ_block = try program.getBlockById(id, block.function_id);
+                std.debug.assert(id < program.blocks.items.len);
+                const succ_block = program.blocks.items[id];
+                std.debug.assert(succ_block.function_id == block.function_id);
 
                 if (succ_block.start == succ_block.end) continue;
                 std.debug.assert(succ_block.start < succ_block.end);
 
-                var succ_live_in = try getLiveIn(&program.lines.items[succ_block.start], alloc);
-                defer succ_live_in.free();
-
-                try live_after.add(&succ_live_in);
+                live_before.ops.clearRetainingCapacity();
+                try getLiveIn(&program.lines.items[succ_block.start], &live_before);
+                try live_after.add(&live_before);
             }
 
             var index: usize = block.end;
@@ -38,13 +42,13 @@ pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.me
                 index -= 1;
                 var line = &program.lines.items[index];
                 if (!line.live_out.equal(&live_after)) {
-                    line.live_out.free();
-                    line.live_out = try live_after.clone(alloc);
+                    line.live_out.ops.clearRetainingCapacity();
+                    try line.live_out.add(&live_after);
                     changed = true;
                 }
-                const live_in = try getLiveIn(line, alloc);
-                live_after.free();
-                live_after = live_in;
+                live_before.ops.clearRetainingCapacity();
+                try getLiveIn(line, &live_before);
+                std.mem.swap(RegisterOperands, &live_before, &live_after);
             }
         }
     }
@@ -52,8 +56,10 @@ pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.me
 
 /// Live_in(line) = Uses(line) u (Live_out(line) - Define(line))
 /// memory semantics, we are going to return new memory while keeping prev valid
-fn getLiveIn(line: *const Line, alloc: std.mem.Allocator) !RegisterOperands {
-    var result = RegisterOperands.init(alloc);
+fn getLiveIn(
+    line: *const Line,
+    result: *RegisterOperands,
+) !void {
     try result.add(&line.uses);
 
     var it = line.live_out.ops.iterator();
@@ -64,13 +70,12 @@ fn getLiveIn(line: *const Line, alloc: std.mem.Allocator) !RegisterOperands {
             try result.ops.put(live_out, entry.value_ptr.*);
         }
     }
-    return result;
 }
 
 test "out of bounds returns empty" {
     const alloc = std.testing.allocator;
 
-    var line = Line{
+    var line: Line = .{
         .uses = RegisterOperands.init(alloc),
         .defines = RegisterOperands.init(alloc),
         .live_out = RegisterOperands.init(alloc),
@@ -80,7 +85,8 @@ test "out of bounds returns empty" {
     };
     defer line.deinit();
 
-    var result = try getLiveIn(&line, alloc);
+    var result = RegisterOperands.init(alloc);
+    try getLiveIn(&line, &result);
     defer result.free();
 
     try std.testing.expectEqual(@as(usize, 0), result.ops.count());
@@ -106,7 +112,7 @@ test "simple example" {
     };
     for (temps) |temp| try live_out.ops.put(temp, .gp);
 
-    const line = Line{
+    const line: Line = .{
         .uses = uses,
         .defines = defines,
         .live_out = live_out,
@@ -115,7 +121,8 @@ test "simple example" {
         .instruction_index = 1,
     };
 
-    var result = try getLiveIn(&line, alloc);
+    var result = RegisterOperands.init(alloc);
+    try getLiveIn(&line, &result);
     defer result.free();
 
     try std.testing.expectEqual(@as(usize, 2), result.ops.count());
