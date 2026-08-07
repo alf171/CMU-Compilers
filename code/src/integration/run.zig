@@ -13,7 +13,7 @@ const generics = @import("frontend").generics;
 const repeat = @import("frontend").repeat;
 const middle = @import("middle");
 const backend = @import("backend");
-const linker = @import("linker");
+const Assembler = @import("assembler").Assembler;
 const Target = backend.Target;
 const CompilationArifacts = backend.CompilationArifacts;
 const metrics = @import("metrics.zig");
@@ -30,6 +30,7 @@ const parallel_copies = middle.parallel_copies;
 const copy = middle.copy;
 const dead = middle.dead;
 const FunctionType = @import("common").ir.FunctionType;
+const TimerMetrics = @import("common").timer.TimerMetrics;
 
 const underline_code = "\x1b[4m";
 const reset_code = "\x1b[0m";
@@ -62,6 +63,7 @@ pub fn main(init: std.process.Init) !void {
     var should_optim = false;
     var should_dump_ir = false;
     var should_dump_stats = false;
+    var should_dump_time = false;
     var use_escape_codes = true;
     var std_lib_enabled = true;
     // default target
@@ -74,6 +76,7 @@ pub fn main(init: std.process.Init) !void {
         if (std.mem.eql(u8, arg, "--optim")) should_optim = true;
         if (std.mem.eql(u8, arg, "--dump-ir")) should_dump_ir = true;
         if (std.mem.eql(u8, arg, "--dump-stats")) should_dump_stats = true;
+        if (std.mem.eql(u8, arg, "--dump-time")) should_dump_time = true;
         if (std.mem.eql(u8, arg, "--omit-escape-codes")) use_escape_codes = false;
         if (std.mem.eql(u8, arg, "--no-stdlib")) std_lib_enabled = false;
         // allow caller to decide their platform
@@ -88,6 +91,8 @@ pub fn main(init: std.process.Init) !void {
     defer ir_program.deinit(alloc);
 
     // rewrite layer
+    var timer = TimerMetrics.init();
+    timer.begin(.frontend_total, io);
     try repeat.rewrite(&ir_program, alloc);
     try class.rewrite(&ir_program, alloc);
     try generics.rewrite(&ir_program, alloc);
@@ -112,7 +117,6 @@ pub fn main(init: std.process.Init) !void {
     if (should_optim) {
         try copy.run(&ir_program, alloc);
     }
-
     // dump ir after optim pass
     if (should_dump_ir) {
         std.debug.print("\n", .{});
@@ -123,22 +127,38 @@ pub fn main(init: std.process.Init) !void {
         try ir_program.print();
     }
 
+    timer.begin(.middle_reg_class, io);
     var reg_classes = try reg_class.classify(ir_program, alloc);
+    timer.finish(.middle_reg_class, io);
     defer reg_classes.deinit();
+    timer.finish(.frontend_total, io);
 
+    timer.begin(.middle_total, io);
+    timer.begin(.middle_reg_alloc_build, io);
     var alloc_program = try reg_alloc.build(ir_program, &reg_classes, alloc);
+    timer.finish(.middle_reg_alloc_build, io);
     defer alloc_program.deinit(alloc);
 
+    timer.begin(.middle_liveness, io);
     try live.calculateLiveOut(&alloc_program, alloc);
+    timer.finish(.middle_liveness, io);
 
     // run optimzation passes
     if (should_optim) {
         try dead.run(&ir_program, &alloc_program, alloc);
         alloc_program.deinit(alloc);
         reg_classes.deinit();
+
+        timer.begin(.middle_reg_class, io);
         reg_classes = try reg_class.classify(ir_program, alloc);
+        timer.finish(.middle_reg_class, io);
+
+        timer.begin(.middle_reg_alloc_build, io);
         alloc_program = try reg_alloc.build(ir_program, &reg_classes, alloc);
+        timer.finish(.middle_reg_alloc_build, io);
+        timer.begin(.middle_liveness, io);
         try live.calculateLiveOut(&alloc_program, alloc);
+        timer.finish(.middle_liveness, io);
     }
 
     // setup register specifics
@@ -148,7 +168,9 @@ pub fn main(init: std.process.Init) !void {
     defer host_colors.deinit();
     var spill_rounds = std.EnumArray(FunctionType, usize).initFill(0);
     for (register_files) |register_file| {
+        timer.begin(.middle_igraph, io);
         var graph = try igraph.createIgraph(alloc_program.lines, register_file, alloc);
+        timer.finish(.middle_igraph, io);
         defer graph.deinit();
         var result = try loop.run(
             &ir_program,
@@ -156,6 +178,8 @@ pub fn main(init: std.process.Init) !void {
             &alloc_program,
             register_file,
             should_optim,
+            &timer,
+            io,
             alloc,
         );
         defer result.graph.deinit();
@@ -184,7 +208,9 @@ pub fn main(init: std.process.Init) !void {
             const device_platform = target.device.getPlatform();
 
             for (device_platform.abi.registerFiles()) |register_file| {
+                timer.begin(.middle_igraph, io);
                 var graph = try igraph.createIgraph(alloc_program.lines, register_file, alloc);
+                timer.finish(.middle_igraph, io);
                 defer graph.deinit();
                 var result = try loop.run(
                     &ir_program,
@@ -192,6 +218,8 @@ pub fn main(init: std.process.Init) !void {
                     &alloc_program,
                     register_file,
                     should_optim,
+                    &timer,
+                    io,
                     alloc,
                 );
                 defer result.graph.deinit();
@@ -199,7 +227,9 @@ pub fn main(init: std.process.Init) !void {
             }
         },
     }
+    timer.finish(.middle_total, io);
 
+    timer.begin(.backend_total, io);
     var artifacts = try (backend.CompileRequest{
         .program = &ir_program,
         .host_colors = &host_colors,
@@ -292,6 +322,10 @@ pub fn main(init: std.process.Init) !void {
         if (use_escape_codes) std.debug.print("{s}", .{reset_code});
         std.debug.print("\n", .{});
         std.debug.print("{s}", .{run_result.stdout});
+    }
+    timer.finish(.backend_total, io);
+    if (should_dump_time) {
+        timer.print(use_escape_codes);
     }
 }
 

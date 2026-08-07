@@ -153,16 +153,19 @@ test "range behaves lazily" {
         },
     });
     const i = program.main.nextTemp();
-    const index = program.main.nextTemp();
+    const index: TypedOperand = .{
+        .operand = program.main.nextTemp(),
+        .type = .i64,
+    };
     try block0.instructions.append(alloc, .{ .lir = .{ .move = .{
-        .dst = .{ .operand = index, .type = .i64 },
+        .dst = index,
         .src = .{ .constant = .{ .i64 = 1 } },
     } } });
     try block0.instructions.append(alloc, .{
         .lazy_load = .{
             .dst = .{ .operand = i, .type = .any },
             .lazy = try range.clone(alloc),
-            .index = index,
+            .index = try index.clone(alloc),
         },
     });
     try rewrite(&program, alloc);

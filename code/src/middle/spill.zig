@@ -9,13 +9,14 @@ const MemoryId = common.ir.MemoryId;
 const Instruction = common.mir.Instruction;
 const IrProgram = common.program.Program;
 const Function = common.ir.Function;
-const Param = common.alloc.Param;
+const TypeParam = common.ir.TypeParam;
+const Param = common.ir.Param;
 const AllocProgram = common.alloc.AllocProgram;
 const BasicBlock = common.ir.BasicBlock;
 const BlockId = common.ir.BlockId;
 const Block = common.alloc.AllocBlock;
 const Line = common.alloc.AllocLine;
-const Operands = common.alloc.Operands;
+const Operands = common.alloc.RegisterOperands;
 const Operand = common.alloc.Operand;
 
 // only run spill logic for the function in question since `Operand`s are function local
@@ -105,6 +106,7 @@ test "spill reg function" {
         "test",
         0,
         try alloc.alloc(Param, 0),
+        try alloc.alloc(TypeParam, 0),
         .i64,
         .user,
         .host,

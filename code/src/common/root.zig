@@ -7,6 +7,7 @@ pub const ir = @import("ir.zig");
 pub const alloc = @import("alloc.zig");
 pub const types = @import("types.zig");
 pub const register = @import("register.zig");
+pub const timer = @import("timer.zig");
 
 test {
     std.testing.refAllDecls(@This());

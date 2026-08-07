@@ -7,7 +7,8 @@ const Block = common.ir.BasicBlock;
 const Copy = common.mir.Copy;
 const FrontEndProgram = common.program.Program;
 const Function = common.ir.Function;
-const Param = common.alloc.Param;
+const Param = common.ir.Param;
+const TypeParam = common.ir.TypeParam;
 const Instruction = common.mir.Instruction;
 const Operand = common.alloc.Operand;
 
@@ -97,6 +98,7 @@ test "cycle" {
         "test",
         0,
         try alloc.alloc(Param, 0),
+        try alloc.alloc(TypeParam, 0),
         .i64,
         .user,
         .host,
