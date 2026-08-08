@@ -152,11 +152,7 @@ pub const IrBuilder = struct {
     pub fn newBlock(self: *@This(), alloc: std.mem.Allocator) !BlockId {
         const blocks = self.currentBlocks();
         const id: BlockId = @intCast(blocks.items.len);
-        const new_block = BasicBlock{
-            .id = id,
-            .instructions = .empty,
-            .successors = .empty,
-        };
+        const new_block = BasicBlock.init(id);
 
         try blocks.append(alloc, new_block);
         return id;
@@ -167,7 +163,9 @@ pub const IrBuilder = struct {
     }
 
     pub fn addSuccessor(self: *@This(), from: BlockId, to: BlockId, alloc: std.mem.Allocator) !void {
-        try self.currentBlocks().items[from].successors.append(alloc, to);
+        const current_block = self.currentBlocks();
+        try current_block.items[to].predecessors.append(alloc, from);
+        try current_block.items[from].successors.append(alloc, to);
     }
 
     pub fn cloneLocalValues(self: *@This(), alloc: std.mem.Allocator) !LocalValues {

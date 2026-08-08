@@ -443,7 +443,7 @@ pub const Instruction = union(enum) {
     pub fn clone(self: *@This(), alloc: std.mem.Allocator) !@This() {
         return switch (self.*) {
             .store_local => |sl| .{ .store_local = .{
-                .local = try sl.local.duplicate(alloc),
+                .local = try sl.local.clone(alloc),
                 .src = try sl.src.clone(alloc),
             } },
             .store_offset => |so| .{ .store_offset = .{

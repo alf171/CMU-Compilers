@@ -3,11 +3,12 @@ const Function = @import("common").ir.Function;
 const Program = @import("common").program.Program;
 const Operand = @import("common").alloc.Operand;
 const RegisterType = @import("common").register.RegisterType;
+const RegisterClass = @import("common").register.RegisterClass;
 const RegisterClasses = @import("common").register.RegisterClasses;
 
 /// going to select RegisterType in its own pass via a Map<Op, RegType> result
 pub fn classify(program: Program, alloc: std.mem.Allocator) !RegisterClasses {
-    var res = RegisterClasses.init(alloc);
+    var res: RegisterClasses = .init(alloc);
     try classifyFunction(program.main, &res);
     for (program.functions.items) |function| {
         try classifyFunction(function, &res);
@@ -28,14 +29,23 @@ fn classifyFunction(
                 .local => continue,
             };
 
-            const register_type: RegisterType = switch (function.kind) {
-                .host => value.type.toRegisterType(.host),
+            const register_class: RegisterClass = switch (function.kind) {
+                .host => .{
+                    .type = value.type.toRegisterType(.host),
+                    .width = @intCast(try value.type.sizeOfType()),
+                },
                 .gpu_kernel => switch (instruction) {
-                    .function_param => .sgpr,
-                    else => .vgpr,
+                    .function_param => .{
+                        .type = .sgpr,
+                        .width = @intCast(try value.type.sizeOfType()),
+                    },
+                    else => .{
+                        .type = .vgpr,
+                        .width = @intCast(try value.type.sizeOfType()),
+                    },
                 },
             };
-            try classes.put(value.operand, register_type);
+            try classes.put(value.operand, register_class);
         }
     }
 }

@@ -66,7 +66,7 @@ pub const ColoredGraph = struct {
             try cg.nodes.put(key, ColoredNode{
                 .node = moved_node,
                 .register = null,
-                .reg_type = node_ptr.reg_type,
+                .reg_type = node_ptr.reg_class.type,
             });
         }
         return cg;

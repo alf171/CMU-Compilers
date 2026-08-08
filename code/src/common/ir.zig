@@ -65,10 +65,11 @@ pub const SeenValue = union(enum) {
 
 pub const PhysicalReg = struct {
     id: u8,
-    class: RegisterType,
+    type: RegisterType,
+    width: u8,
 
     pub fn equal(self: @This(), other: @This()) bool {
-        return self.id == other.id and self.class == other.class;
+        return self.id == other.id and self.type == other.type;
     }
 };
 
@@ -80,8 +81,7 @@ pub const LocalInfo = struct {
     name: []const u8,
     type: TypeInfo,
 
-    // TODO: rename to clone
-    pub fn duplicate(self: @This(), alloc: std.mem.Allocator) !@This() {
+    pub fn clone(self: @This(), alloc: std.mem.Allocator) !@This() {
         return .{
             .id = self.id,
             .name = try alloc.dupe(u8, self.name),
@@ -276,12 +276,14 @@ pub const BasicBlock = struct {
     id: BlockId,
     instructions: ArrayList(Instruction),
     // [fn A: block 0] [fn A: block 1] [fn B: block 0]...
+    predecessors: ArrayList(BlockId),
     successors: ArrayList(BlockId),
 
     pub fn init(id: BlockId) BasicBlock {
-        return BasicBlock{
+        return .{
             .id = id,
             .instructions = .empty,
+            .predecessors = .empty,
             .successors = .empty,
         };
     }
@@ -291,6 +293,7 @@ pub const BasicBlock = struct {
             instruction.deinit(alloc);
         }
         self.instructions.deinit(alloc);
+        self.predecessors.deinit(alloc);
         self.successors.deinit(alloc);
     }
 };

@@ -173,6 +173,7 @@ fn createSpecializedFunction(
     for (function.blocks.items) |source| {
         var block = BasicBlock.init(source.id);
         errdefer block.deinit(alloc);
+        try block.predecessors.appendSlice(alloc, source.predecessors.items);
         try block.successors.appendSlice(alloc, source.successors.items);
 
         for (source.instructions.items) |*source_instruct| {

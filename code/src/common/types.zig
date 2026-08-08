@@ -150,7 +150,7 @@ pub const TypeInfo = union(enum) {
         return switch (self) {
             // instances are just pointers
             .instance => 8,
-            .i64, .list, .tuple, .ptr => 8,
+            .i64, .list, .tuple, .ptr, .float => 8,
             .i32 => 4,
             .bool, .char => 1,
             else => |e| {

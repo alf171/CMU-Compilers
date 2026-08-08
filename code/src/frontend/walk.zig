@@ -635,7 +635,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
                 }, alloc);
                 return function_dst;
             }
-            const local = try irBuilder.locals.items[localId].duplicate(alloc);
+            const local = try irBuilder.locals.items[localId].clone(alloc);
             const dst: TypedOperand = .{
                 .operand = irBuilder.nextTemp(),
                 .type = local.type,

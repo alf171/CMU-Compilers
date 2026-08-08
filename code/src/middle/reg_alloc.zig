@@ -117,6 +117,14 @@ fn appendBlocks(
             instruction_index.* += 1;
         }
         const end = res.lines.items.len;
+        // TODO: move predecessors and successors transfer into BB?
+        var predecessors: ArrayList(u32) = .empty;
+        errdefer predecessors.deinit(alloc);
+        for (block.predecessors.items) |block_id| {
+            const idx = block_offset + block_id;
+
+            try predecessors.append(alloc, @intCast(idx));
+        }
         var successors: ArrayList(u32) = .empty;
         errdefer successors.deinit(alloc);
         for (block.successors.items) |block_id| {
@@ -130,6 +138,7 @@ fn appendBlocks(
             .start = start,
             .end = end,
             .successors = successors,
+            .predecessors = predecessors,
             .function_id = function_id,
         });
     }

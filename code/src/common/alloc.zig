@@ -266,11 +266,13 @@ pub const AllocBlock = struct {
     start: usize,
     /// exclusive
     end: usize,
+    predecessors: ArrayList(BlockId),
     successors: ArrayList(BlockId),
     // needed to make temps unique
     function_id: usize,
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        self.predecessors.deinit(alloc);
         self.successors.deinit(alloc);
     }
 };
@@ -318,6 +320,39 @@ pub const AllocProgram = struct {
             if (block.id == id and block.function_id == function_id) return block;
         }
         return error.BlockNotFound;
+    }
+};
+
+pub const WorkList = struct {
+    work_list: ArrayList(BlockId),
+    in_worklist: []bool,
+
+    pub fn init(block_count: usize, alloc: std.mem.Allocator) !@This() {
+        const in_work_list = try alloc.alloc(bool, block_count);
+        @memset(in_work_list, false);
+
+        return .{
+            .work_list = .empty,
+            .in_worklist = in_work_list,
+        };
+    }
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        self.work_list.deinit(alloc);
+        alloc.free(self.in_worklist);
+    }
+
+    pub fn enqueue(self: *@This(), id: BlockId, alloc: std.mem.Allocator) !void {
+        if (!self.in_worklist[id]) {
+            try self.work_list.append(alloc, id);
+            self.in_worklist[id] = true;
+        }
+    }
+
+    pub fn pop(self: *@This()) ?BlockId {
+        const id = self.work_list.pop() orelse return null;
+        self.in_worklist[id] = false;
+        return id;
     }
 };
 

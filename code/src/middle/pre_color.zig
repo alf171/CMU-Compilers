@@ -34,7 +34,8 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                             .operand = .{
                                 .reg = .{
                                     .id = id,
-                                    .class = fp.dst.type.toRegisterType(function.kind),
+                                    .type = fp.dst.type.toRegisterType(function.kind),
+                                    .width = @intCast(try fp.dst.type.sizeOfType()),
                                 },
                             },
                             .type = try fp.dst.type.clone(alloc),
@@ -47,7 +48,8 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                         const reg: TypedOperand = .{
                             .operand = .{ .reg = .{
                                 .id = abi.getFunctionReturnIdx(function.return_type),
-                                .class = function.return_type.toRegisterType(function.kind),
+                                .type = function.return_type.toRegisterType(function.kind),
+                                .width = @intCast(try function.return_type.sizeOfType()),
                             } },
                             .type = try function.return_type.clone(alloc),
                         };
@@ -74,9 +76,10 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                     var args = try alloc.alloc(TypedOperand, fc.args.len);
                     errdefer alloc.free(args);
                     for (fc.args, 0..) |arg, i| {
-                        const reg = Operand{ .reg = .{
+                        const reg: Operand = .{ .reg = .{
                             .id = @intCast(i),
-                            .class = arg.type.toRegisterType(function.kind),
+                            .type = arg.type.toRegisterType(function.kind),
+                            .width = @intCast(try arg.type.sizeOfType()),
                         } };
                         copies[i] = .{
                             .dst = .{
@@ -106,7 +109,8 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                                 .src = .{ .top = .{
                                     .operand = .{ .reg = .{
                                         .id = abi.getFunctionReturnIdx(dst.type),
-                                        .class = dst.type.toRegisterType(function.kind),
+                                        .type = dst.type.toRegisterType(function.kind),
+                                        .width = @intCast(try dst.type.sizeOfType()),
                                     } },
                                     .type = try dst.type.clone(alloc),
                                 } },

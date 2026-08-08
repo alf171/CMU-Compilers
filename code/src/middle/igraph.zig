@@ -7,13 +7,13 @@ const Allocator = std.mem.Allocator;
 const Writer = std.io.Writer;
 const Line = @import("common").alloc.AllocLine;
 const Operand = @import("common").alloc.Operand;
-const RegisterType = @import("common").types.RegisterType;
+const RegisterClass = @import("common").register.RegisterClass;
 
 const DegreeCount = u16;
 
 pub const Node = struct {
     val: Operand,
-    reg_type: RegisterType,
+    reg_class: RegisterClass,
     neighbors: std.AutoHashMap(Operand, void),
     moves: std.AutoHashMap(Operand, void),
     selected: bool = false,
@@ -24,10 +24,10 @@ pub const Node = struct {
     /// encode which colors aren't allowed. ultimately, we should have a precoloring stage to avoid this hack
     forbidden_colors: u32 = 0,
 
-    pub fn init(val: Operand, reg_type: RegisterType, allocator: Allocator) Node {
+    pub fn init(val: Operand, reg_class: RegisterClass, allocator: Allocator) Node {
         return Node{
             .val = val,
-            .reg_type = reg_type,
+            .reg_class = reg_class,
             .neighbors = std.AutoHashMap(Operand, void).init(allocator),
             .moves = std.AutoHashMap(Operand, void).init(allocator),
         };
@@ -78,17 +78,17 @@ pub const IGraph = struct {
         self.aliases.deinit();
     }
 
-    pub fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, reg_type: RegisterType, allocator: Allocator) !void {
+    pub fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, reg_class: RegisterClass, allocator: Allocator) !void {
         if (graph.nodes.getPtr(val)) |node| {
-            std.debug.assert(node.reg_type == reg_type);
+            std.debug.assert(node.reg_class.type == reg_class.type);
             return;
         }
         if (!graph.nodes.contains(val)) {
-            try graph.nodes.put(val, Node.init(val, reg_type, allocator));
+            try graph.nodes.put(val, Node.init(val, reg_class, allocator));
         }
     }
 
-    pub fn addInterference(self: *@This(), a: Operand, b: Operand, reg_type: RegisterType, alloc: std.mem.Allocator) !void {
+    pub fn addInterference(self: *@This(), a: Operand, b: Operand, reg_class: RegisterClass, alloc: std.mem.Allocator) !void {
         if (Operand.equal(a, b)) return;
 
         switch (a) {
@@ -96,7 +96,7 @@ pub const IGraph = struct {
             .reg => |reg| switch (b) {
                 .reg, .mem => return,
                 .temp => {
-                    try defineNodeIfDoesntExist(self, b, reg_type, alloc);
+                    try defineNodeIfDoesntExist(self, b, reg_class, alloc);
                     std.debug.assert(self.nodes.contains(b));
                     self.nodes.getPtr(b).?.forbidden_colors |= (@as(u32, 1) << @intCast(reg.id));
                     return;
@@ -105,8 +105,8 @@ pub const IGraph = struct {
             },
             .temp => switch (b) {
                 .temp => {
-                    try defineNodeIfDoesntExist(self, a, reg_type, alloc);
-                    try defineNodeIfDoesntExist(self, b, reg_type, alloc);
+                    try defineNodeIfDoesntExist(self, a, reg_class, alloc);
+                    try defineNodeIfDoesntExist(self, b, reg_class, alloc);
                     std.debug.assert(self.nodes.contains(a));
                     std.debug.assert(self.nodes.contains(b));
                     try self.nodes.getPtr(a).?.placeNode(b);
@@ -114,7 +114,7 @@ pub const IGraph = struct {
                     return;
                 },
                 .reg => |reg| {
-                    try defineNodeIfDoesntExist(self, a, reg_type, alloc);
+                    try defineNodeIfDoesntExist(self, a, reg_class, alloc);
                     std.debug.assert(self.nodes.contains(a));
                     self.nodes.getPtr(a).?.forbidden_colors |= (@as(u32, 1) << @intCast(reg.id));
                     return;
@@ -242,12 +242,12 @@ fn placeNodes(
         var it = line.defines.ops.iterator();
         while (it.next()) |entry| {
             const op = entry.key_ptr.*;
-            const reg_type = entry.value_ptr.*;
+            const reg_class = entry.value_ptr.*;
 
-            if (reg_type != register_file.type) continue;
+            if (reg_class.type != register_file.type) continue;
             if (!op.shouldColor()) continue;
 
-            try igraph.defineNodeIfDoesntExist(op, register_file.type, allocator);
+            try igraph.defineNodeIfDoesntExist(op, reg_class, allocator);
             igraph.nodes.getPtr(op).?.spill_cost += 1;
         }
     }
@@ -256,12 +256,12 @@ fn placeNodes(
         var it = line.uses.ops.iterator();
         while (it.next()) |entry| {
             const op = entry.key_ptr.*;
-            const reg_type = entry.value_ptr.*;
+            const reg_class = entry.value_ptr.*;
 
-            if (reg_type != register_file.type) continue;
+            if (reg_class.type != register_file.type) continue;
             if (!op.shouldColor()) continue;
 
-            try igraph.defineNodeIfDoesntExist(op, register_file.type, allocator);
+            try igraph.defineNodeIfDoesntExist(op, reg_class, allocator);
             igraph.nodes.getPtr(op).?.spill_cost += 1;
         }
     }
@@ -271,14 +271,14 @@ fn placeNodes(
             var it = line.live_out.ops.iterator();
             while (it.next()) |entry| {
                 const op = entry.key_ptr.*;
-                const reg_type = entry.value_ptr.*;
+                const reg_class = entry.value_ptr.*;
 
-                if (reg_type != register_file.type) continue;
+                if (reg_class.type != register_file.type) continue;
                 if (!op.shouldColor()) continue;
                 // x <- f(y) scenario, x can be a caller-safe register in this scenario
                 if (line.defines.ops.contains(op)) continue;
 
-                try igraph.defineNodeIfDoesntExist(op, register_file.type, allocator);
+                try igraph.defineNodeIfDoesntExist(op, reg_class, allocator);
                 igraph.nodes.getPtr(op).?.forbidden_colors |= register_file.forbidden_mask;
             }
         }
@@ -287,15 +287,16 @@ fn placeNodes(
     {
         var it = line.defines.ops.iterator();
         while (it.next()) |define_entry| {
-            if (define_entry.value_ptr.* != register_file.type) continue;
+            if (define_entry.value_ptr.*.type != register_file.type) continue;
 
             const define_op = define_entry.key_ptr.*;
             var live_out_it = line.live_out.ops.iterator();
             while (live_out_it.next()) |live_out_entry| {
-                if (live_out_entry.value_ptr.* != register_file.type) continue;
+                const reg_class = live_out_entry.value_ptr.*;
+                if (reg_class.type != register_file.type) continue;
 
                 const live_out_op = live_out_entry.key_ptr.*;
-                try igraph.addInterference(define_op, live_out_op, register_file.type, allocator);
+                try igraph.addInterference(define_op, live_out_op, reg_class, allocator);
             }
         }
     }
@@ -303,13 +304,14 @@ fn placeNodes(
     {
         var use_it = line.uses.ops.iterator();
         while (use_it.next()) |first_entry| {
-            if (first_entry.value_ptr.* != register_file.type) continue;
+            if (first_entry.value_ptr.*.type != register_file.type) continue;
 
             var use_it_2 = line.uses.ops.iterator();
             while (use_it_2.next()) |second_entry| {
-                if (second_entry.value_ptr.* != register_file.type) continue;
+                const reg_class = second_entry.value_ptr.*;
+                if (reg_class.type != register_file.type) continue;
 
-                try igraph.addInterference(first_entry.key_ptr.*, second_entry.key_ptr.*, register_file.type, allocator);
+                try igraph.addInterference(first_entry.key_ptr.*, second_entry.key_ptr.*, reg_class, allocator);
             }
         }
     }
@@ -319,15 +321,20 @@ fn placeNodes(
             const define = try line.defines.singleForType(register_file.type) orelse return;
             const uses = try line.uses.singleForType(register_file.type) orelse return;
 
+            const define_class = line.defines.ops.get(define).?;
+            const uses_class = line.uses.ops.get(uses).?;
+
             // skip memory and register things from coalescing.
             if (define == .mem or uses == .mem or define == .reg or uses == .reg) {
                 return;
             }
 
+            if (define_class.width != uses_class.width) return;
             if (define.equal(uses)) return;
-            try igraph.defineNodeIfDoesntExist(define, register_file.type, allocator);
+
+            try igraph.defineNodeIfDoesntExist(define, define_class, allocator);
             try igraph.nodes.getPtr(define).?.moves.put(uses, {});
-            try igraph.defineNodeIfDoesntExist(uses, register_file.type, allocator);
+            try igraph.defineNodeIfDoesntExist(uses, uses_class, allocator);
             try igraph.nodes.getPtr(uses).?.moves.put(define, {});
         }
     }

@@ -24,13 +24,17 @@ pub const RegisterOperand = struct {
     register_type: RegisterType,
 };
 
-// pub const RegisterClasses = std.AutoHashMap(Operand, RegisterType);
+pub const RegisterClass = struct {
+    type: RegisterType,
+    width: u8,
+};
+
 pub const RegisterClasses = struct {
-    map: std.AutoHashMap(Operand, RegisterType),
+    map: std.AutoHashMap(Operand, RegisterClass),
 
     pub fn init(alloc: std.mem.Allocator) @This() {
         return .{
-            .map = std.AutoHashMap(Operand, RegisterType).init(alloc),
+            .map = .init(alloc),
         };
     }
 
@@ -38,13 +42,16 @@ pub const RegisterClasses = struct {
         self.map.deinit();
     }
 
-    pub fn put(self: *@This(), key: Operand, value: RegisterType) !void {
+    pub fn put(self: *@This(), key: Operand, value: RegisterClass) !void {
         try self.map.put(key, value);
     }
 
-    pub fn get(self: *const @This(), operand: Operand) !RegisterType {
+    pub fn get(self: *const @This(), operand: Operand) !RegisterClass {
         return switch (operand) {
-            .reg => |reg| reg.class,
+            .reg => |reg| .{
+                .type = reg.type,
+                .width = 1,
+            },
             // HACK: we are going to give mem a register type
             .temp, .mem => self.map.get(operand) orelse return error.CantFindRegisterClass,
             else => unreachable,
