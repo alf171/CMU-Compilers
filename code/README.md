@@ -29,6 +29,8 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - x86 or arm to indicate host platform to run program on
 `--regen`
 - regenerate all snapshot results based on current output
+`-Doptimize=ReleaseFast`
+- zig flag for the best performance
 
 ## Short term goals
 

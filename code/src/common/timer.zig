@@ -6,6 +6,7 @@ const reset_code = "\x1b[0m";
 const Phase = enum {
     frontend_total,
     middle_total,
+    middle_dead,
     middle_liveness,
     middle_igraph,
     middle_color,
@@ -14,6 +15,11 @@ const Phase = enum {
     middle_reg_class,
     middle_reg_alloc_build,
     backend_total,
+    backend_codegen,
+    backend_write_asm,
+    backend_assemble,
+    backend_link,
+    backend_execute,
 };
 
 pub const TimerMetrics = struct {

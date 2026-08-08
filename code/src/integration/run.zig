@@ -145,7 +145,9 @@ pub fn main(init: std.process.Init) !void {
 
     // run optimzation passes
     if (should_optim) {
+        timer.begin(.middle_dead, io);
         try dead.run(&ir_program, &alloc_program, alloc);
+        timer.finish(.middle_dead, io);
         alloc_program.deinit(alloc);
         reg_classes.deinit();
 
@@ -230,6 +232,7 @@ pub fn main(init: std.process.Init) !void {
     timer.finish(.middle_total, io);
 
     timer.begin(.backend_total, io);
+    timer.begin(.backend_codegen, io);
     var artifacts = try (backend.CompileRequest{
         .program = &ir_program,
         .host_colors = &host_colors,
@@ -237,6 +240,7 @@ pub fn main(init: std.process.Init) !void {
         .target = target,
     }).compile(alloc);
     defer artifacts.deinit(alloc);
+    timer.finish(.backend_codegen, io);
 
     if (should_dump_stats) {
         const stats = metrics.get(artifacts.host_asm, spill_rounds, target);
@@ -244,12 +248,15 @@ pub fn main(init: std.process.Init) !void {
         if (std_lib_enabled) stats.runtime.print(use_escape_codes);
     }
 
+    timer.begin(.backend_write_asm, io);
     const output_file = "/tmp/host.s";
     try writeArtifact(output_file, artifacts.host_asm, io);
     if (artifacts.device_asm) |device_asm|
         try writeArtifact("/tmp/device.s", device_asm, io);
+    timer.finish(.backend_write_asm, io);
 
     if (should_run) {
+        timer.begin(.backend_assemble, io);
         if (artifacts.device_asm != null) {
             const device_asm_result = try runCommand(alloc, io, &.{
                 "clang",
@@ -288,9 +295,11 @@ pub fn main(init: std.process.Init) !void {
             .target = target,
             .hsa_runtime_path = hsa_runtime_path,
         }, io, alloc);
+        timer.finish(.backend_assemble, io);
 
         // clang is doing all assembling
         // create /tmp/integration_out
+        timer.begin(.backend_link, io);
         const clang_final_result = if (target.device == .host)
             try runCommand(alloc, io, &.{
                 "clang",
@@ -311,8 +320,11 @@ pub fn main(init: std.process.Init) !void {
             });
         defer alloc.free(clang_final_result.stdout);
         defer alloc.free(clang_final_result.stderr);
+        timer.finish(.backend_link, io);
         // run!
+        timer.begin(.backend_execute, io);
         const run_result = try runCommand(alloc, io, &.{"/tmp/integration_out"});
+        timer.finish(.backend_execute, io);
         defer alloc.free(run_result.stdout);
         defer alloc.free(run_result.stderr);
 
