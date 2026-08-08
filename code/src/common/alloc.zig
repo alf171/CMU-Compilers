@@ -8,14 +8,15 @@ const TempId = @import("ir.zig").TempId;
 const MemoryId = @import("ir.zig").MemoryId;
 const Function = @import("ir.zig").Function;
 const TypeInfo = @import("types.zig").TypeInfo;
-const RegisterType = @import("types.zig").RegisterType;
+const RegisterType = @import("register.zig").RegisterType;
+const RegisterClass = @import("register.zig").RegisterClass;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const HashMap = std.AutoHashMap;
 
 pub const RegisterOperands = struct {
-    ops: HashMap(Operand, RegisterType),
+    ops: HashMap(Operand, RegisterClass),
 
     pub fn nextTemp(self: @This()) TempId {
         var max_temp: TempId = 0;
@@ -82,7 +83,7 @@ pub const RegisterOperands = struct {
     }
 
     pub fn init(allocator: Allocator) RegisterOperands {
-        const ops = std.AutoHashMap(Operand, RegisterType).init(allocator);
+        const ops: std.AutoHashMap(Operand, RegisterClass) = .init(allocator);
         return .{ .ops = ops };
     }
 
@@ -109,7 +110,7 @@ pub const RegisterOperands = struct {
         var res: ?Operand = null;
         var it = self.ops.iterator();
         while (it.next()) |entry| {
-            if (entry.value_ptr.* != reg_type) continue;
+            if (entry.value_ptr.*.type != reg_type) continue;
             if (res != null) return error.ExpectedSingle;
 
             res = entry.key_ptr.*;

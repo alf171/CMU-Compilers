@@ -35,7 +35,7 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                                 .reg = .{
                                     .id = id,
                                     .type = fp.dst.type.toRegisterType(function.kind),
-                                    .width = @intCast(try fp.dst.type.sizeOfType()),
+                                    .width = 1,
                                 },
                             },
                             .type = try fp.dst.type.clone(alloc),
@@ -49,7 +49,7 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                             .operand = .{ .reg = .{
                                 .id = abi.getFunctionReturnIdx(function.return_type),
                                 .type = function.return_type.toRegisterType(function.kind),
-                                .width = @intCast(try function.return_type.sizeOfType()),
+                                .width = 1,
                             } },
                             .type = try function.return_type.clone(alloc),
                         };
@@ -79,7 +79,7 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                         const reg: Operand = .{ .reg = .{
                             .id = @intCast(i),
                             .type = arg.type.toRegisterType(function.kind),
-                            .width = @intCast(try arg.type.sizeOfType()),
+                            .width = 1,
                         } };
                         copies[i] = .{
                             .dst = .{
@@ -110,7 +110,7 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                                     .operand = .{ .reg = .{
                                         .id = abi.getFunctionReturnIdx(dst.type),
                                         .type = dst.type.toRegisterType(function.kind),
-                                        .width = @intCast(try dst.type.sizeOfType()),
+                                        .width = 1,
                                     } },
                                     .type = try dst.type.clone(alloc),
                                 } },

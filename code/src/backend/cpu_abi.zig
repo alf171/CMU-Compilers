@@ -134,10 +134,10 @@ pub const CpuAbi = struct {
                     return error.MissingColor;
                 };
                 const reg_id = node.register orelse return error.MissingColor;
-                return try regForFromIndex(self, reg_id, node.reg_type);
+                return try regForFromIndex(self, reg_id, node.reg_class.type);
             },
             .reg => |reg| {
-                return try regForFromIndex(self, reg.id, reg.class);
+                return try regForFromIndex(self, reg.id, reg.type);
             },
             else => return error.UnsupportedOperand,
         }

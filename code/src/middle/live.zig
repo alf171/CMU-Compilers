@@ -12,10 +12,10 @@ const Operand = common.alloc.Operand;
 
 /// handle case where we are last line in addition to other to rest
 pub fn calculateLiveOut(program: *const common.alloc.AllocProgram, alloc: std.mem.Allocator) !void {
-    var live_before = RegisterOperands.init(alloc);
+    var live_before: RegisterOperands = .init(alloc);
     defer live_before.free();
 
-    var live_after = RegisterOperands.init(alloc);
+    var live_after: RegisterOperands = .init(alloc);
     defer live_after.free();
 
     var work_list: WorkList = try .init(program.blocks.items.len, alloc);
@@ -119,15 +119,15 @@ test "out of bounds returns empty" {
 test "simple example" {
     const alloc = std.testing.allocator;
 
-    var uses = RegisterOperands.init(alloc);
+    var uses: RegisterOperands = .init(alloc);
     defer uses.free();
     try uses.ops.put(.{ .temp = .{ .id = 0, .function_id = 0 } }, .gp);
 
-    var defines = RegisterOperands.init(alloc);
+    var defines: RegisterOperands = .init(alloc);
     defer defines.free();
     try defines.ops.put(.{ .temp = .{ .id = 1, .function_id = 0 } }, .gp);
 
-    var live_out = RegisterOperands.init(alloc);
+    var live_out: RegisterOperands = .init(alloc);
     defer live_out.free();
     const temps = [_]Operand{
         .{ .temp = .{ .id = 0, .function_id = 0 } },
@@ -145,11 +145,11 @@ test "simple example" {
         .instruction_index = 1,
     };
 
-    var result = RegisterOperands.init(alloc);
+    var result: RegisterOperands = .init(alloc);
     try getLiveIn(&line, &result);
     defer result.free();
 
     try std.testing.expectEqual(@as(usize, 2), result.ops.count());
-    try std.testing.expect(result.ops.contains(Operand{ .temp = .{ .id = 0, .function_id = 0 } }));
-    try std.testing.expect(result.ops.contains(Operand{ .temp = .{ .id = 2, .function_id = 0 } }));
+    try std.testing.expect(result.ops.contains(.{ .temp = .{ .id = 0, .function_id = 0 } }));
+    try std.testing.expect(result.ops.contains(.{ .temp = .{ .id = 2, .function_id = 0 } }));
 }

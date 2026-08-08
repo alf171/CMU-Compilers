@@ -12,7 +12,7 @@ pub const RegisterUsage = struct {
 };
 
 pub const GpuReg = struct {
-    class: RegisterType,
+    reg_type: RegisterType,
     base: u16,
     width: u8,
 };
@@ -51,18 +51,18 @@ pub const GpuAbi = struct {
                     return error.MissingColor;
                 };
                 const reg_id = node.register orelse return error.MissingColor;
-                const idx = try regForFromIndex(self, reg_id, node.reg_type);
+                const idx = try regForFromIndex(self, reg_id, node.reg_class.type);
                 return .{
-                    .class = node.reg_type,
+                    .reg_type = node.reg_class.type,
                     .base = idx,
-                    .width = 2,
+                    .width = node.reg_class.width,
                 };
             },
             .reg => |reg| {
                 return .{
-                    .class = reg.class,
+                    .reg_type = reg.type,
                     .base = reg.id,
-                    .width = 2,
+                    .width = reg.width,
                 };
             },
             else => return error.UnsupportedOperand,
@@ -88,7 +88,7 @@ pub const GpuAbi = struct {
         var usage: RegisterUsage = .{
             // v0 contains work items (x=bits[0-9],y=bits[10,19],z=bits[20-20])
             .vgpr_next = 1,
-            //s[0:1] = kernarg pointer, s[2] work gorup
+            //s[0:1] = kernarg pointer, s[2] work group
             .sgpr_next = 4,
         };
 
@@ -97,10 +97,10 @@ pub const GpuAbi = struct {
             const node = entry.value_ptr.*;
             const color = node.register orelse continue;
 
-            const base = try self.regForFromIndex(color, node.reg_type);
-            const next = base + 2;
+            const base = try self.regForFromIndex(color, node.reg_class.type);
+            const next = base + node.reg_class.width;
 
-            switch (node.reg_type) {
+            switch (node.reg_class.type) {
                 .vgpr => usage.vgpr_next = @max(usage.vgpr_next, next),
                 .sgpr => usage.sgpr_next = @max(usage.sgpr_next, next),
                 else => unreachable,

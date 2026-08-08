@@ -50,7 +50,7 @@ pub const RegisterClasses = struct {
         return switch (operand) {
             .reg => |reg| .{
                 .type = reg.type,
-                .width = 1,
+                .width = reg.width,
             },
             // HACK: we are going to give mem a register type
             .temp, .mem => self.map.get(operand) orelse return error.CantFindRegisterClass,

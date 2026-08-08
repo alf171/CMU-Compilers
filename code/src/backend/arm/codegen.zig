@@ -168,12 +168,12 @@ fn emitFunction(
                                                 },
                                                 // reg <- temp
                                                 .reg => |reg| {
-                                                    switch (reg.class) {
+                                                    switch (reg.type) {
                                                         .f => try out.print(alloc, "\tfmov ", .{}),
                                                         .gp => try out.print(alloc, "\tmov ", .{}),
                                                         else => unreachable,
                                                     }
-                                                    const src = try abi.regForFromIndex(reg.id, reg.class);
+                                                    const src = try abi.regForFromIndex(reg.id, reg.type);
                                                     try out.print(alloc, "{s}, {s}\n", .{ dst, src });
                                                 },
                                                 // temp <- mem
@@ -204,7 +204,7 @@ fn emitFunction(
                                                 .temp => {
                                                     const dst = try abi.regFor(m.dst.operand, colors);
                                                     const src = try abi.regFor(src_top.operand, colors);
-                                                    switch (reg.class) {
+                                                    switch (reg.type) {
                                                         .f => {
                                                             try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, src });
                                                         },
@@ -216,9 +216,9 @@ fn emitFunction(
                                                 },
                                                 // reg <- reg
                                                 .reg => |src_reg| {
-                                                    const dst = try abi.regForFromIndex(reg.id, reg.class);
-                                                    const src = try abi.regForFromIndex(src_reg.id, src_reg.class);
-                                                    switch (reg.class) {
+                                                    const dst = try abi.regForFromIndex(reg.id, reg.type);
+                                                    const src = try abi.regForFromIndex(src_reg.id, src_reg.type);
+                                                    switch (reg.type) {
                                                         .f => {
                                                             try out.print(alloc, "\tfmov {s}, {s}\n", .{ dst, src });
                                                         },

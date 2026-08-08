@@ -46,6 +46,7 @@ pub const Node = struct {
         self.cur_degree += 1;
     }
 
+    /// how many colors are available to this node
     pub fn legalCount(self: @This(), k: u16) DegreeCount {
         // largest value forbidden_colors supports
         std.debug.assert(k < 32);
@@ -81,6 +82,7 @@ pub const IGraph = struct {
     pub fn defineNodeIfDoesntExist(graph: *IGraph, val: Operand, reg_class: RegisterClass, allocator: Allocator) !void {
         if (graph.nodes.getPtr(val)) |node| {
             std.debug.assert(node.reg_class.type == reg_class.type);
+            std.debug.assert(node.reg_class.width == reg_class.width);
             return;
         }
         if (!graph.nodes.contains(val)) {
@@ -88,7 +90,14 @@ pub const IGraph = struct {
         }
     }
 
-    pub fn addInterference(self: *@This(), a: Operand, b: Operand, reg_class: RegisterClass, alloc: std.mem.Allocator) !void {
+    pub fn addInterference(
+        self: *@This(),
+        a: Operand,
+        b: Operand,
+        a_class: RegisterClass,
+        b_class: RegisterClass,
+        alloc: std.mem.Allocator,
+    ) !void {
         if (Operand.equal(a, b)) return;
 
         switch (a) {
@@ -96,17 +105,20 @@ pub const IGraph = struct {
             .reg => |reg| switch (b) {
                 .reg, .mem => return,
                 .temp => {
-                    try defineNodeIfDoesntExist(self, b, reg_class, alloc);
+                    try defineNodeIfDoesntExist(self, b, b_class, alloc);
                     std.debug.assert(self.nodes.contains(b));
-                    self.nodes.getPtr(b).?.forbidden_colors |= (@as(u32, 1) << @intCast(reg.id));
+                    for (0..reg.width) |offset| {
+                        const id = @as(usize, reg.id) + offset;
+                        self.nodes.getPtr(b).?.forbidden_colors |= (@as(u32, 1) << @intCast(id));
+                    }
                     return;
                 },
                 .unknown => return error.BadState,
             },
             .temp => switch (b) {
                 .temp => {
-                    try defineNodeIfDoesntExist(self, a, reg_class, alloc);
-                    try defineNodeIfDoesntExist(self, b, reg_class, alloc);
+                    try defineNodeIfDoesntExist(self, a, a_class, alloc);
+                    try defineNodeIfDoesntExist(self, b, b_class, alloc);
                     std.debug.assert(self.nodes.contains(a));
                     std.debug.assert(self.nodes.contains(b));
                     try self.nodes.getPtr(a).?.placeNode(b);
@@ -114,9 +126,12 @@ pub const IGraph = struct {
                     return;
                 },
                 .reg => |reg| {
-                    try defineNodeIfDoesntExist(self, a, reg_class, alloc);
+                    try defineNodeIfDoesntExist(self, a, a_class, alloc);
                     std.debug.assert(self.nodes.contains(a));
-                    self.nodes.getPtr(a).?.forbidden_colors |= (@as(u32, 1) << @intCast(reg.id));
+                    for (0..reg.width) |offset| {
+                        const id: usize = reg.id + offset;
+                        self.nodes.getPtr(a).?.forbidden_colors |= (@as(u32, 1) << @intCast(id));
+                    }
                     return;
                 },
                 .mem => return,
@@ -290,13 +305,14 @@ fn placeNodes(
             if (define_entry.value_ptr.*.type != register_file.type) continue;
 
             const define_op = define_entry.key_ptr.*;
+            const define_class = define_entry.value_ptr.*;
             var live_out_it = line.live_out.ops.iterator();
             while (live_out_it.next()) |live_out_entry| {
-                const reg_class = live_out_entry.value_ptr.*;
-                if (reg_class.type != register_file.type) continue;
+                const live_out_class = live_out_entry.value_ptr.*;
+                if (live_out_class.type != register_file.type) continue;
 
                 const live_out_op = live_out_entry.key_ptr.*;
-                try igraph.addInterference(define_op, live_out_op, reg_class, allocator);
+                try igraph.addInterference(define_op, live_out_op, define_class, live_out_class, allocator);
             }
         }
     }
@@ -304,14 +320,17 @@ fn placeNodes(
     {
         var use_it = line.uses.ops.iterator();
         while (use_it.next()) |first_entry| {
+            const first_op = first_entry.key_ptr.*;
+            const first_class = first_entry.value_ptr.*;
             if (first_entry.value_ptr.*.type != register_file.type) continue;
 
             var use_it_2 = line.uses.ops.iterator();
             while (use_it_2.next()) |second_entry| {
-                const reg_class = second_entry.value_ptr.*;
-                if (reg_class.type != register_file.type) continue;
+                const second_op = second_entry.key_ptr.*;
+                const second_class = second_entry.value_ptr.*;
+                if (second_class.type != register_file.type) continue;
 
-                try igraph.addInterference(first_entry.key_ptr.*, second_entry.key_ptr.*, reg_class, allocator);
+                try igraph.addInterference(first_op, second_op, first_class, second_class, allocator);
             }
         }
     }

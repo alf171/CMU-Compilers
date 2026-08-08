@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
 const RegisterFile = @import("common").register.RegisterFile;
 const Operand = @import("common").alloc.Operand;
+const RegisterClass = @import("common").register.RegisterClass;
 const RegisterType = @import("common").register.RegisterType;
 
 pub fn Set(comptime K: type) type {
@@ -34,7 +35,7 @@ pub const Node = struct {
 pub const ColoredNode = struct {
     node: Node,
     register: ?u8,
-    reg_type: RegisterType,
+    reg_class: RegisterClass,
 };
 
 pub const ColoredGraph = struct {
@@ -66,7 +67,7 @@ pub const ColoredGraph = struct {
             try cg.nodes.put(key, ColoredNode{
                 .node = moved_node,
                 .register = null,
-                .reg_type = node_ptr.reg_class.type,
+                .reg_class = node_ptr.reg_class,
             });
         }
         return cg;
@@ -237,7 +238,7 @@ pub fn colorGraph(input: *graph.IGraph, register_file: RegisterFile, allocator: 
                     .val = old,
                 },
                 .register = reg,
-                .reg_type = rep_colors.reg_type,
+                .reg_class = rep_colors.reg_class,
             });
         }
     }
@@ -334,8 +335,14 @@ fn scanForRegister(cnode: *ColoredNode, g: *ColoredGraph, k: u16) !?u8 {
     std.debug.assert(cnode.register == null);
     scan: for (0..k) |scan_reg| {
         // bit mask skip logic
-        if (cnode.node.forbidden_colors & (@as(u32, 1) << @intCast(scan_reg)) != 0) {
-            continue :scan;
+        const end = scan_reg + cnode.reg_class.width;
+        if (end > k) continue;
+
+        for (scan_reg..end) |reg| {
+            const mask = @as(u32, 1) << @intCast(reg);
+            if (cnode.node.forbidden_colors & mask != 0) {
+                continue :scan;
+            }
         }
         // selection logic
         var it = cnode.node.neighbors.keyIterator();
@@ -347,11 +354,16 @@ fn scanForRegister(cnode: *ColoredNode, g: *ColoredGraph, k: u16) !?u8 {
             const nbor_reg = nbor.register orelse {
                 continue;
             };
-            if (nbor_reg == scan_reg) {
+            if (overlaps(@intCast(scan_reg), cnode.reg_class.width, nbor_reg, nbor.reg_class.width)) {
                 continue :scan;
             }
         }
         return @intCast(scan_reg);
     }
     return null;
+}
+
+// [a] + aw, [b] + bw
+fn overlaps(a: u8, aw: u8, b: u8, bw: u8) bool {
+    return a < b + bw and b < a + aw;
 }

@@ -10,7 +10,6 @@ const ConstValue = common.ir.ConstValue;
 const BasicBlock = common.ir.BasicBlock;
 const Function = common.ir.Function;
 const ValueRef = common.ir.ValueRef;
-const getElementType = common.types.getElementType;
 const ColoredGraph = @import("middle").color.ColoredGraph;
 const Abi = @import("../gpu_abi.zig").GpuAbi;
 const RegisterUsage = @import("../gpu_abi.zig").RegisterUsage;
@@ -33,16 +32,24 @@ pub fn emit(
                     switch (instruction) {
                         .function_param => |fp| {
                             const dst = try abi.regFor(fp.dst.operand, colors);
-                            if (dst.class != .sgpr) return error.InvalidGpuRegisterClass;
+                            if (dst.reg_type != .sgpr) return error.InvalidGpuRegisterClass;
 
                             const kernel_offset = fp.index * 8;
-                            try out.print(alloc, "\ts_load_b64 s[{d}:{d}], s[0:1], 0x{d}\n", .{ dst.base, dst.base + 1, kernel_offset });
+                            switch (dst.width) {
+                                1 => {
+                                    try out.print(alloc, "\ts_load_b32 s{d}, s[0:1], 0x{d}\n", .{ dst.base, kernel_offset });
+                                },
+                                2 => {
+                                    try out.print(alloc, "\ts_load_b64 s[{d}:{d}], s[0:1], 0x{d}\n", .{ dst.base, dst.base + 1, kernel_offset });
+                                },
+                                else => return error.NotImpl,
+                            }
                             // load is async so place a barrier
                             try out.appendSlice(alloc, "\ts_waitcnt lgkmcnt(0)\n");
                         },
                         .global_idx => |gi| {
                             const dst = try abi.regFor(gi.dst.operand, colors);
-                            if (dst.class != .vgpr) return error.InvalidGpuRegisterClass;
+                            if (dst.reg_type != .vgpr) return error.InvalidGpuRegisterClass;
                             switch (gi.axis) {
                                 .constant => |c| {
                                     const axis = try c.valueAsIntImm();
@@ -50,8 +57,8 @@ pub fn emit(
                                     // bit field extract work item asked for
                                     // x=0 (bits 0-9), y=1 (bits 10-19), z=2 (bits 20-29)
                                     try out.print(alloc, "\tv_bfe_u32 v{d}, v0, {d}, {d}\n", .{ dst.base, bit_offset, 10 });
-                                    // TODO: remove once global_id returns i32
-                                    try out.print(alloc, "\tv_mov_b32_e32 v{d}, 0\n", .{dst.base + 1});
+                                    if (dst.width == 2)
+                                        try out.print(alloc, "\tv_mov_b32_e32 v{d}, 0\n", .{dst.base + 1});
                                 },
                                 else => |e| {
                                     std.debug.print("cant handle {s}\n", .{@tagName(e)});
@@ -62,10 +69,11 @@ pub fn emit(
                         .lir => |lir| switch (lir) {
                             .move => |m| {
                                 const dst = try abi.regFor(m.dst.operand, colors);
-                                if (dst.class != .vgpr) return error.InvalidGpuRegisterClass;
+                                if (dst.reg_type != .vgpr) return error.InvalidGpuRegisterClass;
                                 switch (m.src) {
                                     .constant => |c| switch (c) {
                                         .i64 => |i| {
+                                            std.debug.assert(dst.width == 2);
                                             const bits: u64 = @bitCast(i);
                                             const low: u32 = @truncate(bits);
                                             const high: u32 = @truncate(bits >> 32);
@@ -82,15 +90,17 @@ pub fn emit(
                                 const dst = try abi.regFor(bop.dst.operand, colors);
                                 const lhs = try abi.regFor(bop.lhs.operand, colors);
                                 const rhs = try abi.regFor(bop.rhs.operand, colors);
-                                if (dst.class != .vgpr or lhs.class != .vgpr or rhs.class != .vgpr) return error.InvalidGpuRegisterClass;
+                                if (dst.reg_type != .vgpr or lhs.reg_type != .vgpr or rhs.reg_type != .vgpr) return error.InvalidGpuRegisterClass;
                                 switch (bop.op) {
                                     .add => {
                                         try out.print(alloc, "\tv_add_u32 v{d}, v{d}, v{d}\n", .{ dst.base, lhs.base, rhs.base });
-                                        try out.print(alloc, "\tv_mov_b32_e32 v{d}, 0\n", .{dst.base + 1});
+                                        if (dst.width == 2)
+                                            try out.print(alloc, "\tv_mov_b32_e32 v{d}, 0\n", .{dst.base + 1});
                                     },
                                     .mul => {
                                         try out.print(alloc, "\tv_mul_lo_u32 v{d}, v{d}, v{d}\n", .{ dst.base, lhs.base, rhs.base });
-                                        try out.print(alloc, "\tv_mov_b32_e32 v{d}, 0\n", .{dst.base + 1});
+                                        if (dst.width == 2)
+                                            try out.print(alloc, "\tv_mov_b32_e32 v{d}, 0\n", .{dst.base + 1});
                                     },
                                     else => return error.NotImpl,
                                 }
@@ -102,7 +112,7 @@ pub fn emit(
                                     .top => |top| try abi.regFor(top.operand, colors),
                                 };
                                 const src = try abi.regFor(so.src.operand, colors);
-                                if (base.class != .sgpr or offset.class != .vgpr or src.class != .vgpr) return error.InvalidGpuRegisterClass;
+                                if (base.reg_type != .sgpr or offset.reg_type != .vgpr or src.reg_type != .vgpr) return error.InvalidGpuRegisterClass;
                                 // *(base + offset) = src
                                 switch (so.src.type) {
                                     .i64, .list => {
@@ -135,7 +145,7 @@ pub fn emit(
                                     .top => |top| try abi.regFor(top.operand, colors),
                                 };
                                 const src = try abi.regFor(lo.src.operand, colors);
-                                if (dst.class != .vgpr or offset.class != .vgpr or src.class != .sgpr) return error.InvalidGpuRegisterClass;
+                                if (dst.reg_type != .vgpr or offset.reg_type != .vgpr or src.reg_type != .sgpr) return error.InvalidGpuRegisterClass;
                                 // dst = *(src + offset)
                                 switch (lo.src.type) {
                                     .i64, .list => {
@@ -148,11 +158,13 @@ pub fn emit(
                                         });
                                     },
                                     .i32 => {
-                                        try out.print(alloc, "\tglobal_load_b32 v[{d}:{d}], v{d}, s{d}\n", .{
+                                        std.debug.assert(dst.width == 1);
+                                        std.debug.assert(src.width == 2);
+                                        try out.print(alloc, "\tglobal_load_b32 v{d}, v{d}, s[{d}:{d}]\n", .{
                                             dst.base,
-                                            dst.base + 1,
                                             offset.base,
                                             src.base,
+                                            src.base + 1,
                                         });
                                     },
                                     else => |e| {

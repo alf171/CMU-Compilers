@@ -6,6 +6,7 @@ const TypeVarId = @import("types.zig").TypeVarId;
 const TypedOperand = @import("alloc.zig").TypedOperand;
 const Operand = @import("alloc.zig").Operand;
 const RegisterType = @import("register.zig").RegisterType;
+const RegisterClass = @import("register.zig").RegisterClass;
 
 pub const ParsedConstant = union(enum) {
     immediate: ConstValue,
@@ -69,7 +70,7 @@ pub const PhysicalReg = struct {
     width: u8,
 
     pub fn equal(self: @This(), other: @This()) bool {
-        return self.id == other.id and self.type == other.type;
+        return self.id == other.id and self.type == other.type and self.width == other.width;
     }
 };
 
