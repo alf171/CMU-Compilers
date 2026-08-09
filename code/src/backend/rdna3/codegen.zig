@@ -112,30 +112,66 @@ pub fn emit(
                                     .top => |top| try abi.regFor(top.operand, colors),
                                 };
                                 const src = try abi.regFor(so.src.operand, colors);
-                                if (base.reg_type != .sgpr or offset.reg_type != .vgpr or src.reg_type != .vgpr) return error.InvalidGpuRegisterClass;
-                                // *(base + offset) = src
-                                switch (so.src.type) {
-                                    .i64, .list => {
-                                        try out.print(alloc, "\tglobal_store_b64 v{d}, v[{d}:{d}], s[{d}:{d}]\n", .{
-                                            offset.base,
-                                            src.base,
-                                            src.base + 1,
+                                switch (base.reg_type) {
+                                    .sgpr => {
+                                        // *(base + offset) = src
+                                        switch (so.src.type) {
+                                            .i64, .list => {
+                                                try out.print(alloc, "\tglobal_store_b64 v{d}, v[{d}:{d}], s[{d}:{d}]\n", .{
+                                                    offset.base,
+                                                    src.base,
+                                                    src.base + 1,
+                                                    base.base,
+                                                    base.base + 1,
+                                                });
+                                            },
+                                            .i32 => {
+                                                try out.print(alloc, "\tglobal_store_b32 v{d}, v{d}, s[{d}:{d}]\n", .{
+                                                    offset.base,
+                                                    src.base,
+                                                    base.base,
+                                                    base.base + 1,
+                                                });
+                                            },
+                                            else => |e| {
+                                                std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                                return error.NotImpl;
+                                            },
+                                        }
+                                    },
+                                    .vgpr => {
+                                        std.debug.assert(base.width == 2);
+                                        std.debug.assert(offset.width == 2);
+                                        std.debug.assert(src.width == 2);
+                                        // *(base + offset) = src
+                                        // address = base + offset
+                                        const address = try abi.scratchReg(0, 2, .vgpr);
+                                        try out.print(alloc, "\tv_add_co_u32 v{d}, vcc_lo, v{d}, v{d}\n", .{
+                                            address.base,
                                             base.base,
-                                            base.base + 1,
-                                        });
-                                    },
-                                    .i32 => {
-                                        try out.print(alloc, "\tglobal_store_b32 v{d}, v{d}, s[{d}:{d}]\n", .{
                                             offset.base,
-                                            src.base,
-                                            base.base,
-                                            base.base + 1,
                                         });
+                                        try out.print(alloc, "\tv_add_co_ci_u32 v{d}, vcc_lo, v{d}, v{d}, vcc_lo\n", .{
+                                            address.base + 1,
+                                            base.base + 1,
+                                            offset.base + 1,
+                                        });
+                                        // address = src
+                                        switch (so.src.type) {
+                                            .i32 => {
+                                                try out.print(alloc, "\tglobal_store_b32 v[{d}:{d}], v{d}, off\n", .{
+                                                    address.base,
+                                                    address.base + 1,
+                                                    src.base,
+                                                });
+                                            },
+                                            else => |e| {
+                                                std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                                return error.NotImpl;
+                                            },
+                                        }
                                     },
-                                    else => |e| {
-                                        std.debug.print("cant handle {s}\n", .{@tagName(e)});
-                                        return error.NotImpl;
-                                    },
+                                    else => return error.UnexpectedRegisterType,
                                 }
                             },
                             .load_offset => |lo| {
@@ -156,6 +192,7 @@ pub fn emit(
                                             src.base,
                                             src.base + 1,
                                         });
+                                        try out.appendSlice(alloc, "\ts_waitcnt vmcnt(0)\n");
                                     },
                                     .i32 => {
                                         std.debug.assert(dst.width == 1);

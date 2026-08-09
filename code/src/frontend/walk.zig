@@ -213,7 +213,10 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
                         .src = .{ .top = try rhs_value.clone(alloc) },
                     } }, alloc);
                 },
-                else => return error.UnexpectedType,
+                else => |e| {
+                    std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                    return error.UnexpectedType;
+                },
             }
         },
         // Assign(targets=[Tuple(elts=[Name(id='x', ctx=Store()), Name(id='y', ctx=Store())], ctx=Store())], value=Call(func=Name(id='foobar', ctx=Load()), args=[Constant(value=1), Constant(value=2)]))

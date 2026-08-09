@@ -20,14 +20,20 @@ pub const GpuReg = struct {
 pub const GpuAbi = struct {
     sgpr_allocatable_regs: []const u16,
     vgpr_allocatable_regs: []const u16,
+    sgpr_scratch_regs: []const u16,
+    vgpr_scratch_regs: []const u16,
 
     pub fn init(
         sgpr_allocatable_regs: []const u16,
         vgpr_allocatable_regs: []const u16,
+        sgpr_scratch_regs: []const u16,
+        vgpr_scratch_regs: []const u16,
     ) @This() {
         return .{
             .sgpr_allocatable_regs = sgpr_allocatable_regs,
             .vgpr_allocatable_regs = vgpr_allocatable_regs,
+            .sgpr_scratch_regs = sgpr_scratch_regs,
+            .vgpr_scratch_regs = vgpr_scratch_regs,
         };
     }
 
@@ -69,6 +75,24 @@ pub const GpuAbi = struct {
         }
     }
 
+    pub fn scratchReg(self: @This(), index: usize, width: u8, reg_type: RegisterType) !GpuReg {
+        const regs = switch (reg_type) {
+            .vgpr => self.vgpr_scratch_regs,
+            .sgpr => self.sgpr_scratch_regs,
+            else => unreachable,
+        };
+
+        if (width == 0 or index + width > regs.len)
+            return error.InvalidScratchReg;
+
+        const base = regs[index];
+        return .{
+            .base = base,
+            .width = width,
+            .reg_type = reg_type,
+        };
+    }
+
     pub fn registerFiles(self: @This()) [2]RegisterFile {
         return .{
             .{
@@ -105,6 +129,14 @@ pub const GpuAbi = struct {
                 .sgpr => usage.sgpr_next = @max(usage.sgpr_next, next),
                 else => unreachable,
             }
+        }
+
+        for (self.vgpr_scratch_regs) |reg| {
+            usage.vgpr_next = @max(usage.vgpr_next, reg + 1);
+        }
+
+        for (self.vgpr_scratch_regs) |reg| {
+            usage.vgpr_next = @max(usage.vgpr_next, reg + 1);
         }
         return usage;
     }

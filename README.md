@@ -24,3 +24,5 @@ This is a project to learn more about the implementations of a compilers, linker
   - [phi function vs block args](https://mlir.llvm.org/docs/Rationale/Rationale/#block-arguments-vs-phi-nodes)
   - [phi vs select](https://stackoverflow.com/questions/63048341/what-is-the-difference-between-select-and-phi-in-llvm-ir)
   - [garbage collection](https://www.microsoft.com/en-us/research/wp-content/uploads/2020/11/perceus-tr-v1.pdf)
+- GPU
+  - [rdna3](https://rocm.blogs.amd.com/software-tools-optimization/amdgcn-isa/README.html)
