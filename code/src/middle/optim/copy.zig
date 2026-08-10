@@ -120,13 +120,9 @@ fn rewriteUses(instruction: *Instruction, copyMap: *HashMap(Operand, ValueRef)) 
                 }
             }
         },
-        .tuple_load => |*tl| {
-            tl.tuple.operand = try resolveOperand(tl.tuple.operand, copyMap);
+        .subscript => |*tl| {
+            tl.src.operand = try resolveOperand(tl.src.operand, copyMap);
             tl.index.operand = try resolveOperand(tl.index.operand, copyMap);
-        },
-        .list_load => |*ll| {
-            ll.list.operand = try resolveOperand(ll.list.operand, copyMap);
-            ll.index.operand = try resolveOperand(ll.index.operand, copyMap);
         },
         .list_literal => |*ll| {
             for (ll.elements) |*elem| {

@@ -245,9 +245,9 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
                     .type = elem_type,
                 };
 
-                try irBuilder.emit(.{ .tuple_load = .{
+                try irBuilder.emit(.{ .subscript = .{
                     .dst = elem_dst,
-                    .tuple = rhs_value,
+                    .src = rhs_value,
                     .index = index,
                 } }, alloc);
 
@@ -554,24 +554,24 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
             std.debug.assert(value_obj != null);
 
             const slice = c.PyObject_GetAttrString(stmt, "slice");
-            const index = try walkExpr(slice, irBuilder, null, alloc);
-
-            if (index.type != .i64 and index.type != .i32 and index.type != .any) {
-                return error.ArrayIndexMustBeInt;
-            }
 
             const value = try walkExpr(value_obj, irBuilder, null, alloc);
+            const index = try walkExpr(slice, irBuilder, null, alloc);
+
             switch (value.type) {
                 .list => |list| {
+                    if (index.type != .i64 and index.type != .i32 and index.type != .any) {
+                        return error.ArrayIndexMustBeInt;
+                    }
                     const elem_type = list.element.*;
 
                     const dst: TypedOperand = .{
                         .operand = irBuilder.nextTemp(),
                         .type = try elem_type.clone(alloc),
                     };
-                    try irBuilder.emit(Instruction{ .list_load = .{
+                    try irBuilder.emit(.{ .subscript = .{
                         .dst = dst,
-                        .list = try value.clone(alloc),
+                        .src = try value.clone(alloc),
                         .index = try index.clone(alloc),
                     } }, alloc);
                     return dst;
@@ -592,15 +592,41 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
                         .operand = irBuilder.nextTemp(),
                         .type = try tuple.elements[tuple_index].clone(alloc),
                     };
-                    try irBuilder.emit(.{ .tuple_load = .{
+                    try irBuilder.emit(.{ .subscript = .{
                         .dst = dst,
-                        .tuple = try value.clone(alloc),
+                        .src = try value.clone(alloc),
                         .index = index,
                     } }, alloc);
                     // any isnt right here but there's some complexity here since at comptime we dont know our type due to the homogenuous types not being ensured
                     return dst;
                 },
-                else => return error.IndexIntoNonList,
+                .instance => |instance| {
+                    const class = irBuilder.getClass(instance.class_id);
+                    const getitem_method = class.findMethod("__getitem__") orelse {
+                        return error.CantFindGetMethod;
+                    };
+                    const getitem_function = irBuilder.getFunction(getitem_method.function_id) orelse {
+                        return error.CantFindGetMethod;
+                    };
+
+                    var bindings: TypeBindings = .init(alloc);
+                    defer bindings.deinit(alloc);
+                    const return_type = try bindings.inferReturnType(getitem_function, &.{ value, index }, alloc);
+
+                    const dst: TypedOperand = .{
+                        .operand = irBuilder.nextTemp(),
+                        .type = return_type,
+                    };
+
+                    try irBuilder.emit(.{ .subscript = .{
+                        .dst = dst,
+                        .src = try value.clone(alloc),
+                        .index = try index.clone(alloc),
+                    } }, alloc);
+
+                    return dst;
+                },
+                else => return error.UnsupportedIndex,
             }
         },
         .Name => {
@@ -1014,23 +1040,9 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
             return TypedOperand{ .operand = .unknown, .type = .void };
         }
         // check for generics
-        var bindings = TypeBindings.init(alloc);
-        defer {
-            var it = bindings.valueIterator();
-            while (it.next()) |_type| {
-                _type.deinit(alloc);
-            }
-            bindings.deinit();
-        }
-        if (function.type_params.len > 0) {
-            for (function.params, arguments.items) |param, arg| {
-                try TypeInfo.unify(param.type, arg.type, &bindings, alloc);
-            }
-        }
-        const return_type = if (function.type_params.len > 0)
-            try TypeInfo.substitute(function.return_type, &bindings, alloc)
-        else
-            try function.return_type.clone(alloc);
+        var bindings: TypeBindings = .init(alloc);
+        defer bindings.deinit(alloc);
+        const return_type = try bindings.inferReturnType(function, arguments.items, alloc);
 
         const maybe_dst: ?TypedOperand = if (function.return_type != .void)
             .{
@@ -1052,8 +1064,32 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
     }
     // class constructor
     if (irBuilder.findClass(std.mem.span(name))) |class| {
-        const instance_args = try alloc.alloc(TypeInfo, 0);
+        const init_method = class.findMethod("__init__") orelse {
+            return error.CantFindInit;
+        };
+        const init = irBuilder.getFunction(init_method.function_id) orelse {
+            return error.CantFindInit;
+        };
+        if (init.params.len != arguments.items.len + 1) {
+            return error.InvalidArgCount;
+        }
+
+        var bindings: TypeBindings = .init(alloc);
+        defer bindings.deinit(alloc);
+
+        for (init.params[1..], arguments.items) |param, arg| {
+            try TypeInfo.unify(param.type, arg.type, &bindings, alloc);
+        }
+
+        const instance_args = try alloc.alloc(TypeInfo, class.type_params.len);
         errdefer alloc.free(instance_args);
+
+        for (class.type_params, 0..) |type_param, i| {
+            const bound_type = bindings.get(type_param.id) orelse {
+                return error.ExpectedBinding;
+            };
+            instance_args[i] = try bound_type.clone(alloc);
+        }
 
         const dst: TypedOperand = .{
             .operand = irBuilder.nextTemp(),
@@ -1110,14 +1146,8 @@ fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc
     }
 
     // types arent interned so we protect against generic types being propogated here
-    var bindings = TypeBindings.init(alloc);
-    defer {
-        var it = bindings.valueIterator();
-        while (it.next()) |_type| {
-            _type.deinit(alloc);
-        }
-        bindings.deinit();
-    }
+    var bindings: TypeBindings = .init(alloc);
+    defer bindings.deinit(alloc);
     if (method.type_params.len > 0) {
         for (method.params, arguments.items) |param, arg| {
             try param.type.unify(arg.type, &bindings, alloc);
@@ -1409,30 +1439,30 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 body_.iterator;
             switch (iterable.type) {
                 .tuple => {
-                    try irBuilder_.emit(.{ .tuple_load = .{
+                    try irBuilder_.emit(.{ .subscript = .{
                         .dst = .{ .operand = value, .type = .any },
-                        .tuple = try iterable.clone(alloc_),
+                        .src = try iterable.clone(alloc_),
                         .index = try index.clone(alloc_),
                     } }, alloc_);
                 },
                 .list => {
-                    try irBuilder_.emit(.{ .list_load = .{
+                    try irBuilder_.emit(.{ .subscript = .{
                         .dst = .{ .operand = value, .type = .any },
-                        .list = try iterable.clone(alloc_),
+                        .src = try iterable.clone(alloc_),
                         .index = try index.clone(alloc_),
                     } }, alloc_);
                 },
                 .iterable => {
-                    try irBuilder_.emit(.{ .tuple_load = .{
+                    try irBuilder_.emit(.{ .subscript = .{
                         .dst = .{ .operand = value, .type = .any },
-                        .tuple = try iterable.clone(alloc_),
+                        .src = try iterable.clone(alloc_),
                         .index = try index.clone(alloc_),
                     } }, alloc_);
                 },
                 .lazy => {
-                    try irBuilder_.emit(.{ .lazy_load = .{
+                    try irBuilder_.emit(.{ .subscript = .{
                         .dst = .{ .operand = value, .type = .ptr },
-                        .lazy = try iterable.clone(alloc_),
+                        .src = try iterable.clone(alloc_),
                         .index = try index.clone(alloc_),
                     } }, alloc_);
                 },

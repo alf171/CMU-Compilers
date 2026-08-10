@@ -35,7 +35,11 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         try new_instructions.append(alloc, instruction.*);
                     }
                 },
-                .tuple_load => |tl| {
+                .subscript => |s| {
+                    if (s.src.type != .tuple) {
+                        try new_instructions.append(alloc, instruction.*);
+                        continue;
+                    }
                     const scaled: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
                     // scaled = index * 8
                     const eight: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
@@ -45,14 +49,14 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     } } });
                     try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
                         .dst = scaled,
-                        .lhs = tl.index,
+                        .lhs = s.index,
                         .op = .mul,
                         .rhs = eight,
                     } } });
                     try new_instructions.append(alloc, .{ .lir = .{
                         .load_offset = .{
-                            .dst = try tl.dst.clone(alloc),
-                            .src = try tl.tuple.clone(alloc),
+                            .dst = try s.dst.clone(alloc),
+                            .src = try s.src.clone(alloc),
                             .offset = .{ .top = scaled },
                         },
                     } });

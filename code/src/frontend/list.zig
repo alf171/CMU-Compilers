@@ -74,17 +74,22 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     try rewriteListStore(function, ls, &new_instructions, alloc);
                     instruction.deinit(alloc);
                 },
-                .list_load => |ll| {
+                .subscript => |s| {
+                    if (s.src.type != .list) {
+                        try new_instructions.append(alloc, instruction.*);
+                        continue;
+                    }
+
                     // dst <- list[index]
                     const scaled: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
                     const offset: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
-                    const elem_type = try ll.list.type.getElementType();
+                    const elem_type = try s.src.type.getElementType();
                     const elem_size = try elem_type.sizeOfType();
                     // scaled = index
                     if (elem_size == 1) {
                         try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                             .dst = scaled,
-                            .src = .{ .top = ll.index },
+                            .src = .{ .top = try s.index.clone(alloc) },
                         } } });
                     }
                     // scaled = index * element_size
@@ -97,7 +102,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                         try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
                             .dst = scaled,
                             .op = .mul,
-                            .lhs = ll.index,
+                            .lhs = try s.index.clone(alloc),
                             .rhs = element_size,
                         } } });
                     }
@@ -115,8 +120,8 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     } } });
                     try new_instructions.append(alloc, .{ .lir = .{
                         .load_offset = .{
-                            .dst = try ll.dst.clone(alloc),
-                            .src = try ll.list.clone(alloc),
+                            .dst = try s.dst.clone(alloc),
+                            .src = try s.src.clone(alloc),
                             .offset = .{ .top = try offset.clone(alloc) },
                         },
                     } });

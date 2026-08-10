@@ -97,6 +97,7 @@ pub const Field = struct {
     type: TypeInfo,
     offset: usize,
 };
+
 pub const Method = struct {
     name: []const u8,
     function_name: []const u8,
@@ -107,6 +108,7 @@ pub const Method = struct {
         alloc.free(self.function_name);
     }
 };
+
 // classes hold methods and fields
 pub const ClassId = u32;
 

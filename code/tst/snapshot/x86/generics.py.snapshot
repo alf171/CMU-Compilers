@@ -29,8 +29,8 @@ print(get_last_item(lst_str))
 print(get_last_item(lst_bool))
 
 performance report: (ORIGIN=user)
-number of asm lines: 563
-mov count: 290
+number of asm lines: 567
+mov count: 294
 memory load count: 0
 memory store count: 0
 branch count: 23

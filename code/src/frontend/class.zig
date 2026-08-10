@@ -61,6 +61,41 @@ pub fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Al
                     } });
                     instruction.deinit(alloc);
                 },
+                // dst <- src[index]
+                // :becomes:
+                // call __getitem__(self, attr)
+                .subscript => |s| {
+                    if (s.src.type != .instance) {
+                        try new_instructions.append(alloc, instruction.*);
+                        continue;
+                    }
+
+                    const class = &program.classes.items[s.src.type.instance.class_id];
+
+                    const method = class.findMethod("__getitem__") orelse {
+                        return error.CantFindBuiltin;
+                    };
+
+                    var arguments = try alloc.alloc(TypedOperand, 2);
+                    errdefer {
+                        for (arguments) |*arg| {
+                            arg.deinit(alloc);
+                        }
+                    }
+                    arguments[0] = try s.src.clone(alloc);
+                    arguments[1] = try s.index.clone(alloc);
+
+                    try new_instructions.append(alloc, .{
+                        .function_call = .{
+                            .dst = try s.dst.clone(alloc),
+                            .callee = .{
+                                .direct = try alloc.dupe(u8, method.function_name),
+                            },
+                            .args = arguments,
+                        },
+                    });
+                    instruction.deinit(alloc);
+                },
                 // self.attr = attr
                 // :becomes:
                 // store_at_addr(self + attr_offset, attr)
@@ -120,7 +155,9 @@ pub fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Al
                         try new_instructions.append(alloc, .{
                             .function_call = .{
                                 .dst = try bop.dst.clone(alloc),
-                                .callee = .{ .direct = try alloc.dupe(u8, method.function_name) },
+                                .callee = .{
+                                    .direct = try alloc.dupe(u8, method.function_name),
+                                },
                                 .args = try arguments.toOwnedSlice(alloc),
                             },
                         });

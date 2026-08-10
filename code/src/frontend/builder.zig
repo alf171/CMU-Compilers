@@ -96,7 +96,8 @@ pub const IrBuilder = struct {
 
     /// get function from index
     pub fn getFunction(self: *@This(), id: usize) ?*Function {
-        return &self.program.functions.items[id];
+        if (id == 0 or id > self.program.functions.items.len) return null;
+        return &self.program.functions.items[id - 1];
     }
 
     /// get class from index

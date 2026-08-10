@@ -28,8 +28,8 @@ matmul(
 )
 
 performance report: (ORIGIN=user)
-number of asm lines: 1054
-mov count: 713
+number of asm lines: 1053
+mov count: 712
 memory load count: 0
 memory store count: 0
 branch count: 17

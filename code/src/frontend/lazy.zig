@@ -46,21 +46,25 @@ fn rewriteFunction(function: *Function, producers: *HashMap(LazyKey, LazyProduce
                     } });
                     instruction.deinit(alloc);
                 },
-                .lazy_load => |ll| {
-                    const lhs = producers.get(.{ .operand = ll.lazy.operand }) orelse {
+                .subscript => |s| {
+                    if (s.src.type != .lazy) {
+                        try new_instructions.append(alloc, instruction.*);
+                        continue;
+                    }
+                    const lhs = producers.get(.{ .operand = s.src.operand }) orelse {
                         try new_instructions.append(alloc, instruction.*);
                         continue;
                     };
                     switch (lhs) {
                         .range => |range| {
                             try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
-                                .dst = ll.dst,
+                                .dst = s.dst,
                                 .lhs = .{
                                     .operand = range.start,
                                     .type = .i64,
                                 },
                                 .op = .add,
-                                .rhs = ll.index,
+                                .rhs = s.index,
                             } } });
                         },
                     }

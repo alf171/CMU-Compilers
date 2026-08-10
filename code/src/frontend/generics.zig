@@ -44,14 +44,8 @@ fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Alloca
                         continue;
                     };
                     // check for generics
-                    var bindings = TypeBindings.init(alloc);
-                    defer {
-                        var it = bindings.valueIterator();
-                        while (it.next()) |_type| {
-                            _type.deinit(alloc);
-                        }
-                        bindings.deinit();
-                    }
+                    var bindings: TypeBindings = .init(alloc);
+                    defer bindings.deinit(alloc);
                     // early return if we have no generics
                     if (callee.type_params.len == 0) {
                         try new_instructions.append(alloc, new_instruction);

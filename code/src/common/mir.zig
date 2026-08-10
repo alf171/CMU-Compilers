@@ -104,12 +104,6 @@ pub const Instruction = union(enum) {
         dst: TypedOperand,
         elements: []ValueRef,
     },
-    // dst <- list[index]
-    list_load: struct {
-        dst: TypedOperand,
-        list: TypedOperand,
-        index: TypedOperand,
-    },
     // list[index] <- src
     list_store: ListStore,
     // stack based fixed size array
@@ -117,16 +111,10 @@ pub const Instruction = union(enum) {
         dst: TypedOperand,
         elements: []ValueRef,
     },
-    // dst <- array[index]
-    tuple_load: struct {
+    // dst <- src[index]
+    subscript: struct {
         dst: TypedOperand,
-        tuple: TypedOperand,
-        index: TypedOperand,
-    },
-    // dst <- lazy[index]
-    lazy_load: struct {
-        dst: TypedOperand,
-        lazy: TypedOperand,
+        src: TypedOperand,
         index: TypedOperand,
     },
     class_init: struct {
@@ -208,14 +196,10 @@ pub const Instruction = union(enum) {
                 tl.dst.deinit(alloc);
                 alloc.free(tl.elements);
             },
-            .tuple_load => |tl| {
-                tl.dst.deinit(alloc);
-                tl.tuple.deinit(alloc);
-            },
-            .list_load => |ll| {
-                ll.dst.deinit(alloc);
-                ll.list.deinit(alloc);
-                ll.index.deinit(alloc);
+            .subscript => |s| {
+                s.dst.deinit(alloc);
+                s.src.deinit(alloc);
+                s.index.deinit(alloc);
             },
             .list_literal => |ll| {
                 ll.dst.deinit(alloc);
@@ -230,11 +214,6 @@ pub const Instruction = union(enum) {
                     },
                     .constant => {},
                 }
-            },
-            .lazy_load => |ll| {
-                ll.dst.deinit(alloc);
-                ll.lazy.deinit(alloc);
-                ll.index.deinit(alloc);
             },
             .range => |r| {
                 r.dst.deinit(alloc);
@@ -337,10 +316,10 @@ pub const Instruction = union(enum) {
                 }
                 debugPrint("]\n", .{});
             },
-            .tuple_load => |tl| {
+            .subscript => |tl| {
                 tl.dst.operand.print();
                 debugPrint(" <- ", .{});
-                tl.tuple.operand.print();
+                tl.src.operand.print();
                 debugPrint("(", .{});
                 tl.index.operand.print();
                 debugPrint(")\n", .{});
@@ -352,14 +331,6 @@ pub const Instruction = union(enum) {
                     if (i != 0) debugPrint(", ", .{});
                     elem.print();
                 }
-                debugPrint("]\n", .{});
-            },
-            .list_load => |al| {
-                al.dst.operand.print();
-                debugPrint(" <- ", .{});
-                al.list.operand.print();
-                debugPrint("[", .{});
-                al.index.operand.print();
                 debugPrint("]\n", .{});
             },
             .list_store => |ls| {
@@ -403,14 +374,6 @@ pub const Instruction = union(enum) {
                 }
                 debugPrint("\n", .{});
             },
-            .lazy_load => |ll| {
-                ll.dst.operand.print();
-                debugPrint("<- ", .{});
-                ll.lazy.operand.print();
-                debugPrint("[", .{});
-                ll.index.operand.print();
-                debugPrint("]\n", .{});
-            },
             .gpu_launch => |gl| {
                 debugPrint("{s}(", .{gl.kernel});
                 for (gl.args) |arg| {
@@ -444,8 +407,8 @@ pub const Instruction = union(enum) {
             .len => |*l| {
                 if (l.value.operand.equal(old)) l.value.operand = new;
             },
-            .tuple_load => |*tl| {
-                if (tl.tuple.operand.equal(old)) tl.tuple.operand = new;
+            .subscript => |*tl| {
+                if (tl.src.operand.equal(old)) tl.src.operand = new;
                 if (tl.index.operand.equal(old)) tl.index.operand = new;
             },
             .tuple_literal => |*tl| {
@@ -467,10 +430,6 @@ pub const Instruction = union(enum) {
                         .constant => {},
                     }
                 }
-            },
-            .list_load => |*ll| {
-                if (ll.list.operand.equal(old)) ll.list.operand = new;
-                if (ll.index.operand.equal(old)) ll.index.operand = new;
             },
             .list_store => |*ls| {
                 if (ls.list.operand.equal(old)) ls.list.operand = new;
@@ -522,17 +481,14 @@ pub const Instruction = union(enum) {
             .len => |*l| {
                 if (l.dst.operand.equal(old)) l.dst.operand = new;
             },
-            .tuple_load => |*tl| {
-                if (tl.dst.operand.equal(old)) tl.dst.operand = new;
-            },
             .tuple_literal => |*tl| {
                 if (tl.dst.operand.equal(old)) tl.dst.operand = new;
             },
             .list_literal => |*ll| {
                 if (ll.dst.operand.equal(old)) ll.dst.operand = new;
             },
-            .list_load => |*ll| {
-                if (ll.dst.operand.equal(old)) ll.dst.operand = new;
+            .subscript => |*s| {
+                if (s.dst.operand.equal(old)) s.dst.operand = new;
             },
             .function_param => |*fp| {
                 if (fp.dst.operand.equal(old)) fp.dst.operand = new;
@@ -568,9 +524,8 @@ pub const Instruction = union(enum) {
             .range => |*r| .{ .top = &r.dst },
             .len => |*l| .{ .top = &l.dst },
             .tuple_literal => |*tl| .{ .top = &tl.dst },
-            .tuple_load => |*tl| .{ .top = &tl.dst },
+            .subscript => |*tl| .{ .top = &tl.dst },
             .list_literal => |*ll| .{ .top = &ll.dst },
-            .list_load => |*ll| .{ .top = &ll.dst },
             .list_store => null,
             .print => null,
             .function_ref => |*fr| .{ .top = &fr.dst },
@@ -579,7 +534,6 @@ pub const Instruction = union(enum) {
             .function_return => null,
             .global_idx => |*gi| .{ .top = &gi.dst },
             .gpu_launch => null,
-            .lazy_load => |*ll| .{ .top = &ll.dst },
             .list_repeat => |*lr| .{ .top = &lr.dst },
             .field_store => null,
             .field_load => |*fl| .{ .top = &fl.dst },
@@ -634,9 +588,9 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
-            .tuple_load => |*tl| {
-                try res.append(alloc, .{ .top = &tl.tuple });
-                try res.append(alloc, .{ .top = &tl.index });
+            .subscript => |*s| {
+                try res.append(alloc, .{ .top = &s.src });
+                try res.append(alloc, .{ .top = &s.index });
             },
             .list_literal => |*ll| {
                 for (ll.elements) |*elem| {
@@ -645,10 +599,6 @@ pub const Instruction = union(enum) {
                         .constant => {},
                     }
                 }
-            },
-            .list_load => |*il| {
-                try res.append(alloc, .{ .top = &il.list });
-                try res.append(alloc, .{ .top = &il.index });
             },
             .list_store => |*ls| {
                 try res.append(alloc, .{ .top = &ls.list });
@@ -692,10 +642,6 @@ pub const Instruction = union(enum) {
                     try res.append(alloc, .{ .top = arg });
                 }
             },
-            .lazy_load => |*ll| {
-                try res.append(alloc, .{ .top = &ll.lazy });
-                try res.append(alloc, .{ .top = &ll.index });
-            },
             .lir => |*l| {
                 var seen = try l.getUsePtrs(alloc);
                 defer seen.deinit(alloc);
@@ -722,10 +668,10 @@ pub const Instruction = union(enum) {
                 .src = try p.src.clone(alloc),
                 .end = if (p.end) |end| try end.clone(alloc) else null,
             } },
-            .list_load => |ll| .{ .list_load = .{
-                .dst = try ll.dst.clone(alloc),
-                .list = try ll.list.clone(alloc),
-                .index = try ll.index.clone(alloc),
+            .subscript => |s| .{ .subscript = .{
+                .dst = try s.dst.clone(alloc),
+                .src = try s.src.clone(alloc),
+                .index = try s.index.clone(alloc),
             } },
             .len => |l| .{ .len = .{
                 .dst = try l.dst.clone(alloc),
@@ -750,13 +696,6 @@ pub const Instruction = union(enum) {
                         .inputs = phi_inputs,
                     },
                 };
-            },
-            .lazy_load => |ll| .{
-                .lazy_load = .{
-                    .dst = try ll.dst.clone(alloc),
-                    .lazy = try ll.lazy.clone(alloc),
-                    .index = ll.index,
-                },
             },
             .list_store => |ls| .{
                 .list_store = .{

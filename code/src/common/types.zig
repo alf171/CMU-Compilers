@@ -1,11 +1,53 @@
 const std = @import("std");
 pub const RegisterType = @import("register.zig").RegisterType;
+pub const Function = @import("ir.zig").Function;
 pub const FunctionKind = @import("ir.zig").FunctionKind;
 pub const ClassId = @import("ir.zig").ClassId;
+pub const TypedOperand = @import("alloc.zig").TypedOperand;
 
 pub const TypeVarId = u32;
 
-pub const TypeBindings = std.AutoHashMap(TypeVarId, TypeInfo);
+pub const TypeBindings = struct {
+    bindings: std.AutoHashMap(TypeVarId, TypeInfo),
+
+    pub fn init(alloc: std.mem.Allocator) @This() {
+        return .{ .bindings = .init(alloc) };
+    }
+
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        var it = self.bindings.valueIterator();
+        while (it.next()) |_type| {
+            _type.deinit(alloc);
+        }
+        self.bindings.deinit();
+    }
+
+    pub fn get(self: *const @This(), id: TypeVarId) ?TypeInfo {
+        return self.bindings.get(id);
+    }
+
+    pub fn put(self: *@This(), id: TypeVarId, _type: TypeInfo) !void {
+        return try self.bindings.put(id, _type);
+    }
+
+    pub fn inferReturnType(
+        self: *@This(),
+        function: *const Function,
+        args: []const TypedOperand,
+        alloc: std.mem.Allocator,
+    ) !TypeInfo {
+        if (function.type_params.len > 0) {
+            for (function.params, args) |param, arg| {
+                try TypeInfo.unify(param.type, arg.type, self, alloc);
+            }
+        }
+        const return_type = if (function.type_params.len > 0)
+            try TypeInfo.substitute(function.return_type, self, alloc)
+        else
+            try function.return_type.clone(alloc);
+        return return_type;
+    }
+};
 
 pub const ClassInstance = struct {
     class_id: ClassId,
@@ -235,7 +277,17 @@ pub const TypeInfo = union(enum) {
                 },
                 else => return error.TypeMistmatch,
             },
-            .tuple => return error.NotImpl,
+            .tuple => |tuple| switch (expected) {
+                .tuple => |expected_t| {
+                    if (tuple.elements.len != expected_t.elements.len) {
+                        return error.TypeMismatch;
+                    }
+                    for (tuple.elements, expected_t.elements) |t, e| {
+                        try unify(t, e, bindings, alloc);
+                    }
+                },
+                else => return error.TypeMistmatch,
+            },
             else => {},
         }
     }
