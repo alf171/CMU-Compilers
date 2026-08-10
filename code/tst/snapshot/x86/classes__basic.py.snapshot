@@ -2,7 +2,7 @@ running program: (OPTIM=true)
 
 # simple class example
 class Car:
-    def __init__(self: "Car", name: str, speed: int) -> None:
+    def __init__(self, name: str, speed: int) -> None:
         self.name = name 
         self.speed = speed
 
@@ -10,7 +10,7 @@ class Car:
         # print(f"we are driving a {self.name} at {self.speed} mph")
         print(self.speed)
 
-    def __add__(self: "Car", other: "Car") -> int:
+    def __add__(self, other: Car) -> int:
         return self.speed + other.speed
 
 audi = Car("audi", 30)
@@ -20,8 +20,8 @@ vw.print_speed()
 print(vw + audi)
 
 performance report: (ORIGIN=user)
-number of asm lines: 203
-mov count: 98
+number of asm lines: 205
+mov count: 100
 memory load count: 0
 memory store count: 0
 branch count: 9

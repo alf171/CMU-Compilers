@@ -14,15 +14,31 @@ const TypeBindings = @import("common").types.TypeBindings;
 const TypeInfo = @import("common").types.TypeInfo;
 
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
-    try rewriteFunction(program, &program.main, alloc);
-    for (program.functions.items) |*function| {
-        try rewriteFunction(program, function, alloc);
+    var pending: ArrayList(Function) = .empty;
+    defer pending.deinit(alloc);
+
+    try rewriteFunction(program, &program.main, &pending, alloc);
+    try program.functions.appendSlice(alloc, pending.items);
+    pending.clearRetainingCapacity();
+    var function_index: usize = 0;
+    while (function_index < program.functions.items.len) : (function_index += 1) {
+        const function = &program.functions.items[function_index];
+        // skip generics looking for more generics
+        // calls into generics should handle this scenario
+        if (function.type_params.len > 0) continue;
+        try rewriteFunction(program, function, &pending, alloc);
+        try program.functions.appendSlice(alloc, pending.items);
+        pending.clearRetainingCapacity();
     }
-    dropTemplates(program, alloc);
 }
 
 /// rewrite function distructively
-fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Allocator) !void {
+fn rewriteFunction(
+    program: *Program,
+    function: *Function,
+    pending: *ArrayList(Function),
+    alloc: std.mem.Allocator,
+) !void {
     for (function.blocks.items) |*block| {
         var new_instructions: ArrayList(Instruction) = .empty;
         errdefer new_instructions.deinit(alloc);
@@ -65,16 +81,17 @@ fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Alloca
                     errdefer alloc.free(specialized_func_name);
 
                     const return_type = try callee.return_type.substitute(&bindings, alloc);
+                    errdefer return_type.deinit(alloc);
 
-                    if (findFunction(program, specialized_func_name) == null) {
+                    if (findFunction(program, specialized_func_name) == null and findFunctionIn(pending.items, specialized_func_name) == null) {
                         const specialized_function = try createSpecializedFunction(
                             callee,
                             specialized_func_name,
-                            program.functions.items.len + 1,
+                            program.functions.items.len + pending.items.len + 1,
                             &bindings,
                             alloc,
                         );
-                        try program.functions.append(alloc, specialized_function);
+                        try pending.append(alloc, specialized_function);
                     }
 
                     if (fc.dst) |*dst| {
@@ -196,7 +213,16 @@ fn findFunction(program: *const Program, function_name: []const u8) ?*Function {
     return null;
 }
 
-fn dropTemplates(program: *Program, alloc: std.mem.Allocator) void {
+fn findFunctionIn(functions: []const Function, function_name: []const u8) ?*const Function {
+    for (functions) |*function| {
+        if (std.mem.eql(u8, function.name, function_name)) {
+            return function;
+        }
+    }
+    return null;
+}
+
+pub fn dropTemplates(program: *Program, alloc: std.mem.Allocator) void {
     var write_index: usize = 0;
     for (program.functions.items, 0..) |*function, read_index| {
         if (function.type_params.len > 0) {

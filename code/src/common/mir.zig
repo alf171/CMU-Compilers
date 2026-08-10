@@ -179,6 +179,9 @@ pub const Instruction = union(enum) {
                 fr.dst.type.deinit(alloc);
                 alloc.free(fr.function_name);
             },
+            .function_return => |fr| {
+                if (fr.value) |val| val.deinit(alloc);
+            },
             .function_call => |fc| {
                 if (fc.dst) |dst| {
                     dst.deinit(alloc);
@@ -600,6 +603,10 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
+            .list_repeat => |*lr| {
+                try res.append(alloc, .{ .top = &lr.list });
+                try res.append(alloc, .{ .top = &lr.count });
+            },
             .subscript_store => |*ss| {
                 try res.append(alloc, .{ .top = &ss.target });
                 try res.append(alloc, .{ .top = &ss.index });
@@ -704,6 +711,34 @@ pub const Instruction = union(enum) {
                     .src = try ss.src.clone(alloc),
                 },
             },
+            .function_call => |fc| blk: {
+                const new_args = try alloc.alloc(TypedOperand, fc.args.len);
+                for (fc.args, 0..) |arg, i| {
+                    new_args[i] = try arg.clone(alloc);
+                }
+                break :blk .{
+                    .function_call = .{
+                        .dst = if (fc.dst) |dst| try dst.clone(alloc) else null,
+                        .callee = try fc.callee.clone(alloc),
+                        .args = new_args,
+                    },
+                };
+            },
+            .list_literal => |ll| blk: {
+                const elements = try alloc.alloc(ValueRef, ll.elements.len);
+                for (ll.elements, 0..) |elem, i| {
+                    elements[i] = try elem.clone(alloc);
+                }
+                break :blk .{ .list_literal = .{
+                    .dst = try ll.dst.clone(alloc),
+                    .elements = elements,
+                } };
+            },
+            .list_repeat => |lr| .{ .list_repeat = .{
+                .dst = try lr.dst.clone(alloc),
+                .list = try lr.list.clone(alloc),
+                .count = try lr.count.clone(alloc),
+            } },
             .lir => |*lir| .{
                 .lir = try lir.clone(alloc),
             },

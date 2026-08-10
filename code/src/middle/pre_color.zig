@@ -56,12 +56,12 @@ pub fn applyFunction(function: *Function, abi: CpuAbi, alloc: std.mem.Allocator)
                         try new_instructions.append(alloc, .{ .lir = .{ .move = .{
                             .dst = reg,
                             .src = .{
-                                .top = src_op,
+                                .top = try src_op.clone(alloc),
                             },
                         } } });
                         // emits branch with proper coloring
                         try new_instructions.append(alloc, .{
-                            .function_return = .{ .value = reg },
+                            .function_return = .{ .value = try reg.clone(alloc) },
                         });
                     } else {
                         // emits branch

@@ -18,10 +18,21 @@ _print(5)
 _print("Hello world")
 _print(False)
 
+# generic input
 print_len(lst_int)
 print_len(lst_str)
 print_len(lst_bool)
 
+# generic input and output
 print(get_last_item(lst_int))
 print(get_last_item(lst_str))
 print(get_last_item(lst_bool))
+
+# handle nested generics
+def inner[T](x: T) -> T:
+    return x
+
+def outer[T](x: T) -> T:
+    return inner(x)
+
+print(outer(42))

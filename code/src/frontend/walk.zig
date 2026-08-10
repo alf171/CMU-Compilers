@@ -44,7 +44,12 @@ const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Tup
 
 const BuiltinCall = enum { Print, Write, Range, Len, Int, Float, GlobalIdx };
 
-const SubscriberTypes = enum { list, tuple, callable };
+const SubscriberTypes = union(enum) {
+    list,
+    tuple,
+    callable,
+    instance: ClassId,
+};
 
 const RangeBounds = struct {
     start: TypedOperand,
@@ -1808,7 +1813,7 @@ fn walkReturn(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     const return_top = if (value == c.Py_None())
         null
     else
-        (try walkExpr(value, irBuilder, null, alloc));
+        try (try walkExpr(value, irBuilder, null, alloc)).clone(alloc);
 
     try irBuilder.emit(.{ .function_return = .{
         .value = return_top,
@@ -1931,6 +1936,12 @@ fn parseTypeAnnotation(
             return .{ .list = .{ .element = try TypeInfo.toOwnedPointer(.char, alloc) } };
         } else if (irBuilder.getActiveParmType(annotation_name)) |param_type| {
             return .{ .type_variable = param_type.id };
+        } else if (irBuilder.findClass(annotation_name)) |class| {
+            if (class.type_params.len != 0) return error.InvalidTypeArgCount;
+            return .{ .instance = .{
+                .class_id = class.id,
+                .args = try alloc.alloc(TypeInfo, 0),
+            } };
         }
         std.debug.print("cant handle {s}\n", .{annotation_id});
         return error.TypeNotImplemented;
@@ -1938,7 +1949,7 @@ fn parseTypeAnnotation(
         const slice_obj = c.PyObject_GetAttrString(annotation, "slice");
         std.debug.assert(slice_obj != null);
 
-        switch (try getSubscriberType(annotation)) {
+        switch (try getSubscriberType(annotation, irBuilder)) {
             // Subscript(value=Name(id='list', ctx=Load()), slice=Name(id='int', ctx=Load()), ctx=Load())
             .list => {
                 // recursively get type
@@ -1988,6 +1999,27 @@ fn parseTypeAnnotation(
                     .returns = try (try parseTypeAnnotation(return_obj, irBuilder, alloc)).toOwnedPointer(alloc),
                 } };
             },
+            .instance => |class_id| {
+                const class = irBuilder.getClass(class_id);
+                const arity = class.type_params.len;
+
+                if (arity == 0) return error.InvalidTypeArgCount;
+
+                const args = try alloc.alloc(TypeInfo, arity);
+
+                // arity = 1 is a special case
+                // more args get pushed into elts
+                if (arity == 1) {
+                    args[0] = try parseTypeAnnotation(slice_obj, irBuilder, alloc);
+                } else {
+                    return error.NotImpl;
+                }
+
+                return .{ .instance = .{
+                    .class_id = class_id,
+                    .args = args,
+                } };
+            },
         }
     } else if (std.mem.eql(u8, kind, "Constant")) {
         const value_obj = c.PyObject_GetAttrString(annotation, "value");
@@ -2034,7 +2066,7 @@ fn parseTypeParams(stmt: *PyObject, start_id: u32, alloc: std.mem.Allocator) ![]
     return result;
 }
 
-fn getSubscriberType(annotation: *PyObject) !SubscriberTypes {
+fn getSubscriberType(annotation: *PyObject, irBuilder: *IrBuilder) !SubscriberTypes {
     const value_obj = c.PyObject_GetAttrString(annotation, "value");
     std.debug.assert(value_obj != null);
     const id_obj = c.PyObject_GetAttrString(value_obj, "id");
@@ -2043,6 +2075,9 @@ fn getSubscriberType(annotation: *PyObject) !SubscriberTypes {
     if (std.mem.eql(u8, name, "list")) return .list;
     if (std.mem.eql(u8, name, "tuple")) return .tuple;
     if (std.mem.eql(u8, name, "Callable")) return .callable;
+    if (irBuilder.findClass(name)) |class| {
+        return .{ .instance = class.id };
+    }
 
     return error.InvalidSubscriber;
 }

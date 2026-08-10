@@ -20,21 +20,32 @@ _print(5)
 _print("Hello world")
 _print(False)
 
+# generic input
 print_len(lst_int)
 print_len(lst_str)
 print_len(lst_bool)
 
+# generic input and output
 print(get_last_item(lst_int))
 print(get_last_item(lst_str))
 print(get_last_item(lst_bool))
 
+# handle nested generics
+def inner[T](x: T) -> T:
+    return x
+
+def outer[T](x: T) -> T:
+    return inner(x)
+
+print(outer(42))
+
 performance report: (ORIGIN=user)
-number of asm lines: 567
-mov count: 294
+number of asm lines: 630
+mov count: 311
 memory load count: 0
 memory store count: 0
-branch count: 23
-call count: 32
+branch count: 29
+call count: 36
 spill count: 0
 
 performance report: (ORIGIN=runtime)
@@ -56,4 +67,5 @@ False
 4
 bar
 True
-[!!memory report!!]: allocs=24 frees=24 allocated_bytes=309 freed_bytes=309
+42
+[!!memory report!!]: allocs=26 frees=26 allocated_bytes=328 freed_bytes=328

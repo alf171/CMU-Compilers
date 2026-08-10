@@ -93,9 +93,11 @@ pub fn main(init: std.process.Init) !void {
     // rewrite layer
     var timer = TimerMetrics.init();
     timer.begin(.frontend_total, io);
-    try repeat.rewrite(&ir_program, alloc);
     try class.rewrite(&ir_program, alloc);
     try generics.rewrite(&ir_program, alloc);
+    try repeat.rewrite(&ir_program, alloc);
+    try generics.rewrite(&ir_program, alloc);
+    generics.dropTemplates(&ir_program, alloc);
     try print.rewrite(&ir_program, alloc);
     try func.rewrite(&ir_program, alloc);
     try lazy.rewrite(&ir_program, alloc);

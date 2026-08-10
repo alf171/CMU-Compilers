@@ -7,26 +7,32 @@ print(x[1, 0])
 x[1, 0] = 99
 print(x[1, 0])
 
+y = Tensor__full((10, 10), 42);
+print(y[0,0])
+print(y[5,5])
+
 performance report: (ORIGIN=user)
-number of asm lines: 159
-mov count: 105
+number of asm lines: 222
+mov count: 154
 memory load count: 0
 memory store count: 0
 branch count: 2
-call count: 14
+call count: 21
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 754
-mov count: 370
+number of asm lines: 882
+mov count: 422
 memory load count: 0
 memory store count: 0
-branch count: 55
-call count: 31
-spill count: 10
+branch count: 64
+call count: 36
+spill count: 9
 
 actual output:
 2
 3
 99
-[!!memory report!!]: allocs=8 frees=8 allocated_bytes=113 freed_bytes=113
+42
+42
+[!!memory report!!]: allocs=15 frees=15 allocated_bytes=991 freed_bytes=991
