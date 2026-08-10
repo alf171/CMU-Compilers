@@ -1,7 +1,7 @@
 const std = @import("std");
 const HashMap = std.AutoHashMap;
 const Operand = @import("common").alloc.Operand;
-const ListStore = @import("common").mir.ListStore;
+const SubscriptStore = @import("common").mir.SubscriptStore;
 const ValueRef = @import("common").ir.ValueRef;
 const TypedOperand = @import("common").alloc.TypedOperand;
 const Function = @import("common").ir.Function;
@@ -63,15 +63,19 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                             .src = .{ .constant = .{ .i64 = @intCast(i) } },
                         } } });
                         try rewriteListStore(function, .{
-                            .list = ll.dst,
+                            .target = ll.dst,
                             .index = index,
                             .src = src,
                         }, &new_instructions, alloc);
                     }
                     instruction.deinit(alloc);
                 },
-                .list_store => |ls| {
-                    try rewriteListStore(function, ls, &new_instructions, alloc);
+                .subscript_store => |ss| {
+                    if (ss.target.type != .list) {
+                        try new_instructions.append(alloc, instruction.*);
+                        continue;
+                    }
+                    try rewriteListStore(function, ss, &new_instructions, alloc);
                     instruction.deinit(alloc);
                 },
                 .subscript => |s| {
@@ -178,19 +182,19 @@ fn lowerListAlloc(
 
 fn rewriteListStore(
     function: *Function,
-    ls: ListStore,
+    ss: SubscriptStore,
     new_instructions: *std.ArrayList(Instruction),
     alloc: std.mem.Allocator,
 ) !void {
     const scaled: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
     const offset: TypedOperand = .{ .operand = function.nextTemp(), .type = .i64 };
-    const elem_type = try ls.list.type.getElementType();
+    const elem_type = try ss.target.type.getElementType();
     const elem_size = try elem_type.sizeOfType();
     // scaled = index
     if (elem_size == 1) {
         try new_instructions.append(alloc, .{ .lir = .{ .move = .{
             .dst = scaled,
-            .src = .{ .top = ls.index },
+            .src = .{ .top = ss.index },
         } } });
     }
     // scaled = index * element_size
@@ -203,7 +207,7 @@ fn rewriteListStore(
         try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
             .dst = scaled,
             .op = .mul,
-            .lhs = ls.index,
+            .lhs = ss.index,
             .rhs = element_size,
         } } });
     }
@@ -220,7 +224,7 @@ fn rewriteListStore(
         .rhs = eight,
     } } });
 
-    const src: TypedOperand = switch (ls.src) {
+    const src: TypedOperand = switch (ss.src) {
         .top => |top| .{
             .operand = top.operand,
             .type = try elem_type.clone(alloc),
@@ -239,7 +243,7 @@ fn rewriteListStore(
     };
 
     try new_instructions.append(alloc, .{ .lir = .{ .store_offset = .{
-        .dst = try ls.list.clone(alloc),
+        .dst = try ss.target.clone(alloc),
         .offset = .{ .top = try offset.clone(alloc) },
         .src = src,
     } } });

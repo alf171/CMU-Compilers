@@ -207,8 +207,15 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
 
             switch (container.type) {
                 .list => {
-                    try irBuilder.emit(Instruction{ .list_store = .{
-                        .list = try container.clone(alloc),
+                    try irBuilder.emit(.{ .subscript_store = .{
+                        .target = try container.clone(alloc),
+                        .index = try slice.clone(alloc),
+                        .src = .{ .top = try rhs_value.clone(alloc) },
+                    } }, alloc);
+                },
+                .instance => {
+                    try irBuilder.emit(.{ .subscript_store = .{
+                        .target = try container.clone(alloc),
                         .index = try slice.clone(alloc),
                         .src = .{ .top = try rhs_value.clone(alloc) },
                     } }, alloc);

@@ -38,8 +38,8 @@ pub const LoopPhi = struct {
     dst: TypedOperand,
 };
 
-pub const ListStore = struct {
-    list: TypedOperand,
+pub const SubscriptStore = struct {
+    target: TypedOperand,
     index: TypedOperand,
     src: ValueRef,
 };
@@ -104,8 +104,8 @@ pub const Instruction = union(enum) {
         dst: TypedOperand,
         elements: []ValueRef,
     },
-    // list[index] <- src
-    list_store: ListStore,
+    // target[index] <- src
+    subscript_store: SubscriptStore,
     // stack based fixed size array
     tuple_literal: struct {
         dst: TypedOperand,
@@ -205,10 +205,10 @@ pub const Instruction = union(enum) {
                 ll.dst.deinit(alloc);
                 alloc.free(ll.elements);
             },
-            .list_store => |ls| {
-                ls.list.deinit(alloc);
-                ls.index.deinit(alloc);
-                switch (ls.src) {
+            .subscript_store => |ss| {
+                ss.target.deinit(alloc);
+                ss.index.deinit(alloc);
+                switch (ss.src) {
                     .top => |top| {
                         top.deinit(alloc);
                     },
@@ -333,12 +333,12 @@ pub const Instruction = union(enum) {
                 }
                 debugPrint("]\n", .{});
             },
-            .list_store => |ls| {
-                ls.list.operand.print();
+            .subscript_store => |ss| {
+                ss.target.operand.print();
                 debugPrint("[", .{});
-                ls.index.operand.print();
+                ss.index.operand.print();
                 debugPrint("] <- ", .{});
-                ls.src.print();
+                ss.src.print();
                 debugPrint("\n", .{});
             },
             .function_ref => |fr| {
@@ -431,10 +431,10 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
-            .list_store => |*ls| {
-                if (ls.list.operand.equal(old)) ls.list.operand = new;
-                if (ls.index.operand.equal(old)) ls.index.operand = new;
-                switch (ls.src) {
+            .subscript_store => |*ss| {
+                if (ss.target.operand.equal(old)) ss.target.operand = new;
+                if (ss.index.operand.equal(old)) ss.index.operand = new;
+                switch (ss.src) {
                     .top => |*top| {
                         if (top.operand.equal(old)) top.operand = new;
                     },
@@ -526,7 +526,7 @@ pub const Instruction = union(enum) {
             .tuple_literal => |*tl| .{ .top = &tl.dst },
             .subscript => |*tl| .{ .top = &tl.dst },
             .list_literal => |*ll| .{ .top = &ll.dst },
-            .list_store => null,
+            .subscript_store => null,
             .print => null,
             .function_ref => |*fr| .{ .top = &fr.dst },
             .function_param => |*fp| .{ .top = &fp.dst },
@@ -600,10 +600,10 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
-            .list_store => |*ls| {
-                try res.append(alloc, .{ .top = &ls.list });
-                try res.append(alloc, .{ .top = &ls.index });
-                switch (ls.src) {
+            .subscript_store => |*ss| {
+                try res.append(alloc, .{ .top = &ss.target });
+                try res.append(alloc, .{ .top = &ss.index });
+                switch (ss.src) {
                     .top => |*top| {
                         try res.append(alloc, .{ .top = top });
                     },
@@ -697,11 +697,11 @@ pub const Instruction = union(enum) {
                     },
                 };
             },
-            .list_store => |ls| .{
-                .list_store = .{
-                    .list = try ls.list.clone(alloc),
-                    .index = try ls.index.clone(alloc),
-                    .src = try ls.src.clone(alloc),
+            .subscript_store => |ss| .{
+                .subscript_store = .{
+                    .target = try ss.target.clone(alloc),
+                    .index = try ss.index.clone(alloc),
+                    .src = try ss.src.clone(alloc),
                 },
             },
             .lir => |*lir| .{

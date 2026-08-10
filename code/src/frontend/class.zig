@@ -96,6 +96,52 @@ pub fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Al
                     });
                     instruction.deinit(alloc);
                 },
+                .subscript_store => |ss| {
+                    if (ss.target.type != .instance) {
+                        try new_instructions.append(alloc, instruction.*);
+                        continue;
+                    }
+
+                    const class = &program.classes.items[ss.target.type.instance.class_id];
+
+                    const method = class.findMethod("__setitem__") orelse {
+                        return error.CantFindBuiltin;
+                    };
+
+                    var arguments = try alloc.alloc(TypedOperand, 3);
+                    errdefer {
+                        for (arguments) |*arg| {
+                            arg.deinit(alloc);
+                        }
+                    }
+                    arguments[0] = try ss.target.clone(alloc);
+                    arguments[1] = try ss.index.clone(alloc);
+                    arguments[2] = switch (ss.src) {
+                        .top => |top| try top.clone(alloc),
+                        .constant => |c| blk: {
+                            const tmp: TypedOperand = .{
+                                .operand = function.nextTemp(),
+                                .type = c.toType(),
+                            };
+                            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                                .dst = tmp,
+                                .src = .{ .constant = c },
+                            } } });
+                            break :blk tmp;
+                        },
+                    };
+
+                    try new_instructions.append(alloc, .{
+                        .function_call = .{
+                            .dst = null,
+                            .callee = .{
+                                .direct = try alloc.dupe(u8, method.function_name),
+                            },
+                            .args = arguments,
+                        },
+                    });
+                    instruction.deinit(alloc);
+                },
                 // self.attr = attr
                 // :becomes:
                 // store_at_addr(self + attr_offset, attr)

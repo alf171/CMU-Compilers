@@ -9,3 +9,9 @@ class Tensor[T]:
         col = idxs[1]
         index = row * self.shape[1] + col
         return self.data[index]
+
+    def __setitem__(self, idxs: tuple[int, int], value: T) -> None:
+        row = idxs[0]
+        col = idxs[1]
+        index = row * self.shape[1] + col
+        self.data[index] = value
