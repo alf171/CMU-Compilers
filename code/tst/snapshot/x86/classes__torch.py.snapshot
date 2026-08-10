@@ -15,7 +15,7 @@ print(tensor.get_item(1))
 print(tensor.get_item(2))
 
 performance report: (ORIGIN=user)
-number of asm lines: 175
+number of asm lines: 178
 mov count: 90
 memory load count: 0
 memory store count: 0

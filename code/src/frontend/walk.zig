@@ -1122,7 +1122,15 @@ fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc
     const method_name_raw = c.PyUnicode_AsUTF8(method_obj);
     std.debug.assert(method_name_raw != null);
     const method_name = std.mem.span(method_name_raw);
-    const method = irBuilder.findFunction(method_name) orelse {
+    const instance = switch (instance_expr.type) {
+        .instance => |inst| inst,
+        else => return error.ExpectedInstance,
+    };
+    const class = irBuilder.getClass(instance.class_id);
+    const method_info = class.findMethod(method_name) orelse {
+        return error.CantFindMethod;
+    };
+    const method = irBuilder.getFunction(method_info.function_id) orelse {
         return error.CantFindFunction;
     };
 
@@ -1556,8 +1564,9 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     // start walking function
     const func_name_obj = c.PyObject_GetAttrString(stmt, "name");
     std.debug.assert(func_name_obj != null);
-    const func_name = c.PyUnicode_AsUTF8(func_name_obj);
-    std.debug.assert(func_name != null);
+    const raw_func_name = c.PyUnicode_AsUTF8(func_name_obj);
+    std.debug.assert(raw_func_name != null);
+    const func_name = std.mem.span(raw_func_name);
     const args_obj = c.PyObject_GetAttrString(stmt, "args");
     std.debug.assert(args_obj != null);
     const args_list = c.PyObject_GetAttrString(args_obj, "args");
@@ -1668,8 +1677,16 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
         break :blk .host;
     };
 
+    // append class name onto its methods
+    const prefixed_func_name = if (class_id) |id| blk: {
+        const class = irBuilder.getClass(id);
+        const name = try std.fmt.allocPrint(alloc, "{s}__{s}", .{ class.name, func_name });
+        break :blk name;
+    } else func_name;
+    defer if (class_id != null) alloc.free(prefixed_func_name);
+
     try irBuilder.program.functions.append(alloc, try Function.init(
-        std.mem.span(func_name),
+        prefixed_func_name,
         irBuilder.nextFunctionId(),
         try params.toOwnedSlice(alloc),
         try type_params.toOwnedSlice(alloc),
