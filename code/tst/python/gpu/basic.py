@@ -1,5 +1,5 @@
 @gpu
-def kernel(out: list[int], shape: tuple[int, int, int]) -> None:
+def kernel(out: list[int]) -> None:
     out[global_id(0)] = 42
     return
 

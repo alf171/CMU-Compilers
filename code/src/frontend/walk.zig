@@ -1041,12 +1041,20 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
 
     if (irBuilder.findFunction(std.mem.span(name))) |function| {
         if (function.kind == .gpu_kernel) {
+            if (arguments.items.len != function.params.len + 1) {
+                return error.InvalidGpuLaunchArgs;
+            }
+            const work_item_index = arguments.items.len - 1;
+            const work_items = try arguments.items[work_item_index].clone(alloc);
+            arguments.items[work_item_index].deinit(alloc);
+            arguments.items.len = work_item_index;
+
             const gpu_args = try arguments.toOwnedSlice(alloc);
             try irBuilder.emit(.{
                 .gpu_launch = .{
                     .kernel = try alloc.dupe(u8, name_slice),
                     .args = gpu_args,
-                    .work_items = try gpu_args[gpu_args.len - 1].clone(alloc),
+                    .work_items = work_items,
                 },
             }, alloc);
             return TypedOperand{ .operand = .unknown, .type = .void };

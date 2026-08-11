@@ -212,13 +212,6 @@ pub const TypeInfo = union(enum) {
         };
     }
 
-    pub fn getElementSize(typeInfo: TypeInfo) ?usize {
-        return switch (typeInfo) {
-            .array => |array_type| array_type.size,
-            else => error.ExpectedArrayType,
-        };
-    }
-
     pub fn isIterable(self: @This()) bool {
         return switch (self) {
             .list, .tuple, .iterable, .any => true,

@@ -37,10 +37,10 @@ pub fn emit(
                             const kernel_offset = fp.index * 8;
                             switch (dst.width) {
                                 1 => {
-                                    try out.print(alloc, "\ts_load_b32 s{d}, s[0:1], 0x{d}\n", .{ dst.base, kernel_offset });
+                                    try out.print(alloc, "\ts_load_b32 s{d}, s[0:1], {d}\n", .{ dst.base, kernel_offset });
                                 },
                                 2 => {
-                                    try out.print(alloc, "\ts_load_b64 s[{d}:{d}], s[0:1], 0x{d}\n", .{ dst.base, dst.base + 1, kernel_offset });
+                                    try out.print(alloc, "\ts_load_b64 s[{d}:{d}], s[0:1], {d}\n", .{ dst.base, dst.base + 1, kernel_offset });
                                 },
                                 else => return error.NotImpl,
                             }
@@ -183,7 +183,7 @@ pub fn emit(
                                 const src = try abi.regFor(lo.src.operand, colors);
                                 if (dst.reg_type != .vgpr or offset.reg_type != .vgpr or src.reg_type != .sgpr) return error.InvalidGpuRegisterClass;
                                 // dst = *(src + offset)
-                                switch (lo.src.type) {
+                                switch (lo.dst.type) {
                                     .i64, .list => {
                                         try out.print(alloc, "\tglobal_load_b64 v[{d}:{d}], v{d}, s[{d}:{d}]\n", .{
                                             dst.base,
@@ -203,6 +203,7 @@ pub fn emit(
                                             src.base,
                                             src.base + 1,
                                         });
+                                        try out.appendSlice(alloc, "\ts_waitcnt vmcnt(0)\n");
                                     },
                                     else => |e| {
                                         std.debug.print("cant handle {s}\n", .{@tagName(e)});
@@ -226,7 +227,7 @@ pub fn emit(
             }
             try emitKernelFooter(&out, function.name, alloc);
             const register_usage = try abi.registerUsage(colors);
-            try emitKernelDescriptor(&out, function.name, register_usage, alloc);
+            try emitKernelDescriptor(&out, function.name, register_usage, function.params.len, alloc);
         }
     }
 
@@ -260,13 +261,14 @@ fn emitKernelDescriptor(
     out: *std.ArrayList(u8),
     name: []const u8,
     register_usage: RegisterUsage,
+    kernel_param_count: usize,
     alloc: std.mem.Allocator,
 ) !void {
     try out.appendSlice(alloc, "\t.p2align 6\n");
     try out.print(alloc, ".amdhsa_kernel {s}\n", .{name});
     try out.appendSlice(alloc, "\t.amdhsa_group_segment_fixed_size 0\n");
     try out.appendSlice(alloc, "\t.amdhsa_private_segment_fixed_size 0\n");
-    try out.print(alloc, "\t.amdhsa_kernarg_size {d}\n", .{16});
+    try out.print(alloc, "\t.amdhsa_kernarg_size {d}\n", .{kernel_param_count * 8});
     try out.appendSlice(alloc, "\t.amdhsa_user_sgpr_kernarg_segment_ptr 1\n");
     try out.appendSlice(alloc, "\t.amdhsa_system_sgpr_workgroup_id_x 1\n");
     // FIXME: we should avoid hardcoding here

@@ -13,11 +13,6 @@ typedef struct {
   uint32_t z;
 } LaunchDims;
 
-struct KernelArgs {
-  void *out;
-  uint64_t n;
-};
-
 static void check(hsa_status_t status, const char *operation) {
   if (status == HSA_STATUS_SUCCESS)
     return;
@@ -62,7 +57,7 @@ static hsa_status_t find_kernarg_region(hsa_region_t region, void *data) {
   return status;
 }
 
-void gpu_launch(void *out, const uint64_t *shape, const uint64_t *kernel_name_slots) {
+void gpu_launch(const uint64_t *arg_slots, uint64_t arg_count, const uint64_t *workitems, const uint64_t *kernel_name_slots) {
   // TEMP: hack since tuples dont map 1 to 1 with strings (namely always 8 bytes)
   char symbol_name[256] = {0};
   size_t i = 0;
@@ -79,9 +74,9 @@ void gpu_launch(void *out, const uint64_t *shape, const uint64_t *kernel_name_sl
   memcpy(symbol_name + i, suffix, sizeof(suffix));
   fprintf(stderr, "Looking up kernel symbol: '%s'\n", symbol_name);
   const LaunchDims dims = {
-    .x = (uint32_t)shape[0],
-    .y = (uint32_t)shape[1],
-    .z = (uint32_t)shape[2],
+    .x = (uint32_t)workitems[0],
+    .y = (uint32_t)workitems[1],
+    .z = (uint32_t)workitems[2],
   };
 
   uint16_t rank;
@@ -110,7 +105,6 @@ void gpu_launch(void *out, const uint64_t *shape, const uint64_t *kernel_name_sl
   check(hsa_agent_get_info(gpu, HSA_AGENT_INFO_NAME, name), "hsa_agent_info(name)");
   hsa_profile_t profile;
   check(hsa_agent_get_info(gpu, HSA_AGENT_INFO_PROFILE, &profile), "hsa_agent_get_info(PROFILE)");
-  fprintf(stderr, "HSA GPU found: %s; out=%p; work_items=%lu\n", name, out, n);
   int code_object_fd = open("/tmp/device.co", O_RDONLY);
   if (code_object_fd < 0) {
     perror("open /tmp/device.co");
@@ -155,14 +149,17 @@ void gpu_launch(void *out, const uint64_t *shape, const uint64_t *kernel_name_sl
     abort();
   }
 
-  void *gpu_out = NULL;
-  size_t out_size = (n + 1) * sizeof(uint64_t);
-  check(hsa_amd_memory_lock(out, out_size, &gpu, 1, &gpu_out), "hsa_amd_memory_lock");
-
-  struct KernelArgs *kernel_args = NULL;
-  check(hsa_memory_allocate(kernel_region, sizeof(*kernel_args), (void **)&kernel_args), "hsa_memory_allocate");
-  kernel_args->out = gpu_out;
-  kernel_args->n = n;
+  void **gpu_ptrs = calloc(arg_count, sizeof(*gpu_ptrs));
+  for (uint64_t i = 0; i < arg_count; i++) {
+    void *host_ptr = (void *)arg_slots[2 * i];
+    uint64_t byte_count = arg_slots[2 * i + 1];
+    check(hsa_amd_memory_lock(host_ptr, byte_count, &gpu, 1, &gpu_ptrs[i]), "hsa_amd_memory_lock");
+  }
+  uint64_t *kernel_args = NULL;
+  check(hsa_memory_allocate(kernel_region, arg_count * sizeof(*kernel_args), (void **)&kernel_args), "hsa_memory_allocate");
+  for (uint64_t i = 0; i < arg_count; i++) {
+    kernel_args[i] = (uint64_t)gpu_ptrs[i];
+  }
 
   uint64_t packet_id = hsa_queue_add_write_index_relaxed(queue, 1);
   uint32_t packet_index = packet_id & (queue->size - 1);
@@ -208,7 +205,10 @@ void gpu_launch(void *out, const uint64_t *shape, const uint64_t *kernel_name_sl
            UINT64_MAX,
            HSA_WAIT_STATE_BLOCKED);
   
-  check(hsa_amd_memory_unlock(out), "hsa_amd_memory_unlock(out)");
+  for (uint64_t i = 0; i < arg_count; i++) {
+    void *host_ptr = (void *)arg_slots[2 * i];
+    check(hsa_amd_memory_unlock(host_ptr), "hsa_amd_memory_unlock");
+  }
 
    fprintf(
        stderr,

@@ -1,6 +1,6 @@
 
 @gpu
-def fill(out: list[i32], shape: tuple[int, int, int]) -> None:
+def fill(out: list[i32]) -> None:
     row = global_id(0)
     col = global_id(1)
     out[row * 5 + col] = 42
