@@ -87,20 +87,20 @@ test "reject coalesce" {
     const q = Operand{ .temp = .{ .id = 3, .function_id = 0 } };
     const r = Operand{ .temp = .{ .id = 4, .function_id = 0 } };
 
-    var a_node = Node.init(a, .gp, alloc);
+    var a_node = Node.init(a, .{ .type = .gp, .width = 1 }, alloc);
     try a_node.placeNode(p);
     try a_node.placeNode(q);
-    var b_node = Node.init(b, .gp, alloc);
+    var b_node = Node.init(b, .{ .type = .gp, .width = 1 }, alloc);
     try b_node.placeNode(r);
-    var p_node = Node.init(p, .gp, alloc);
+    var p_node = Node.init(p, .{ .type = .gp, .width = 1 }, alloc);
     try p_node.placeNode(a);
     try p_node.placeNode(q);
     try p_node.placeNode(r);
-    var q_node = Node.init(q, .gp, alloc);
+    var q_node = Node.init(q, .{ .type = .gp, .width = 1 }, alloc);
     try q_node.placeNode(p);
     try q_node.placeNode(a);
     try q_node.placeNode(r);
-    var r_node = Node.init(r, .gp, alloc);
+    var r_node = Node.init(r, .{ .type = .gp, .width = 1 }, alloc);
     try r_node.placeNode(b);
     try r_node.placeNode(p);
     try r_node.placeNode(q);

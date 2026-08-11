@@ -371,9 +371,9 @@ test "coalesce removes stale move refs" {
     const b = Operand{ .temp = .{ .id = 1, .function_id = 0 } };
     const c = Operand{ .temp = .{ .id = 2, .function_id = 0 } };
     // init nodes
-    try graph.nodes.put(a, Node.init(a, .gp, alloc));
-    try graph.nodes.put(b, Node.init(b, .gp, alloc));
-    try graph.nodes.put(c, Node.init(c, .gp, alloc));
+    try graph.nodes.put(a, Node.init(a, .{ .type = .gp, .width = 1 }, alloc));
+    try graph.nodes.put(b, Node.init(b, .{ .type = .gp, .width = 1 }, alloc));
+    try graph.nodes.put(c, Node.init(c, .{ .type = .gp, .width = 1 }, alloc));
     // establish moves
     try graph.nodes.getPtr(a).?.moves.put(b, {});
     try graph.nodes.getPtr(b).?.moves.put(a, {});

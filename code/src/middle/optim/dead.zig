@@ -112,6 +112,7 @@ test "basic block elim" {
         .function_id = 0,
         .id = 0,
         .successors = .empty,
+        .predecessors = .empty,
     });
     try alloc_program.lines.append(alloc, .{
         .defines = RegisterOperands.init(alloc),

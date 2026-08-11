@@ -166,9 +166,9 @@ test "range behaves lazily" {
         .src = .{ .constant = .{ .i64 = 1 } },
     } } });
     try block0.instructions.append(alloc, .{
-        .lazy_load = .{
+        .subscript = .{
             .dst = .{ .operand = i, .type = .any },
-            .lazy = try range.clone(alloc),
+            .src = try range.clone(alloc),
             .index = try index.clone(alloc),
         },
     });

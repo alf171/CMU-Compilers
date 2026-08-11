@@ -273,7 +273,7 @@ test "constant arg setup gets folded into abi reg" {
     // r0 = t0
     // foobar(r0)
     const t0: Operand = .{ .temp = .{ .id = 1, .function_id = 0 } };
-    const r0: Operand = .{ .reg = .{ .id = 0, .class = .gp } };
+    const r0: Operand = .{ .reg = .{ .id = 0, .type = .gp, .width = 1 } };
     try instructions.append(alloc, .{ .lir = .{ .move = .{
         .dst = .{ .operand = t0, .type = .i64 },
         .src = .{ .constant = .{ .i64 = 5 } },

@@ -121,11 +121,11 @@ test "simple example" {
 
     var uses: RegisterOperands = .init(alloc);
     defer uses.free();
-    try uses.ops.put(.{ .temp = .{ .id = 0, .function_id = 0 } }, .gp);
+    try uses.ops.put(.{ .temp = .{ .id = 0, .function_id = 0 } }, .{ .type = .gp, .width = 1 });
 
     var defines: RegisterOperands = .init(alloc);
     defer defines.free();
-    try defines.ops.put(.{ .temp = .{ .id = 1, .function_id = 0 } }, .gp);
+    try defines.ops.put(.{ .temp = .{ .id = 1, .function_id = 0 } }, .{ .type = .gp, .width = 1 });
 
     var live_out: RegisterOperands = .init(alloc);
     defer live_out.free();
@@ -134,7 +134,7 @@ test "simple example" {
         .{ .temp = .{ .id = 1, .function_id = 0 } },
         .{ .temp = .{ .id = 2, .function_id = 0 } },
     };
-    for (temps) |temp| try live_out.ops.put(temp, .gp);
+    for (temps) |temp| try live_out.ops.put(temp, .{ .type = .gp, .width = 1 });
 
     const line: Line = .{
         .uses = uses,

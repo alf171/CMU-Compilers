@@ -359,19 +359,19 @@ pub const WorkList = struct {
 
 test "operands equal" {
     const alloc = std.testing.allocator;
-    var ops1 = HashMap(Operand, RegisterType).init(alloc);
+    var ops1: HashMap(Operand, RegisterClass) = .init(alloc);
     defer ops1.deinit();
-    try ops1.put(.{ .temp = .{ .id = 99, .function_id = 0 } }, .gp);
+    try ops1.put(.{ .temp = .{ .id = 99, .function_id = 0 } }, .{ .type = .gp, .width = 1 });
     var a: RegisterOperands = .{ .ops = ops1 };
 
-    var ops2 = HashMap(Operand, RegisterType).init(alloc);
+    var ops2: HashMap(Operand, RegisterClass) = .init(alloc);
     defer ops2.deinit();
-    try ops2.put(Operand{ .temp = .{ .id = 99, .function_id = 0 } }, .gp);
+    try ops2.put(.{ .temp = .{ .id = 99, .function_id = 0 } }, .{ .type = .gp, .width = 1 });
     const b: RegisterOperands = .{ .ops = ops2 };
 
     try std.testing.expect(b.equal(&a));
     try std.testing.expect(a.equal(&b));
 
-    try a.ops.put(.{ .temp = .{ .id = 100, .function_id = 0 } }, .gp);
+    try a.ops.put(.{ .temp = .{ .id = 100, .function_id = 0 } }, .{ .type = .gp, .width = 1 });
     try std.testing.expect(!a.equal(&b));
 }
