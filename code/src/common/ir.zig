@@ -102,6 +102,7 @@ pub const Method = struct {
     name: []const u8,
     function_name: []const u8,
     function_id: usize,
+    is_static: bool,
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         alloc.free(self.name);

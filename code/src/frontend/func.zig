@@ -110,7 +110,7 @@ fn rewriteFunction(
                     }
                     {
                         var elements: std.ArrayList(ValueRef) = .empty;
-                        const element_types: std.ArrayList(TypeInfo) = .empty;
+                        var element_types: std.ArrayList(TypeInfo) = .empty;
                         for (gl.args) |arg| {
                             try elements.append(alloc, .{ .top = arg });
                             try element_types.append(alloc, try arg.type.clone(alloc));
@@ -166,7 +166,9 @@ fn rewriteFunction(
                         }
                         const dst: TypedOperand = .{
                             .operand = function.nextTemp(),
-                            .type = try element_types.toOwnedSlice(alloc),
+                            .type = .{ .tuple = .{
+                                .elements = try element_types.toOwnedSlice(alloc),
+                            } },
                         };
                         try new_instructions.append(alloc, .{
                             .tuple_literal = .{
@@ -174,7 +176,7 @@ fn rewriteFunction(
                                 .elements = try elements.toOwnedSlice(alloc),
                             },
                         });
-                        try new_args.append(alloc, dst);
+                        try new_args.append(alloc, try dst.clone(alloc));
                     }
                     const arg_count: TypedOperand = .{
                         .operand = function.nextTemp(),

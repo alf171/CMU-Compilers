@@ -141,6 +141,7 @@ fn walkClassDef(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator
                     .name = try alloc.dupe(u8, method_name),
                     .function_name = try alloc.dupe(u8, function.name),
                     .function_id = function.id,
+                    .is_static = try hasDecorator(body_obj, "staticmethod"),
                 });
             },
             else => return error.NotImpl,
@@ -1135,23 +1136,46 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
 fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!TypedOperand {
     const instance_obj = c.PyObject_GetAttrString(func, "value");
     std.debug.assert(instance_obj != null);
-    const instance_expr = try walkExpr(instance_obj, irBuilder, null, alloc);
 
     const method_obj = c.PyObject_GetAttrString(func, "attr");
     std.debug.assert(method_obj != null);
     const method_name_raw = c.PyUnicode_AsUTF8(method_obj);
     std.debug.assert(method_name_raw != null);
     const method_name = std.mem.span(method_name_raw);
-    const instance = switch (instance_expr.type) {
-        .instance => |inst| inst,
-        else => return error.ExpectedInstance,
-    };
-    const class = irBuilder.getClass(instance.class_id);
-    const method_info = class.findMethod(method_name) orelse {
-        return error.CantFindMethod;
-    };
-    const method = irBuilder.getFunction(method_info.function_id) orelse {
-        return error.CantFindFunction;
+
+    var self: ?TypedOperand = null;
+    const method = blk: {
+        if (std.mem.eql(u8, getPyType(instance_obj), "Name")) {
+            const id_obj = PyObject.GetAttrString(instance_obj, "id");
+            std.debug.assert(id_obj != null);
+            const raw_name = c.PyUnicode_AsUTF8(id_obj);
+            std.debug.assert(raw_name != null);
+            const class = irBuilder.findClass(std.mem.span(raw_name)) orelse {
+                return error.CantFindClass;
+            };
+            const method_info = class.findMethod(method_name) orelse {
+                return error.CantFindMethod;
+            };
+            if (!method_info.is_static) return error.ExpectedInstance;
+            const method = irBuilder.getFunction(method_info.function_id) orelse {
+                return error.CantFindFunction;
+            };
+            break :blk method;
+        }
+        const instance_expr = try walkExpr(instance_obj, irBuilder, null, alloc);
+        self = instance_expr;
+        const instance = switch (instance_expr.type) {
+            .instance => |inst| inst,
+            else => return error.ExpectedInstance,
+        };
+        const class = irBuilder.getClass(instance.class_id);
+        const method_info = class.findMethod(method_name) orelse {
+            return error.CantFindMethod;
+        };
+        const method = irBuilder.getFunction(method_info.function_id) orelse {
+            return error.CantFindFunction;
+        };
+        break :blk method;
     };
 
     var arguments: ArrayList(TypedOperand) = .empty;
@@ -1163,7 +1187,9 @@ fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc
     }
 
     // instance expression, <remaining args>
-    try arguments.append(alloc, try instance_expr.clone(alloc));
+    if (self) |value| {
+        try arguments.append(alloc, try value.clone(alloc));
+    }
     const args_obj = c.PyObject_GetAttrString(stmt, "args");
     std.debug.assert(args_obj != null);
     for (0..@intCast(c.PyList_Size(args_obj))) |i| {
@@ -1176,15 +1202,7 @@ fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc
     // types arent interned so we protect against generic types being propogated here
     var bindings: TypeBindings = .init(alloc);
     defer bindings.deinit(alloc);
-    if (method.type_params.len > 0) {
-        for (method.params, arguments.items) |param, arg| {
-            try param.type.unify(arg.type, &bindings, alloc);
-        }
-    }
-    const return_type = if (method.type_params.len > 0)
-        try method.return_type.substitute(&bindings, alloc)
-    else
-        try method.return_type.clone(alloc);
+    const return_type = try bindings.inferReturnType(method, arguments.items, alloc);
 
     const maybe_dst: ?TypedOperand = if (method.return_type != .void)
         .{
@@ -1592,6 +1610,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     const args_list = c.PyObject_GetAttrString(args_obj, "args");
     std.debug.assert(args_list != null);
 
+    const is_static = try hasDecorator(stmt, "staticmethod");
     // type params (generics)
     var type_params: ArrayList(TypeParam) = .empty;
     errdefer {
@@ -1602,10 +1621,12 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     }
 
     if (class_id) |id| {
-        const class = irBuilder.getClass(id);
+        if (!is_static) {
+            const class = irBuilder.getClass(id);
 
-        for (class.type_params) |*type_param| {
-            try type_params.append(alloc, try type_param.clone(alloc));
+            for (class.type_params) |*type_param| {
+                try type_params.append(alloc, try type_param.clone(alloc));
+            }
         }
     }
 
@@ -1625,6 +1646,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
         }
         params.deinit(alloc);
     }
+    // iterate through args
     for (0..@intCast(c.PyList_Size(args_list))) |i| {
         const arg_obj = c.PyList_GetItem(args_list, @intCast(i));
         std.debug.assert(arg_obj != null);
@@ -1633,8 +1655,9 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
         std.debug.assert(arg_obj_name != null);
         const annotation = c.PyObject_GetAttrString(arg_obj, "annotation");
         std.debug.assert(annotation != null);
+
         // only param 0 for classes becomes instance
-        const arg_type: TypeInfo = if (class_id == null or i != 0)
+        const arg_type: TypeInfo = if (class_id == null or is_static or i != 0)
             try parseTypeAnnotation(annotation, irBuilder, alloc)
         else instance: {
             const class = irBuilder.getClass(class_id.?);
@@ -1752,6 +1775,27 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     irBuilder.current_function = saved_current_function;
     irBuilder.current_block = saved_current_block;
     try irBuilder.restoreLocalValues(&saved_local_values);
+}
+
+pub fn hasDecorator(stmt: *PyObject, target_decorator: []const u8) !bool {
+    const decorators = PyObject.GetAttrString(stmt, "decorator_list");
+    std.debug.assert(decorators != null);
+    for (0..@intCast(c.PyList_Size(decorators))) |i| {
+        const decorator = c.PyList_GetItem(decorators, @intCast(i));
+        std.debug.assert(decorator != null);
+
+        if (!std.mem.eql(u8, getPyType(decorator), "Name")) {
+            return error.InvalidDecorator;
+        }
+        const id_obj = PyObject.GetAttrString(decorator, "id");
+        std.debug.assert(id_obj != null);
+        const raw_name = c.PyUnicode_AsUTF8(id_obj);
+        std.debug.assert(raw_name != null);
+        if (std.mem.eql(u8, std.mem.span(raw_name), target_decorator)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 pub fn parseConstant(

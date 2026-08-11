@@ -15,10 +15,10 @@ class Tensor[T]:
         index = row * self.shape[1] + col
         self.data[index] = value
 
-    # @staticmethod
-    # def fill[T](shape: tuple[int, int], value: T) -> Tensor[T]:
-    #     count =  shape[0] * shape[1]
-    #     return Tensor([value] * count, shape)
+    @staticmethod
+    def fill[U](shape: tuple[int, int], value: U) -> Tensor[U]:
+        count =  shape[0] * shape[1]
+        return Tensor([value] * count, shape)
 
     # def __add__(self, other: Tensor[T]) -> Tensor[T]:
     #     for (self.data.len):

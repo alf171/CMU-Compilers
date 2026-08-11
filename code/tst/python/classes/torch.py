@@ -5,6 +5,6 @@ print(x[1, 0])
 x[1, 0] = 99
 print(x[1, 0])
 
-y = Tensor__full((10, 10), 42);
+y = Tensor.fill((10, 10), 42);
 print(y[0,0])
 print(y[5,5])
