@@ -9,6 +9,7 @@ const print = @import("frontend").print;
 const func = @import("frontend").func;
 const runtime = @import("frontend").runtime;
 const class = @import("frontend").class;
+const gpu = @import("frontend").gpu;
 const generics = @import("frontend").generics;
 const repeat = @import("frontend").repeat;
 const middle = @import("middle");
@@ -98,6 +99,7 @@ pub fn main(init: std.process.Init) !void {
     try repeat.rewrite(&ir_program, alloc);
     try generics.rewrite(&ir_program, alloc);
     generics.dropTemplates(&ir_program, alloc);
+    try gpu.rewrite(&ir_program, alloc);
     try print.rewrite(&ir_program, alloc);
     try func.rewrite(&ir_program, alloc);
     try lazy.rewrite(&ir_program, alloc);

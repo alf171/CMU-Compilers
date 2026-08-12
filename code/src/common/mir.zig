@@ -739,6 +739,27 @@ pub const Instruction = union(enum) {
                 .list = try lr.list.clone(alloc),
                 .count = try lr.count.clone(alloc),
             } },
+            .tuple_literal => |tl| blk: {
+                const elements = try alloc.alloc(ValueRef, tl.elements.len);
+                for (tl.elements, 0..) |elem, i| {
+                    elements[i] = try elem.clone(alloc);
+                }
+                break :blk .{ .tuple_literal = .{
+                    .dst = try tl.dst.clone(alloc),
+                    .elements = elements,
+                } };
+            },
+            .gpu_launch => |gl| blk: {
+                const args = try alloc.alloc(TypedOperand, gl.args.len);
+                for (gl.args, 0..) |arg, i| {
+                    args[i] = try arg.clone(alloc);
+                }
+                break :blk .{ .gpu_launch = .{
+                    .kernel = try alloc.dupe(u8, gl.kernel),
+                    .args = args,
+                    .work_items = try gl.work_items.clone(alloc),
+                } };
+            },
             .lir => |*lir| .{
                 .lir = try lir.clone(alloc),
             },

@@ -50,7 +50,7 @@ pub fn walkLoop(
     alloc: std.mem.Allocator,
 ) !void {
     var before_values = try irBuilder.cloneLocalValues(alloc);
-    defer before_values.deinit();
+    defer IrBuilder.deinitLocalValues(&before_values, alloc);
 
     const condition_block = try irBuilder.newBlock(alloc);
     const body_block = try irBuilder.newBlock(alloc);
@@ -63,10 +63,10 @@ pub fn walkLoop(
     try irBuilder.addSuccessor(entry_block, condition_block, alloc);
 
     irBuilder.setCurrentBlock(condition_block);
-    irBuilder.local_values.clearRetainingCapacity();
+    irBuilder.clearLocalValues(alloc);
     var loop_values = LocalValues.init(alloc);
-    defer loop_values.deinit();
-    var loop_phis = ArrayList(LoopPhi).init(alloc);
+    defer IrBuilder.deinitLocalValues(&loop_values, alloc);
+    var loop_phis: ArrayList(LoopPhi) = .init(alloc);
     defer loop_phis.deinit();
 
     var before_it = before_values.iterator();
@@ -86,12 +86,12 @@ pub fn walkLoop(
             .operand = irBuilder.nextTemp(),
             .type = try before_val.type.clone(alloc),
         };
-        try irBuilder.emit(Instruction{ .phi = .{
+        try irBuilder.emit(.{ .phi = .{
             .dst = dst,
             .inputs = inputs,
         } }, alloc);
-        try irBuilder.local_values.put(local, dst);
-        try loop_values.put(local, dst);
+        try irBuilder.local_values.put(local, try dst.clone(alloc));
+        try loop_values.put(local, try dst.clone(alloc));
         try loop_phis.append(.{
             .local = local,
             .phi_inputs = inputs,
@@ -166,14 +166,14 @@ pub fn walkLoop(
     // body block
     irBuilder.setCurrentBlock(body_block);
     // naively restore since we dont support walrus
-    try irBuilder.restoreLocalValues(&loop_values);
+    try irBuilder.restoreLocalValues(&loop_values, alloc);
 
     // crux
     try bodyCallback(body, carries, irBuilder, alloc);
 
     const backedge_block = irBuilder.current_block;
     var body_values = try irBuilder.cloneLocalValues(alloc);
-    defer body_values.deinit();
+    defer IrBuilder.deinitLocalValues(&body_values, alloc);
     for (loop_phis.items) |loop_phi| {
         const value = body_values.get(loop_phi.local) orelse loop_phi.dst;
         loop_phi.phi_inputs[1] = .{
@@ -198,7 +198,7 @@ pub fn walkLoop(
     // exit block
     irBuilder.setCurrentBlock(exit_block);
     // naively restore since we dont support walrus
-    try irBuilder.restoreLocalValues(&loop_values);
+    try irBuilder.restoreLocalValues(&loop_values, alloc);
     if (orelse_) |orelse_val| {
         try walkStmtList(orelse_val, irBuilder, alloc);
     }

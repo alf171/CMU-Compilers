@@ -20,12 +20,13 @@ class Tensor[T]:
         count =  shape[0] * shape[1]
         return Tensor([value] * count, shape)
 
-    # def __add__(self, other: Tensor[T]) -> Tensor[T]:
-    #     for (self.data.len):
-    #         return 
+    @gpu
+    @staticmethod
+    def _add_gpu[U](out: list[U], a: list[U], b: list[U]) -> None:
+        i = global_id(0)
+        out[i] = a[i] + b[i]
 
-# def Tensor__fill()
-def Tensor__full[T](shape: tuple[int, int], value: T) -> Tensor[T]:
-    count =  shape[0] * shape[1]
-    return Tensor([value] * count, shape)
-
+    def __add__(self, other: Tensor[T]) -> Tensor[T]:
+        res = Tensor.fill(self.shape, 0)
+        Tensor._add_gpu(res.data, self.data, other.data, (4,1,1))
+        return res

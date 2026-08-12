@@ -36,7 +36,7 @@ pub const IrBuilder = struct {
     pub fn init(origin: FunctionType, alloc: std.mem.Allocator) !IrBuilder {
         const program = try Program.init(alloc);
 
-        return IrBuilder{
+        return .{
             .program = program,
             .current_function = null,
             .current_block = 0,
@@ -50,13 +50,23 @@ pub const IrBuilder = struct {
 
     /// free all but the generated program
     pub fn deinit(self: *IrBuilder, alloc: std.mem.Allocator) void {
-        var it = self.locals_by_name.keyIterator();
-        while (it.next()) |key| {
-            alloc.free(key.*);
+        {
+            var it = self.locals_by_name.keyIterator();
+            while (it.next()) |key| {
+                alloc.free(key.*);
+            }
+            self.locals_by_name.deinit();
         }
-        self.locals_by_name.deinit();
-        self.local_values.deinit();
+        IrBuilder.deinitLocalValues(&self.local_values, alloc);
         self.locals.deinit(alloc);
+    }
+
+    pub fn deinitLocalValues(local_values: *LocalValues, alloc: std.mem.Allocator) void {
+        var it = local_values.valueIterator();
+        while (it.next()) |value| {
+            value.deinit(alloc);
+        }
+        local_values.deinit();
     }
 
     pub fn currentBlocks(self: *@This()) *ArrayList(BasicBlock) {
@@ -170,16 +180,40 @@ pub const IrBuilder = struct {
     }
 
     pub fn cloneLocalValues(self: *@This(), alloc: std.mem.Allocator) !LocalValues {
-        return try self.local_values.cloneWithAllocator(alloc);
+        var cloned: LocalValues = .init(alloc);
+        errdefer deinitLocalValues(&cloned, alloc);
+
+        var it = self.local_values.iterator();
+        while (it.next()) |entry| {
+            const value = try entry.value_ptr.*.clone(alloc);
+            cloned.put(entry.key_ptr.*, value) catch |err| {
+                value.deinit(alloc);
+                return err;
+            };
+        }
+
+        return cloned;
     }
 
-    pub fn restoreLocalValues(self: *@This(), locals: *const LocalValues) !void {
-        self.local_values.clearRetainingCapacity();
+    pub fn restoreLocalValues(self: *@This(), locals: *const LocalValues, alloc: std.mem.Allocator) !void {
+        self.clearLocalValues(alloc);
 
         var it = locals.iterator();
         while (it.next()) |entry| {
-            try self.local_values.put(entry.key_ptr.*, entry.value_ptr.*);
+            const value = try entry.value_ptr.*.clone(alloc);
+            self.local_values.put(entry.key_ptr.*, value) catch |err| {
+                value.deinit(alloc);
+                return err;
+            };
         }
+    }
+
+    pub fn clearLocalValues(self: *@This(), alloc: std.mem.Allocator) void {
+        var it = self.local_values.valueIterator();
+        while (it.next()) |entry| {
+            entry.deinit(alloc);
+        }
+        self.local_values.clearRetainingCapacity();
     }
 
     /// fetch the current functions type_param by its name

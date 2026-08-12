@@ -411,6 +411,8 @@ pub const Instruction = union(enum) {
             },
             .store_local => |sl| {
                 alloc.free(sl.local.name);
+                sl.local.type.deinit(alloc);
+                sl.src.type.deinit(alloc);
             },
             .load_local => |ll| {
                 alloc.free(ll.local.name);

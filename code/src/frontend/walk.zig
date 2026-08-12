@@ -165,7 +165,7 @@ fn walkAugAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allo
         .dst = result,
         .lhs = lhs_value,
         .op = try getBinOp(stmt),
-        .rhs = rhs_value,
+        .rhs = try rhs_value.clone(alloc),
     } } }, alloc);
     try storeAssignmentTarget(lhs, result, irBuilder, alloc);
 }
@@ -192,14 +192,14 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
             const id = c.PyUnicode_AsUTF8(id_obj);
 
             const local = try irBuilder.getOrCreateLocal(std.mem.span(id), null, alloc);
-            try irBuilder.local_values.put(local, rhs_value);
-            try irBuilder.emit(Instruction{ .lir = .{ .store_local = .{
+            try irBuilder.local_values.put(local, try rhs_value.clone(alloc));
+            try irBuilder.emit(.{ .lir = .{ .store_local = .{
                 .local = .{
                     .id = local,
                     .name = try alloc.dupe(u8, std.mem.span(id)),
-                    .type = rhs_value.type,
+                    .type = try rhs_value.type.clone(alloc),
                 },
-                .src = rhs_value,
+                .src = try rhs_value.clone(alloc),
             } } }, alloc);
         },
         // Assign(targets=[Subscript(value=Name(id='items', ctx=Load()), slice=Constant(value=3), ctx=Store())], value=Constant(value=0))
@@ -278,7 +278,7 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
                     .local = .{
                         .id = local,
                         .name = try alloc.dupe(u8, std.mem.span(id)),
-                        .type = elem_type,
+                        .type = try elem_type.clone(alloc),
                     },
                     .src = elem_dst,
                 } } }, alloc);
@@ -346,14 +346,14 @@ fn walkAnnotatedAssignment(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.me
     const rhs_value = try walkExpr(rhs, irBuilder, annotation_type, alloc);
 
     const local = try irBuilder.getOrCreateLocal(std.mem.span(target_id), annotation_type, alloc);
-    try irBuilder.local_values.put(local, rhs_value);
+    try irBuilder.local_values.put(local, try rhs_value.clone(alloc));
     try irBuilder.emit(.{ .lir = .{ .store_local = .{
         .local = .{
             .id = local,
             .name = try alloc.dupe(u8, std.mem.span(target_id)),
-            .type = annotation_type,
+            .type = try annotation_type.clone(alloc),
         },
-        .src = rhs_value,
+        .src = try rhs_value.clone(alloc),
     } } }, alloc);
 }
 
@@ -380,7 +380,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
                     .list = try lhs.clone(alloc),
                     .count = try rhs.clone(alloc),
                 } }, alloc);
-                return dst;
+                return try dst.clone(alloc);
             }
 
             const result_type: TypeInfo = switch (lhs.type) {
@@ -408,13 +408,12 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
                 .operand = irBuilder.nextTemp(),
                 .type = result_type,
             };
-            const instruction = Instruction{ .lir = .{ .binop = .{
+            try irBuilder.emit(.{ .lir = .{ .binop = .{
                 .dst = dst,
                 .op = op,
                 .lhs = lhs,
                 .rhs = rhs,
-            } } };
-            try irBuilder.emit(instruction, alloc);
+            } } }, alloc);
             return dst;
         },
         .UnaryOp => {
@@ -443,7 +442,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
                         .dst = dst,
                         .src = .{ .constant = imm },
                     } } }, alloc);
-                    return dst;
+                    return try dst.clone(alloc);
                 },
                 .composite => |comp| {
                     const dst: TypedOperand = .{
@@ -454,7 +453,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
                         .dst = dst,
                         .elements = comp.elements,
                     } }, alloc);
-                    return dst;
+                    return try dst.clone(alloc);
                 },
             }
         },
@@ -653,7 +652,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
             const localId = try irBuilder.getOrCreateLocal(name, null, alloc);
 
             if (irBuilder.local_values.get(localId)) |value| {
-                return value;
+                return try value.clone(alloc);
             }
 
             if (irBuilder.findFunction(name)) |function| {
@@ -1041,48 +1040,9 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
     }
 
     if (irBuilder.findFunction(std.mem.span(name))) |function| {
-        if (function.kind == .gpu_kernel) {
-            if (arguments.items.len != function.params.len + 1) {
-                return error.InvalidGpuLaunchArgs;
-            }
-            const work_item_index = arguments.items.len - 1;
-            const work_items = try arguments.items[work_item_index].clone(alloc);
-            arguments.items[work_item_index].deinit(alloc);
-            arguments.items.len = work_item_index;
-
-            const gpu_args = try arguments.toOwnedSlice(alloc);
-            try irBuilder.emit(.{
-                .gpu_launch = .{
-                    .kernel = try alloc.dupe(u8, name_slice),
-                    .args = gpu_args,
-                    .work_items = work_items,
-                },
-            }, alloc);
-            return TypedOperand{ .operand = .unknown, .type = .void };
-        }
-        // check for generics
-        var bindings: TypeBindings = .init(alloc);
-        defer bindings.deinit(alloc);
-        const return_type = try bindings.inferReturnType(function, arguments.items, alloc);
-
-        const maybe_dst: ?TypedOperand = if (function.return_type != .void)
-            .{
-                .operand = irBuilder.nextTemp(),
-                .type = return_type,
-            }
-        else
-            null;
-        try irBuilder.emit(.{
-            .function_call = .{
-                .callee = .{ .direct = try alloc.dupe(u8, name_slice) },
-                .dst = maybe_dst,
-                .args = try arguments.toOwnedSlice(alloc),
-            },
-        }, alloc);
-
-        if (maybe_dst) |dst| return dst;
-        return TypedOperand{ .operand = .unknown, .type = .void };
+        return emitResolvedCall(function, name_slice, &arguments, irBuilder, alloc);
     }
+
     // class constructor
     if (irBuilder.findClass(std.mem.span(name))) |class| {
         const init_method = class.findMethod("__init__") orelse {
@@ -1199,32 +1159,7 @@ fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc
         try arguments.append(alloc, try arg.clone(alloc));
     }
 
-    // types arent interned so we protect against generic types being propogated here
-    var bindings: TypeBindings = .init(alloc);
-    defer bindings.deinit(alloc);
-    const return_type = try bindings.inferReturnType(method, arguments.items, alloc);
-
-    const maybe_dst: ?TypedOperand = if (method.return_type != .void)
-        .{
-            .operand = irBuilder.nextTemp(),
-            .type = return_type,
-        }
-    else
-        null;
-
-    try irBuilder.emit(
-        .{ .function_call = .{
-            .dst = maybe_dst,
-            .args = try arguments.toOwnedSlice(alloc),
-            .callee = .{ .direct = try alloc.dupe(u8, method.name) },
-        } },
-        alloc,
-    );
-
-    return maybe_dst orelse .{
-        .operand = .unknown,
-        .type = .void,
-    };
+    return emitResolvedCall(method, method.name, &arguments, irBuilder, alloc);
 }
 
 // Subscript(value=Name(id='MiniTorch', ctx=Load()), slice=Name(id='int', ctx=Load()), ctx=Load())
@@ -1301,7 +1236,7 @@ fn walkGenericCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, allo
 // If(test=Compare(...), body=[...], orelse=[...])
 pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!void {
     var before_values = try irBuilder.cloneLocalValues(alloc);
-    defer before_values.deinit();
+    defer IrBuilder.deinitLocalValues(&before_values, alloc);
 
     const test_ = c.PyObject_GetAttrString(stmt, "test");
     const body = c.PyObject_GetAttrString(stmt, "body");
@@ -1323,12 +1258,12 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     // then block
     irBuilder.setCurrentBlock(then_block);
     // restore in case condition set variables
-    try irBuilder.restoreLocalValues(&before_values);
+    try irBuilder.restoreLocalValues(&before_values, alloc);
     try walkStmtList(body, irBuilder, alloc);
     const then_exit_block = irBuilder.current_block;
     // save then locals
     var then_values = try irBuilder.cloneLocalValues(alloc);
-    defer then_values.deinit();
+    defer IrBuilder.deinitLocalValues(&then_values, alloc);
     try irBuilder.emit(.{ .lir = .{
         .jump = .{ .target = merge_block },
     } }, alloc);
@@ -1337,12 +1272,12 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
     // else block
     irBuilder.setCurrentBlock(else_block);
     // restore in case condition set variables
-    try irBuilder.restoreLocalValues(&before_values);
+    try irBuilder.restoreLocalValues(&before_values, alloc);
     try walkStmtList(orelse_, irBuilder, alloc);
     // save else locals
     const else_exit_block = irBuilder.current_block;
     var else_values = try irBuilder.cloneLocalValues(alloc);
-    defer else_values.deinit();
+    defer IrBuilder.deinitLocalValues(&else_values, alloc);
     try irBuilder.emit(.{ .lir = .{
         .jump = .{ .target = merge_block },
     } }, alloc);
@@ -1350,7 +1285,7 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
 
     irBuilder.setCurrentBlock(merge_block);
     // get locals orelse use branch value
-    irBuilder.local_values.clearRetainingCapacity();
+    irBuilder.clearLocalValues(alloc);
     var all_locals = std.AutoHashMap(LocalId, void).init(alloc);
     defer all_locals.deinit();
 
@@ -1380,21 +1315,24 @@ pub fn walkIf(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) 
         const has_else = else_value != null;
         // variable isn't touch so no need to use a phi
         if (has_then and has_else and then_value.?.equal(else_value.?)) {
-            try irBuilder.local_values.put(local.*, before_value.?);
+            try irBuilder.local_values.put(local.*, try before_value.?.clone(alloc));
         }
         // emit a phi
         else if (has_then and has_else) {
             const dst = irBuilder.nextTemp();
             const inputs = try alloc.dupe(PhiInput, &.{
-                .{ .pred = then_exit_block, .value = then_value.? },
-                .{ .pred = else_exit_block, .value = else_value.? },
+                .{ .pred = then_exit_block, .value = try then_value.?.clone(alloc) },
+                .{ .pred = else_exit_block, .value = try else_value.?.clone(alloc) },
             });
 
-            const typed_dst = TypedOperand{ .operand = dst, .type = then_value.?.type };
+            const typed_dst: TypedOperand = .{
+                .operand = dst,
+                .type = try then_value.?.type.clone(alloc),
+            };
             try irBuilder.emit(.{
                 .phi = .{ .dst = typed_dst, .inputs = inputs },
             }, alloc);
-            try irBuilder.local_values.put(local.*, typed_dst);
+            try irBuilder.local_values.put(local.*, try typed_dst.clone(alloc));
         } else if (!has_before and ((has_then and !has_else) or (!has_then and has_else))) {
             continue;
         } else {
@@ -1526,7 +1464,7 @@ pub fn walkFor(stmt: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator)
                 .local = .{
                     .id = local,
                     .name = try alloc_.dupe(u8, body_.condition_var_name),
-                    .type = elem_type,
+                    .type = try elem_type.clone(alloc_),
                 },
                 .src = typed_value,
             } } }, alloc_);
@@ -1701,24 +1639,10 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     const returns = c.PyObject_GetAttrString(stmt, "returns");
     const return_type = try parseTypeAnnotation(returns, irBuilder, alloc);
     // walk annotation to get function kind
-    const kind: FunctionKind = blk: {
-        const decorators = c.PyObject_GetAttrString(stmt, "decorator_list");
-        std.debug.assert(decorators != null);
-        for (0..@intCast(c.PyList_Size(decorators))) |i| {
-            // decorator_list=[Name(id='gpu', ctx=Load())]
-            const decorator = c.PyList_GetItem(decorators, @intCast(i));
-            std.debug.assert(decorator != null);
-            if (!std.mem.eql(u8, getPyType(decorator), "Name")) {
-                return error.UnsupportedDecorator;
-            }
-            const id_obj = c.PyObject_GetAttrString(decorator, "id");
-            std.debug.assert(id_obj != null);
-            const id = c.PyUnicode_AsUTF8(id_obj);
-            if (std.mem.eql(u8, std.mem.span(id), "gpu"))
-                break :blk .gpu_kernel;
-        }
-        break :blk .host;
-    };
+    const kind: FunctionKind = if (try hasDecorator(stmt, "gpu"))
+        .gpu_kernel
+    else
+        .host;
 
     // append class name onto its methods
     const prefixed_func_name = if (class_id) |id| blk: {
@@ -1743,19 +1667,19 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     const saved_current_function = irBuilder.current_function;
     const saved_current_block = irBuilder.current_block;
     var saved_local_values = try irBuilder.cloneLocalValues(alloc);
-    defer saved_local_values.deinit();
+    defer IrBuilder.deinitLocalValues(&saved_local_values, alloc);
 
     // set function state
     irBuilder.current_function = irBuilder.program.functions.items.len - 1;
     irBuilder.current_block = 0;
-    irBuilder.local_values.clearRetainingCapacity();
+    irBuilder.clearLocalValues(alloc);
 
     // load function params
     const function = irBuilder.currentFunction();
     for (function.params, 0..) |param, i| {
         const value: TypedOperand = .{
             .operand = irBuilder.nextTemp(),
-            .type = param.type,
+            .type = try param.type.clone(alloc),
         };
 
         try irBuilder.emit(.{ .function_param = .{
@@ -1774,7 +1698,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     // restore function state
     irBuilder.current_function = saved_current_function;
     irBuilder.current_block = saved_current_block;
-    try irBuilder.restoreLocalValues(&saved_local_values);
+    try irBuilder.restoreLocalValues(&saved_local_values, alloc);
 }
 
 pub fn hasDecorator(stmt: *PyObject, target_decorator: []const u8) !bool {
@@ -1798,7 +1722,56 @@ pub fn hasDecorator(stmt: *PyObject, target_decorator: []const u8) !bool {
     return false;
 }
 
-pub fn parseConstant(
+fn emitResolvedCall(
+    function: *const Function,
+    callee_name: []const u8,
+    arguments: *ArrayList(TypedOperand),
+    irBuilder: *IrBuilder,
+    alloc: std.mem.Allocator,
+) !TypedOperand {
+    if (function.kind == .gpu_kernel) {
+        if (arguments.items.len != function.params.len + 1) {
+            return error.InvalidGpuLaunchArgs;
+        }
+        const work_item_index = arguments.items.len - 1;
+        const work_items = try arguments.items[work_item_index].clone(alloc);
+        arguments.items[work_item_index].deinit(alloc);
+        arguments.items.len = work_item_index;
+
+        const gpu_args = try arguments.toOwnedSlice(alloc);
+        try irBuilder.emit(.{
+            .gpu_launch = .{
+                .kernel = try alloc.dupe(u8, callee_name),
+                .args = gpu_args,
+                .work_items = work_items,
+            },
+        }, alloc);
+        return TypedOperand{ .operand = .unknown, .type = .void };
+    }
+    var bindings: TypeBindings = .init(alloc);
+    defer bindings.deinit(alloc);
+    const return_type = try bindings.inferReturnType(function, arguments.items, alloc);
+
+    const maybe_dst: ?TypedOperand = if (function.return_type != .void)
+        .{
+            .operand = irBuilder.nextTemp(),
+            .type = return_type,
+        }
+    else
+        null;
+    try irBuilder.emit(.{
+        .function_call = .{
+            .callee = .{ .direct = try alloc.dupe(u8, callee_name) },
+            .dst = maybe_dst,
+            .args = try arguments.toOwnedSlice(alloc),
+        },
+    }, alloc);
+
+    if (maybe_dst) |dst| return dst;
+    return TypedOperand{ .operand = .unknown, .type = .void };
+}
+
+fn parseConstant(
     value_obj: *PyObject,
     expectedType: ?TypeInfo,
     alloc: std.mem.Allocator,
