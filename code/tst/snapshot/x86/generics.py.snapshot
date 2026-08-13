@@ -40,8 +40,8 @@ def outer[T](x: T) -> T:
 print(outer(42))
 
 performance report: (ORIGIN=user)
-number of asm lines: 630
-mov count: 311
+number of asm lines: 634
+mov count: 315
 memory load count: 0
 memory store count: 0
 branch count: 29
@@ -49,13 +49,13 @@ call count: 36
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 639
-mov count: 328
+number of asm lines: 642
+mov count: 331
 memory load count: 0
 memory store count: 0
 branch count: 48
 call count: 31
-spill count: 9
+spill count: 10
 
 actual output:
 5

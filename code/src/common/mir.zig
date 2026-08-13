@@ -197,6 +197,9 @@ pub const Instruction = union(enum) {
             },
             .tuple_literal => |tl| {
                 tl.dst.deinit(alloc);
+                for (tl.elements) |elem| {
+                    elem.deinit(alloc);
+                }
                 alloc.free(tl.elements);
             },
             .subscript => |s| {
@@ -206,6 +209,9 @@ pub const Instruction = union(enum) {
             },
             .list_literal => |ll| {
                 ll.dst.deinit(alloc);
+                for (ll.elements) |elem| {
+                    elem.deinit(alloc);
+                }
                 alloc.free(ll.elements);
             },
             .subscript_store => |ss| {
@@ -644,10 +650,10 @@ pub const Instruction = union(enum) {
                 }
             },
             .gpu_launch => |*gl| {
-                // no need to append arg.work_items since its contained in args already
                 for (gl.args) |*arg| {
                     try res.append(alloc, .{ .top = arg });
                 }
+                try res.append(alloc, .{ .top = &gl.work_items });
             },
             .lir => |*l| {
                 var seen = try l.getUsePtrs(alloc);
@@ -760,6 +766,10 @@ pub const Instruction = union(enum) {
                     .work_items = try gl.work_items.clone(alloc),
                 } };
             },
+            .global_idx => |gi| .{ .global_idx = .{
+                .dst = try gi.dst.clone(alloc),
+                .axis = try gi.axis.clone(alloc),
+            } },
             .lir => |*lir| .{
                 .lir = try lir.clone(alloc),
             },

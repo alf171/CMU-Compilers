@@ -58,6 +58,10 @@ pub const IrBuilder = struct {
             self.locals_by_name.deinit();
         }
         IrBuilder.deinitLocalValues(&self.local_values, alloc);
+        for (self.locals.items) |local| {
+            local.type.deinit(alloc);
+            alloc.free(local.name);
+        }
         self.locals.deinit(alloc);
     }
 
@@ -139,12 +143,14 @@ pub const IrBuilder = struct {
         }
         // needs to get created
         const id: LocalId = @intCast(self.locals.items.len);
-        const owned_name = try alloc.dupe(u8, name);
-        try self.locals_by_name.put(owned_name, id);
+        try self.locals_by_name.put(try alloc.dupe(u8, name), id);
         try self.locals.append(alloc, .{
             .id = id,
-            .name = owned_name,
-            .type = typeInfo orelse .any,
+            .name = try alloc.dupe(u8, name),
+            .type = if (typeInfo) |t|
+                try t.clone(alloc)
+            else
+                .any,
         });
         return id;
     }
@@ -205,6 +211,12 @@ pub const IrBuilder = struct {
                 value.deinit(alloc);
                 return err;
             };
+        }
+    }
+
+    pub fn putLocalValues(self: *@This(), local: LocalId, value: TypedOperand, alloc: std.mem.Allocator) !void {
+        if (try self.local_values.fetchPut(local, value)) |previous| {
+            previous.value.deinit(alloc);
         }
     }
 

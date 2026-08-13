@@ -39,7 +39,7 @@ fn rewriteFunction(
                         var elements: std.ArrayList(ValueRef) = .empty;
                         var element_types: std.ArrayList(TypeInfo) = .empty;
                         for (gl.args) |arg| {
-                            try elements.append(alloc, .{ .top = arg });
+                            try elements.append(alloc, .{ .top = try arg.clone(alloc) });
                             try element_types.append(alloc, try arg.type.clone(alloc));
                             const elem_size = try (try arg.type.getElementType()).sizeOfType();
                             // const byte_count = 8 + elem_size * elem_count;

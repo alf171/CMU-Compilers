@@ -53,7 +53,12 @@ pub const RegisterClasses = struct {
                 .width = reg.width,
             },
             // HACK: we are going to give mem a register type
-            .temp, .mem => self.map.get(operand) orelse return error.CantFindRegisterClass,
+            .temp, .mem => self.map.get(operand) orelse {
+                std.debug.print("missing register class for ", .{});
+                operand.print();
+                std.debug.print("\n", .{});
+                return error.CantFindRegisterClass;
+            },
             else => unreachable,
         };
     }

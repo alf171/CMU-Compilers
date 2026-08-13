@@ -86,8 +86,7 @@ pub const LocalInfo = struct {
         return .{
             .id = self.id,
             .name = try alloc.dupe(u8, self.name),
-            // NOTE: should this be clone?
-            .type = self.type,
+            .type = try self.type.clone(alloc),
         };
     }
 };
@@ -253,6 +252,13 @@ pub const ValueRef = union(enum) {
             .constant => |constant| .{ .constant = constant },
             .top => |top| .{ .top = try top.clone(alloc) },
         };
+    }
+
+    pub fn deinit(self: @This(), alloc: std.mem.Allocator) void {
+        switch (self) {
+            .top => |top| top.type.deinit(alloc),
+            .constant => {},
+        }
     }
 };
 

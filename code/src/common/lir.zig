@@ -402,12 +402,37 @@ pub const Instruction = union(enum) {
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         switch (self.*) {
+            .binop => |bop| {
+                bop.dst.deinit(alloc);
+                bop.lhs.deinit(alloc);
+                bop.rhs.deinit(alloc);
+            },
+            .compare => |c| {
+                c.dst.deinit(alloc);
+                c.lhs.deinit(alloc);
+                c.rhs.deinit(alloc);
+            },
+            .unaryop => |u| {
+                u.dst.deinit(alloc);
+                u.src.deinit(alloc);
+            },
+            .branch => |b| {
+                b.condition.deinit(alloc);
+            },
+            .cast => |c| {
+                c.dst.deinit(alloc);
+                c.dst_target_type.deinit(alloc);
+                c.src.deinit(alloc);
+            },
+            .select => |s| {
+                s.dst.deinit(alloc);
+                s.condition.deinit(alloc);
+                s.if_value.deinit(alloc);
+                s.else_value.deinit(alloc);
+            },
             .move => |m| {
                 m.dst.type.deinit(alloc);
-                switch (m.src) {
-                    .top => |top| top.type.deinit(alloc),
-                    .constant => {},
-                }
+                m.src.deinit(alloc);
             },
             .store_local => |sl| {
                 alloc.free(sl.local.name);
@@ -430,10 +455,7 @@ pub const Instruction = union(enum) {
             .store_offset => |so| {
                 so.dst.type.deinit(alloc);
                 so.src.type.deinit(alloc);
-                switch (so.offset) {
-                    .top => |top| top.type.deinit(alloc),
-                    .constant => {},
-                }
+                so.offset.deinit(alloc);
             },
             .stack_alloc => |so| {
                 so.dst.type.deinit(alloc);

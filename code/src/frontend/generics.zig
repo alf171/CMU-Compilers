@@ -44,73 +44,38 @@ fn rewriteFunction(
         errdefer new_instructions.deinit(alloc);
         for (block.instructions.items) |*instruction| {
             switch (instruction.*) {
-                .function_call => {
-                    var new_instruction = instruction.*;
-                    const fc = &new_instruction.function_call;
+                .function_call => |*fc| {
                     const callee_name = switch (fc.callee) {
                         .direct => |name| name,
                         else => {
-                            try new_instructions.append(alloc, new_instruction);
+                            try new_instructions.append(alloc, instruction.*);
                             continue;
                         },
                     };
 
-                    const callee = findFunction(program, callee_name) orelse {
-                        try new_instructions.append(alloc, new_instruction);
-                        continue;
-                    };
-                    // check for generics
-                    var bindings: TypeBindings = .init(alloc);
-                    defer bindings.deinit(alloc);
-                    // early return if we have no generics
-                    if (callee.type_params.len == 0) {
-                        try new_instructions.append(alloc, new_instruction);
-                        continue;
+                    if (try specializeCall(callee_name, program, pending, fc.args, alloc)) |specialized| {
+                        if (fc.dst) |*dst| {
+                            dst.type.deinit(alloc);
+                            dst.type = specialized.return_type;
+                            try function.setValueType(dst.operand, dst.type, alloc);
+                        } else {
+                            specialized.return_type.deinit(alloc);
+                        }
+
+                        alloc.free(callee_name);
+                        fc.callee = .{ .direct = specialized.name };
                     }
-                    // populate
-                    for (callee.params, fc.args) |param, arg| {
-                        try TypeInfo.unify(param.type, arg.type, &bindings, alloc);
+                    try new_instructions.append(alloc, instruction.*);
+                },
+                // TODO: dont share instructions make entire new copies
+                .gpu_launch => |*gl| {
+                    if (try specializeCall(gl.kernel, program, pending, gl.args, alloc)) |specialized| {
+                        // kernels dont use a return type
+                        specialized.return_type.deinit(alloc);
+                        alloc.free(gl.kernel);
+                        gl.kernel = specialized.name;
                     }
-
-                    const specialized_func_name = try createSpecializedFunctionName(
-                        callee_name,
-                        callee.type_params,
-                        &bindings,
-                        alloc,
-                    );
-                    errdefer alloc.free(specialized_func_name);
-
-                    const return_type = try callee.return_type.substitute(&bindings, alloc);
-                    errdefer return_type.deinit(alloc);
-
-                    if (findFunction(program, specialized_func_name) == null and findFunctionIn(pending.items, specialized_func_name) == null) {
-                        const specialized_function = try createSpecializedFunction(
-                            callee,
-                            specialized_func_name,
-                            program.functions.items.len + pending.items.len + 1,
-                            &bindings,
-                            alloc,
-                        );
-                        try pending.append(alloc, specialized_function);
-                    }
-
-                    if (fc.dst) |*dst| {
-                        dst.type.deinit(alloc);
-                        dst.type = return_type;
-                        try function.setValueType(dst.operand, dst.type, alloc);
-                    } else {
-                        return_type.deinit(alloc);
-                    }
-
-                    switch (fc.callee) {
-                        .direct => |old_name| {
-                            alloc.free(old_name);
-                            fc.callee = .{ .direct = specialized_func_name };
-                        },
-                        .indirect => unreachable,
-                    }
-
-                    try new_instructions.append(alloc, new_instruction);
+                    try new_instructions.append(alloc, instruction.*);
                 },
                 else => try new_instructions.append(alloc, instruction.*),
             }
@@ -118,6 +83,68 @@ fn rewriteFunction(
         block.instructions.deinit(alloc);
         block.instructions = new_instructions;
     }
+}
+
+fn specializeCall(
+    callee_name: []const u8,
+    program: *const Program,
+    pending: *ArrayList(Function),
+    args: []const TypedOperand,
+    alloc: std.mem.Allocator,
+) !?struct {
+    name: []const u8,
+    return_type: TypeInfo,
+} {
+    const callee = findFunction(program, callee_name) orelse {
+        return null;
+    };
+    // check for generics
+    var bindings: TypeBindings = .init(alloc);
+    defer bindings.deinit(alloc);
+    // early return if we have no generics
+    if (callee.type_params.len == 0) {
+        return null;
+    }
+    // populate
+    for (callee.params, args) |param, arg| {
+        try TypeInfo.unify(param.type, arg.type, &bindings, alloc);
+    }
+
+    // skip specialization for generic templates
+    for (callee.type_params) |type_param| {
+        const bound_type = bindings.get(type_param.id) orelse {
+            return null;
+        };
+        if (bound_type == .type_variable) {
+            return null;
+        }
+    }
+
+    const specialized_func_name = try createSpecializedFunctionName(
+        callee_name,
+        callee.type_params,
+        &bindings,
+        alloc,
+    );
+    errdefer alloc.free(specialized_func_name);
+
+    const return_type = try callee.return_type.substitute(&bindings, alloc);
+    errdefer return_type.deinit(alloc);
+
+    if (findFunction(program, specialized_func_name) == null and findFunctionIn(pending.items, specialized_func_name) == null) {
+        const specialized_function = try createSpecializedFunction(
+            callee,
+            specialized_func_name,
+            program.functions.items.len + pending.items.len + 1,
+            &bindings,
+            alloc,
+        );
+        try pending.append(alloc, specialized_function);
+    }
+    return .{
+        .name = specialized_func_name,
+        .return_type = return_type,
+    };
 }
 
 fn createSpecializedFunctionName(

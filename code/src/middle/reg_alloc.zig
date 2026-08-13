@@ -100,10 +100,17 @@ fn appendBlocks(
             defer uses.deinit(alloc);
             for (uses.items) |use| {
                 switch (use) {
-                    .top => |top| try line.uses.ops.put(
-                        top.operand,
-                        try reg_classes.get(top.operand),
-                    ),
+                    .top => |top| {
+                        const reg = reg_classes.get(top.operand) catch |err| {
+                            std.debug.print(
+                                "missing register class: operand={any}, function_id={d}\n",
+                                .{ top.operand, function_id },
+                            );
+                            try instruction.printFn();
+                            return err;
+                        };
+                        try line.uses.ops.put(top.operand, reg);
+                    },
                     .local => |id| {
                         const src = locals.get(id) orelse {
                             return error.LocalNotFound;

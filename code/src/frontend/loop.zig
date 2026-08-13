@@ -90,7 +90,7 @@ pub fn walkLoop(
             .dst = dst,
             .inputs = inputs,
         } }, alloc);
-        try irBuilder.local_values.put(local, try dst.clone(alloc));
+        try irBuilder.putLocalValues(local, try dst.clone(alloc), alloc);
         try loop_values.put(local, try dst.clone(alloc));
         try loop_phis.append(.{
             .local = local,

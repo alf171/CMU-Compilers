@@ -25,8 +25,9 @@ class Tensor[T]:
     def _add_gpu[U](out: list[U], a: list[U], b: list[U]) -> None:
         i = global_id(0)
         out[i] = a[i] + b[i]
+        return
 
     def __add__(self, other: Tensor[T]) -> Tensor[T]:
         res = Tensor.fill(self.shape, 0)
-        Tensor._add_gpu(res.data, self.data, other.data, (4,1,1))
+        Tensor._add_gpu(res.data, self.data, other.data, (self.shape[0] * self.shape[1], 1, 1))
         return res
