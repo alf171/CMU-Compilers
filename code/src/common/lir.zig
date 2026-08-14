@@ -441,6 +441,7 @@ pub const Instruction = union(enum) {
             },
             .load_local => |ll| {
                 alloc.free(ll.local.name);
+                ll.dst.deinit(alloc);
             },
             .load_offset => |lo| {
                 lo.dst.type.deinit(alloc);
