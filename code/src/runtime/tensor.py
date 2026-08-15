@@ -31,3 +31,30 @@ class Tensor[T]:
         res = Tensor.fill(self.shape, 0)
         Tensor._add_gpu(res.data, self.data, other.data, (self.shape[0] * self.shape[1], 1, 1))
         return res
+
+    @gpu
+    @staticmethod
+    # (i, j) @ (j,k) = (i,k)
+    # should we push classes into gpu kernels to cleanup indexing logic?
+    def _matmul_gpu[U](out: list[U], a: list[U], b: list[U], J: int, K: int) -> None:
+        i = global_id(0)
+        k = global_id(1)
+        acc: U = 0
+        for j in range(J):
+            acc += a[i * J + j] * b[j * K + k]
+
+        # (i, k)
+        out[i * K + k] = acc
+    
+    def __matmul__(self, other: Tensor[T]) -> Tensor[T]:
+        res = Tensor.fill(self.shape, 0)
+        Tensor._matmul_gpu(
+            res.data,
+            self.data,
+            other.data,
+            self.shape[1],
+            other.shape[1],
+           (self.shape[0], other.shape[1], 1)
+       )
+        return res
+

@@ -1999,6 +1999,10 @@ fn parseTypeAnnotation(
                 .class_id = class.id,
                 .args = try alloc.alloc(TypeInfo, 0),
             } };
+        } else if (irBuilder.currentFunction().findTypeParam(annotation_name)) |type_param| {
+            return .{
+                .type_variable = type_param.id,
+            };
         }
         std.debug.print("cant handle {s}\n", .{annotation_id});
         return error.TypeNotImplemented;

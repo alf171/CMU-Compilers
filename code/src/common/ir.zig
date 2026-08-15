@@ -436,4 +436,13 @@ pub const Function = struct {
 
         try self.value_to_type.put(operand, try type_info.clone(alloc));
     }
+
+    pub fn findTypeParam(self: *const @This(), name: []const u8) ?TypeParam {
+        for (self.type_params) |type_param| {
+            if (std.mem.eql(u8, type_param.name, name)) {
+                return type_param;
+            }
+        }
+        return null;
+    }
 };
