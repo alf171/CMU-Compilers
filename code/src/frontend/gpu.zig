@@ -37,59 +37,85 @@ fn rewriteFunction(
                     }
                     {
                         var elements: std.ArrayList(ValueRef) = .empty;
+                        errdefer {
+                            for (elements.items) |elem| {
+                                elem.deinit(alloc);
+                            }
+                            elements.deinit(alloc);
+                        }
                         var element_types: std.ArrayList(TypeInfo) = .empty;
+                        errdefer {
+                            for (element_types.items) |elem| {
+                                elem.deinit(alloc);
+                            }
+                            element_types.deinit(alloc);
+                        }
                         for (gl.args) |arg| {
-                            try elements.append(alloc, .{ .top = try arg.clone(alloc) });
-                            try element_types.append(alloc, try arg.type.clone(alloc));
-                            const elem_size = try (try arg.type.getElementType()).sizeOfType();
-                            // const byte_count = 8 + elem_size * elem_count;
-                            // emit instructions since elem_count is only known at runtime
-                            const elem_size_value: TypedOperand = .{
-                                .operand = function.nextTemp(),
-                                .type = .i64,
-                            };
-                            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                                .dst = elem_size_value,
-                                .src = .{ .constant = .{ .i64 = @intCast(elem_size) } },
-                            } } });
-                            const elem_count: TypedOperand = .{
-                                .operand = function.nextTemp(),
-                                .type = .i64,
-                            };
-                            try new_instructions.append(alloc, .{ .len = .{
-                                .dst = elem_count,
-                                .value = try arg.clone(alloc),
-                            } });
-                            const data_bytes: TypedOperand = .{
-                                .operand = function.nextTemp(),
-                                .type = .i64,
-                            };
-                            try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
-                                .dst = data_bytes,
-                                .lhs = try elem_size_value.clone(alloc),
-                                .op = .mul,
-                                .rhs = try elem_count.clone(alloc),
-                            } } });
-                            const byte_count: TypedOperand = .{
-                                .operand = function.nextTemp(),
-                                .type = .i64,
-                            };
-                            const eight: TypedOperand = .{
-                                .operand = function.nextTemp(),
-                                .type = .i64,
-                            };
-                            try new_instructions.append(alloc, .{ .lir = .{ .move = .{
-                                .dst = eight,
-                                .src = .{ .constant = .{ .i64 = 8 } },
-                            } } });
-                            try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
-                                .dst = byte_count,
-                                .lhs = try data_bytes.clone(alloc),
-                                .op = .add,
-                                .rhs = eight,
-                            } } });
-                            try elements.append(alloc, .{ .top = try byte_count.clone(alloc) });
-                            try element_types.append(alloc, .i64);
+                            switch (arg.type) {
+                                .list => {
+                                    try elements.append(alloc, .{ .top = try arg.clone(alloc) });
+                                    try element_types.append(alloc, try arg.type.clone(alloc));
+                                    const elem_size = try (try arg.type.getElementType()).sizeOfType();
+                                    // const byte_count = 8 + elem_size * elem_count;
+                                    // emit instructions since elem_count is only known at runtime
+                                    const elem_size_value: TypedOperand = .{
+                                        .operand = function.nextTemp(),
+                                        .type = .i64,
+                                    };
+                                    try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                                        .dst = elem_size_value,
+                                        .src = .{ .constant = .{ .i64 = @intCast(elem_size) } },
+                                    } } });
+                                    const elem_count: TypedOperand = .{
+                                        .operand = function.nextTemp(),
+                                        .type = .i64,
+                                    };
+                                    try new_instructions.append(alloc, .{ .len = .{
+                                        .dst = elem_count,
+                                        .value = try arg.clone(alloc),
+                                    } });
+                                    const data_bytes: TypedOperand = .{
+                                        .operand = function.nextTemp(),
+                                        .type = .i64,
+                                    };
+                                    try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
+                                        .dst = data_bytes,
+                                        .lhs = try elem_size_value.clone(alloc),
+                                        .op = .mul,
+                                        .rhs = try elem_count.clone(alloc),
+                                    } } });
+                                    const byte_count: TypedOperand = .{
+                                        .operand = function.nextTemp(),
+                                        .type = .i64,
+                                    };
+                                    const eight: TypedOperand = .{
+                                        .operand = function.nextTemp(),
+                                        .type = .i64,
+                                    };
+                                    try new_instructions.append(alloc, .{ .lir = .{ .move = .{
+                                        .dst = eight,
+                                        .src = .{ .constant = .{ .i64 = 8 } },
+                                    } } });
+                                    try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
+                                        .dst = byte_count,
+                                        .lhs = try data_bytes.clone(alloc),
+                                        .op = .add,
+                                        .rhs = eight,
+                                    } } });
+                                    try elements.append(alloc, .{ .top = try byte_count.clone(alloc) });
+                                    try element_types.append(alloc, .i64);
+                                },
+                                .i64 => {
+                                    try elements.append(alloc, .{ .top = try arg.clone(alloc) });
+                                    try elements.append(alloc, .{ .constant = .{ .i64 = 0 } });
+                                    try element_types.append(alloc, .i64);
+                                    try element_types.append(alloc, .i64);
+                                },
+                                else => |e| {
+                                    std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                    return error.NotImpl;
+                                },
+                            }
                         }
                         const dst: TypedOperand = .{
                             .operand = function.nextTemp(),

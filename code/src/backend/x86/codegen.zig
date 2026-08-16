@@ -343,6 +343,21 @@ fn emitFunction(
                         .cast => |c| {
                             // type a -> type b
                             switch (c.src.type) {
+                                // TODO: consolidate this logic
+                                .i32 => switch (c.dst_target_type) {
+                                    .float => {
+                                        const dst = try abi.regFor(c.dst.operand, colors);
+                                        const src = try abi.regFor(c.src.operand, colors);
+                                        try out.print(alloc, "\tcvtsi2sdl %{s}, %{s}\n", .{ src, dst });
+                                    },
+                                    else => {
+                                        std.debug.print("unsupported cast: {s} -> {s}\n", .{
+                                            @tagName(c.src.type),
+                                            @tagName(c.dst_target_type),
+                                        });
+                                        return error.UnsupportedCast;
+                                    },
+                                },
                                 .i64 => switch (c.dst_target_type) {
                                     .float => {
                                         const dst = try abi.regFor(c.dst.operand, colors);
@@ -363,9 +378,17 @@ fn emitFunction(
                                         const src = try abi.regFor(c.src.operand, colors);
                                         try out.print(alloc, "\tcvttsd2siq %{s}, %{s}\n", .{ src, dst });
                                     },
-                                    else => return error.UnsupportedCast,
+                                    else => {
+                                        return error.UnsupportedCast;
+                                    },
                                 },
-                                else => return error.UnsupportedCast,
+                                else => {
+                                    std.debug.print(
+                                        "unsupported cast: {s} -> {s}\n",
+                                        .{ @tagName(c.src.type), @tagName(c.dst_target_type) },
+                                    );
+                                    return error.UnsupportedCast;
+                                },
                             }
                         },
                         .load_offset => |lo| {

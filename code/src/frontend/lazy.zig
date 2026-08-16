@@ -15,8 +15,8 @@ const LazyKey = union(enum) {
 
 const LazyProducers = union(enum) {
     range: struct {
-        start: Operand,
-        end: Operand,
+        start: TypedOperand,
+        end: TypedOperand,
     },
 };
 
@@ -41,8 +41,8 @@ fn rewriteFunction(function: *Function, producers: *HashMap(LazyKey, LazyProduce
             switch (instruction.*) {
                 .range => |r| {
                     try producers.put(.{ .operand = r.dst.operand }, .{ .range = .{
-                        .start = r.start.operand,
-                        .end = r.end.operand,
+                        .start = try r.start.clone(alloc),
+                        .end = try r.end.clone(alloc),
                     } });
                     instruction.deinit(alloc);
                 },
@@ -59,10 +59,7 @@ fn rewriteFunction(function: *Function, producers: *HashMap(LazyKey, LazyProduce
                         .range => |range| {
                             try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
                                 .dst = s.dst,
-                                .lhs = .{
-                                    .operand = range.start,
-                                    .type = .i64,
-                                },
+                                .lhs = try range.start.clone(alloc),
                                 .op = .add,
                                 .rhs = s.index,
                             } } });
@@ -77,17 +74,11 @@ fn rewriteFunction(function: *Function, producers: *HashMap(LazyKey, LazyProduce
                     };
                     switch (producer) {
                         .range => |range| {
-                            try new_instructions.append(alloc, Instruction{ .lir = .{ .binop = .{
+                            try new_instructions.append(alloc, .{ .lir = .{ .binop = .{
                                 .dst = l.dst,
-                                .lhs = .{
-                                    .operand = range.end,
-                                    .type = .i64,
-                                },
+                                .lhs = try range.end.clone(alloc),
                                 .op = .sub,
-                                .rhs = .{
-                                    .operand = range.start,
-                                    .type = .i64,
-                                },
+                                .rhs = try range.start.clone(alloc),
                             } } });
                         },
                     }

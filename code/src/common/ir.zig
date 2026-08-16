@@ -186,7 +186,27 @@ pub const FunctionKind = enum {
     gpu_kernel,
 };
 
-pub const BinOp = enum { add, sub, mul, div, mod, lshift, rshift, unknown };
+pub const BinOp = enum {
+    add,
+    sub,
+    mul,
+    div,
+    mod,
+    lshift,
+    rshift,
+    matmul,
+    unknown,
+
+    pub fn toClassBuiltin(self: @This()) ![]const u8 {
+        return switch (self) {
+            .add => "__add__",
+            .sub => "__sub__",
+            .mul => "__mul__",
+            .matmul => "__matmul__",
+            else => return error.CantFindBuiltin,
+        };
+    }
+};
 
 pub const UnaryOp = enum { neg };
 

@@ -178,12 +178,7 @@ pub fn rewriteFunction(program: *Program, function: *Function, alloc: std.mem.Al
                             },
                         };
                         const class = &program.classes.items[instance.class_id];
-                        const method_name = switch (bop.op) {
-                            .add => "__add__",
-                            .sub => "__sub__",
-                            .mul => "__mul__",
-                            else => return error.CantFindBuiltin,
-                        };
+                        const method_name = try bop.op.toClassBuiltin();
                         const method = class.findMethod(method_name) orelse {
                             return error.CantFindBuiltin;
                         };

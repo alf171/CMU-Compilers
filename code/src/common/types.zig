@@ -3,6 +3,7 @@ pub const RegisterType = @import("register.zig").RegisterType;
 pub const Function = @import("ir.zig").Function;
 pub const FunctionKind = @import("ir.zig").FunctionKind;
 pub const ClassId = @import("ir.zig").ClassId;
+pub const ConstValue = @import("ir.zig").ConstValue;
 pub const TypedOperand = @import("alloc.zig").TypedOperand;
 
 pub const TypeVarId = u32;
@@ -202,13 +203,13 @@ pub const TypeInfo = union(enum) {
         };
     }
 
-    /// expects a list input type
+    /// expects a indexable input type
     pub fn getElementType(typeInfo: TypeInfo) !TypeInfo {
         return switch (typeInfo) {
             .list => |list_type| list_type.element.*,
             .iterable => |it_type| it_type.element.*,
             .lazy => |lazy| try getElementType(lazy.value.*),
-            else => error.ExpectedListType,
+            else => error.ExpectedIndexableType,
         };
     }
 

@@ -509,6 +509,11 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
+            .global_idx => |*gi| {
+                if (gi.dst.operand.equal(old)) {
+                    gi.dst.operand = new;
+                }
+            },
             .lir => |*l| {
                 try l.replaceDefines(old, new);
             },
