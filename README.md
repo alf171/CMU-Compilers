@@ -26,3 +26,7 @@ This is a project to learn more about the implementations of a compilers, linker
   - [garbage collection](https://www.microsoft.com/en-us/research/wp-content/uploads/2020/11/perceus-tr-v1.pdf)
 - GPU
   - [rdna3](https://rocm.blogs.amd.com/software-tools-optimization/amdgcn-isa/README.html)
+  - [cuda memory swizzling](https://leimao.github.io/blog/CUDA-Shared-Memory-Swizzling/)
+  - [more swizzling](https://mlc.ai/modern-gpu-programming-for-mlsys/chapter_data_layout/index.html#swizzle-layout)
+- LLMs
+  - [inference paper](https://arxiv.org/pdf/2607.02521)
