@@ -144,8 +144,8 @@ pub const GpuAbi = struct {
             usage.vgpr_next = @max(usage.vgpr_next, reg + 1);
         }
 
-        for (self.vgpr_scratch_regs) |reg| {
-            usage.vgpr_next = @max(usage.vgpr_next, reg + 1);
+        for (self.sgpr_scratch_regs) |reg| {
+            usage.sgpr_next = @max(usage.sgpr_next, reg + 1);
         }
         return usage;
     }
