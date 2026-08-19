@@ -78,6 +78,11 @@ pub const IrBuilder = struct {
         return &function.blocks;
     }
 
+    pub fn currentBlock(self: *@This()) *BasicBlock {
+        const blocks = currentBlocks(self);
+        return &blocks.items[self.current_block];
+    }
+
     pub fn currentFunction(self: *@This()) *Function {
         if (self.current_function) |i| {
             return &self.program.functions.items[i];

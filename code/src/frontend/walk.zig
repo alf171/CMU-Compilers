@@ -1768,6 +1768,19 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     const body = c.PyObject_GetAttrString(stmt, "body");
     std.debug.assert(body != null);
     try walkStmtList(body, irBuilder, alloc);
+    // append return if we are missing one
+    const block = irBuilder.currentBlock();
+    const termianted = block.instructions.items.len > 0 and switch (block.instructions.items[block.instructions.items.len - 1]) {
+        .function_return => true,
+        .lir => |lir| switch (lir) {
+            .jump, .branch => true,
+            else => false,
+        },
+        else => false,
+    };
+    if (!termianted and function.return_type == .void) {
+        try irBuilder.emit(.{ .function_return = .{ .value = null } }, alloc);
+    }
     // restore function state
     irBuilder.current_function = saved_current_function;
     irBuilder.current_block = saved_current_block;

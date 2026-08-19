@@ -2,7 +2,6 @@
 def add(out: list[i32], a: list[i32], b: list[i32]) -> None:
     i = global_id(0)
     out[i] = a[i] + b[i]
-    return
 
 out: list[i32] = [0] * 25
 a: list[i32] = [2] * 25

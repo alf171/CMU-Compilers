@@ -3,7 +3,6 @@ def fill(out: list[list[i32]]) -> None:
     row = global_id(0)
     col = global_id(1)
     out[row][col] = 42
-    return
 
 out: list[list[i32]] = [[0] * 5] * 5
 

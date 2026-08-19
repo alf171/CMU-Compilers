@@ -48,8 +48,6 @@ class Tensor[T]:
 
         # (i, k)
         out[i * K + k] = acc
-        # FIXME: remove need for programmer to insert a return statement which is needed in the gpu path
-        return
     
     def __matmul__(self, other: Tensor[T]) -> Tensor[T]:
         # hack to avoid a cast
