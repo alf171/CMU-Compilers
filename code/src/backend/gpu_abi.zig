@@ -24,6 +24,15 @@ pub const GpuReg = struct {
         };
         return try std.fmt.allocPrint(alloc, "{s}{d}", .{ reg_type, self.base });
     }
+
+    pub fn toStringAt(self: @This(), offset: u8, alloc: std.mem.Allocator) ![]const u8 {
+        const reg_type = switch (self.reg_type) {
+            .vgpr => "v",
+            .sgpr => "s",
+            else => unreachable,
+        };
+        return try std.fmt.allocPrint(alloc, "{s}{d}", .{ reg_type, self.base + offset });
+    }
 };
 
 pub const GpuAbi = struct {

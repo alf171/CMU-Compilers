@@ -1,7 +1,8 @@
 class Tensor[T]:
     def __init__(self, data: list[T], shape: tuple[int, int]) -> None:
         self.data = data
-        self.shape = shape
+        # FIXME: ownership transfer since tuples are pointers
+        self.shape = [shape[0], shape[1]]
 
     def __getitem__(self, idxs: tuple[int, int]) -> T:
         row = idxs[0]
@@ -29,7 +30,8 @@ class Tensor[T]:
 
     def __add__(self, other: Tensor[T]) -> Tensor[T]:
         zero: T = 0
-        res = Tensor.fill(self.shape, zero)
+        # FIXME: should be able to pass self.shape through and a copy is made
+        res = Tensor.fill((self.shape[0], self.shape[1]), zero)
         Tensor._add_gpu(res.data, self.data, other.data, (self.shape[0] * self.shape[1], 1, 1))
         return res
 
@@ -46,11 +48,14 @@ class Tensor[T]:
 
         # (i, k)
         out[i * K + k] = acc
+        # FIXME: remove need for programmer to insert a return statement which is needed in the gpu path
+        return
     
     def __matmul__(self, other: Tensor[T]) -> Tensor[T]:
         # hack to avoid a cast
         zero: T = 0
-        res = Tensor.fill(self.shape, zero)
+        # (i, k)
+        res = Tensor.fill((self.shape[0], other.shape[1]), zero)
         Tensor._matmul_gpu(
             res.data,
             self.data,

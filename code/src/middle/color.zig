@@ -344,6 +344,12 @@ fn scanForRegister(cnode: *ColoredNode, g: *ColoredGraph, k: u16) !?u8 {
                 continue :scan;
             }
         }
+
+        // align width 2 sclar registers
+        if (cnode.reg_class.type == .sgpr and cnode.reg_class.width == 2 and scan_reg % 2 != 0) {
+            continue;
+        }
+
         // selection logic
         var it = cnode.node.neighbors.keyIterator();
         while (it.next()) |key| {

@@ -18,17 +18,17 @@ call count: 9
 spill count: 2
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 639
+number of asm lines: 636
 mov count: 327
 memory load count: 0
 memory store count: 0
 branch count: 48
-call count: 31
-spill count: 10
+call count: 28
+spill count: 12
 
 actual output:
 0.00000
 -3.00000
 5
 -5
-[!!memory report!!]: allocs=12 frees=12 allocated_bytes=116 freed_bytes=116
+[!!memory report!!]: allocs=8 frees=8 allocated_bytes=80 freed_bytes=80

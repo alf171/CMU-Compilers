@@ -348,7 +348,7 @@ fn emitFunction(
                                     .float => {
                                         const dst = try abi.regFor(c.dst.operand, colors);
                                         const src = try abi.regFor(c.src.operand, colors);
-                                        try out.print(alloc, "\tcvtsi2sdl %{s}, %{s}\n", .{ src, dst });
+                                        try out.print(alloc, "\tcvtsi2sdl %{s}, %{s}\n", .{ reg32(src), dst });
                                     },
                                     else => {
                                         std.debug.print("unsupported cast: {s} -> {s}\n", .{

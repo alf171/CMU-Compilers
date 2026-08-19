@@ -304,13 +304,13 @@ fn emitFunction(
                                     const lhs = try abi.regFor(c.lhs.operand, colors);
                                     const rhs = try abi.regFor(c.rhs.operand, colors);
                                     try out.print(alloc, "\tfcmp {s}, {s}\n", .{ lhs, rhs });
-                                    try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
+                                    try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, c.op.condForCmp() });
                                 },
                                 else => {
                                     const lhs = try abi.regFor(c.lhs.operand, colors);
                                     const rhs = try abi.regFor(c.rhs.operand, colors);
                                     try out.print(alloc, "\tcmp {s}, {s}\n", .{ lhs, rhs });
-                                    try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, condForCmp(c.op) });
+                                    try out.print(alloc, "\tcset {s}, {s}\n", .{ dst, c.op.condForCmp() });
                                 },
                             }
                         },
@@ -640,17 +640,6 @@ fn emitMovUnsigned(out: *ArrayList(u8), dst: []const u8, value: u64, alloc: std.
             try out.print(alloc, "\tmovk {s}, {d}, lsl #{d}\n", .{ dst, shifted_value, shift });
         }
     }
-}
-
-fn condForCmp(op: common.ir.CmpOp) []const u8 {
-    return switch (op) {
-        .eq => "eq",
-        .neq => "ne",
-        .lt => "lt",
-        .lte => "le",
-        .gt => "gt",
-        .gte => "ge",
-    };
 }
 
 // TODO: emitMov is more generic than this

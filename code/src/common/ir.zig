@@ -300,6 +300,17 @@ pub const CmpOp = enum {
             .gte => ">=",
         };
     }
+
+    pub fn condForCmp(op: @This()) []const u8 {
+        return switch (op) {
+            .eq => "eq",
+            .neq => "ne",
+            .lt => "lt",
+            .lte => "le",
+            .gt => "gt",
+            .gte => "ge",
+        };
+    }
 };
 
 pub const BasicBlock = struct {

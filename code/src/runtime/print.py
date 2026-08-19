@@ -12,12 +12,12 @@ def _print_int_helper(d: int) -> None:
 
 # print(d: int) delegates to this method
 def print_int(d: int, end: str = "\n") -> None:
-    if (d < 0):
+    if d < 0:
         write(1, '-', 1)
         d = -d
     _print_int_helper(d)
-    if (end != ""):
-        write(1, end, 1)
+    if len(end) > 1:
+        write(1, end, len(end) - 1)
 
 # print(b: bool) delegates to this method
 def print_bool(b: bool) -> None:
@@ -28,8 +28,8 @@ def print_bool(b: bool) -> None:
 # print(b: str) delegates to this method
 def print_string(s: str, end: str = "\n") -> None:
     write(1, s, len(s) - 1)
-    if (end != ""):
-        write(1, end, 1)
+    if len(end) > 1:
+        write(1, end, len(end) - 1)
 
 # print(l: list[int]) delegates to this method
 def print_int_list(l: list[int], end: str = "\n") -> None:
@@ -60,5 +60,5 @@ def print_float(f: float, end: str = "\n") -> None:
         _print_int_helper(whole)
         frac = frac - float(whole)
 
-    if (end != ""):
-        write(1, end, 1)
+    if len(end) > 1:
+        write(1, end, len(end) - 1)

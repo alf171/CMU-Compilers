@@ -150,16 +150,18 @@ void gpu_launch(const uint64_t *arg_slots, uint64_t arg_count, const uint64_t *w
   }
 
   uint64_t *kernel_args = NULL;
+  check(hsa_memory_allocate(kernel_region, arg_count * sizeof(*kernel_args), (void **)&kernel_args), "hsa_memory_allocate");
   void **gpu_ptrs = calloc(arg_count, sizeof(*gpu_ptrs));
   for (uint64_t i = 0; i < arg_count; i++) {
-    void *host_ptr = (void *)arg_slots[2 * i];
     uint64_t byte_count = arg_slots[2 * i + 1];
     if (byte_count != 0) {
+      void *host_ptr = (void *)arg_slots[2 * i];
       check(hsa_amd_memory_lock(host_ptr, byte_count, &gpu, 1, &gpu_ptrs[i]), "hsa_amd_memory_lock");
+      kernel_args[i] = (uint64_t)gpu_ptrs[i];
+    } else {
+      kernel_args[i] = arg_slots[2*i];
     }
-    kernel_args[i] = (uint64_t)gpu_ptrs[i];
   }
-  check(hsa_memory_allocate(kernel_region, arg_count * sizeof(*kernel_args), (void **)&kernel_args), "hsa_memory_allocate");
 
   uint64_t packet_id = hsa_queue_add_write_index_relaxed(queue, 1);
   uint32_t packet_index = packet_id & (queue->size - 1);
