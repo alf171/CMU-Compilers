@@ -2,8 +2,6 @@ const std = @import("std");
 const HashMap = std.AutoHashMap;
 const TypedOperand = @import("common").alloc.TypedOperand;
 const Function = @import("common").ir.Function;
-const FunctionCallInst = @import("common").mir.FunctionCallInst;
-const FunctionCallee = @FieldType(FunctionCallInst, "callee");
 const Param = @import("common").ir.Param;
 const Program = @import("common").program.Program;
 const Instruction = @import("common").mir.Instruction;
@@ -12,7 +10,7 @@ const ValueRef = @import("common").ir.ValueRef;
 
 /// sets default params
 pub fn rewrite(program: *Program, alloc: std.mem.Allocator) !void {
-    var function_params = std.StringHashMap([]Param).init(alloc);
+    var function_params: std.StringHashMap([]Param) = .init(alloc);
     defer function_params.deinit();
     for (program.functions.items) |*function| {
         try function_params.put(function.name, function.params);

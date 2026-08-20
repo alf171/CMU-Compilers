@@ -40,7 +40,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                     for (ll.elements, 0..) |elem, i| {
                         const src: ValueRef = switch (elem) {
                             .constant => |c| blk: {
-                                break :blk ValueRef{ .constant = c };
+                                break :blk .{ .constant = c };
                             },
                             .top => |top| blk: {
                                 const src: TypedOperand = .{
@@ -51,7 +51,7 @@ fn rewriteFunction(function: *Function, alloc: std.mem.Allocator) !void {
                                     .dst = src,
                                     .src = .{ .top = try top.clone(alloc) },
                                 } } });
-                                break :blk ValueRef{ .top = src };
+                                break :blk .{ .top = src };
                             },
                         };
                         const index: TypedOperand = .{

@@ -33,6 +33,7 @@ pub const Program = struct {
                 .next_mem = 0,
                 .origin = .user,
                 .kind = .host,
+                .is_inline = false,
                 .value_to_type = std.AutoHashMap(Operand, TypeInfo).init(alloc),
             },
             .functions = .empty,

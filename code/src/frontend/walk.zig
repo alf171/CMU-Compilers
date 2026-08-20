@@ -1712,6 +1712,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
         .gpu_kernel
     else
         .host;
+    const is_inline = try hasDecorator(stmt, "inline");
 
     // append class name onto its methods
     const prefixed_func_name = if (class_id) |id| blk: {
@@ -1729,6 +1730,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
         return_type,
         irBuilder.function_origin,
         kind,
+        is_inline,
         alloc,
     ));
 
@@ -1768,6 +1770,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     const body = c.PyObject_GetAttrString(stmt, "body");
     std.debug.assert(body != null);
     try walkStmtList(body, irBuilder, alloc);
+
     // append return if we are missing one
     const block = irBuilder.currentBlock();
     const termianted = block.instructions.items.len > 0 and switch (block.instructions.items[block.instructions.items.len - 1]) {
@@ -1781,6 +1784,7 @@ pub fn walkFuncDef(stmt: *PyObject, irBuilder: *IrBuilder, class_id: ?ClassId, a
     if (!termianted and function.return_type == .void) {
         try irBuilder.emit(.{ .function_return = .{ .value = null } }, alloc);
     }
+
     // restore function state
     irBuilder.current_function = saved_current_function;
     irBuilder.current_block = saved_current_block;

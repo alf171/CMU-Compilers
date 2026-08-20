@@ -382,11 +382,7 @@ pub const Function = struct {
     next_mem: MemoryId,
     origin: FunctionType,
     kind: FunctionKind,
-    /// TODO: a potential solution for having rewrite layers be able to change types that have been propogated
-    /// alternative approaches:
-    /// 1. each rewrite layer walks types for propogations
-    /// 2. create a operand ==> type conversion per function
-    /// 3. keep generics pass in walk (pre propogation)
+    is_inline: bool,
     value_to_type: std.AutoHashMap(Operand, TypeInfo),
 
     pub fn nextTemp(self: *@This()) Operand {
@@ -415,6 +411,7 @@ pub const Function = struct {
         return_type: TypeInfo,
         origin: FunctionType,
         kind: FunctionKind,
+        is_inline: bool,
         alloc: std.mem.Allocator,
     ) !@This() {
         var blocks = ArrayList(BasicBlock).empty;
@@ -431,6 +428,7 @@ pub const Function = struct {
             .next_mem = 0,
             .origin = origin,
             .kind = kind,
+            .is_inline = is_inline,
             .value_to_type = std.AutoHashMap(Operand, TypeInfo).init(alloc),
         };
     }

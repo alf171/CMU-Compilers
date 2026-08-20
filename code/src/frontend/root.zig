@@ -6,6 +6,7 @@ pub const builder = @import("builder.zig");
 pub const tuple = @import("tuple.zig");
 pub const lazy = @import("lazy.zig");
 pub const list = @import("list.zig");
+pub const inline_ = @import("inline.zig");
 pub const func = @import("func.zig");
 pub const gpu = @import("gpu.zig");
 pub const print = @import("print.zig");

@@ -200,6 +200,7 @@ fn createSpecializedFunction(
         return_type,
         function.origin,
         function.kind,
+        function.is_inline,
         alloc,
     );
     errdefer cloned.deinit(alloc);

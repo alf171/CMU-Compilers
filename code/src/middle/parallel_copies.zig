@@ -102,6 +102,7 @@ test "cycle" {
         .i64,
         .user,
         .host,
+        false,
         alloc,
     );
 

@@ -248,7 +248,7 @@ pub const Instruction = union(enum) {
         }
     }
 
-    pub fn replaceDefines(self: *@This(), old: Operand, new: Operand) !void {
+    pub fn replaceDefines(self: *@This(), old: Operand, new: Operand) void {
         switch (self.*) {
             .binop => |*bop| {
                 if (bop.dst.operand.equal(old)) bop.dst.operand = new;
@@ -273,7 +273,7 @@ pub const Instruction = union(enum) {
             },
             else => |e| {
                 debugPrint("defines cant handle {s}\n", .{@tagName(e)});
-                return error.OperandReplaceNotImpl;
+                unreachable;
             },
         }
     }

@@ -482,7 +482,7 @@ pub const Instruction = union(enum) {
         }
     }
 
-    pub fn replaceDefines(self: *@This(), old: Operand, new: Operand) !void {
+    pub fn replaceDefines(self: *@This(), old: Operand, new: Operand) void {
         switch (self.*) {
             .range => |*r| {
                 if (r.dst.operand.equal(old)) r.dst.operand = new;
@@ -515,11 +515,11 @@ pub const Instruction = union(enum) {
                 }
             },
             .lir => |*l| {
-                try l.replaceDefines(old, new);
+                l.replaceDefines(old, new);
             },
             else => |e| {
                 debugPrint("replaceDefines cant handle {s}\n", .{@tagName(e)});
-                return error.OperandReplaceNotImpl;
+                unreachable;
             },
         }
     }

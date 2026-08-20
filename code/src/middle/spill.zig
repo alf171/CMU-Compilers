@@ -78,7 +78,7 @@ fn spillRegInFunction(
                 .top => |define_top| {
                     if (define_top.operand.equal(spilled)) {
                         const t2 = function.nextTemp();
-                        try instruction.replaceDefines(spilled, t2);
+                        instruction.replaceDefines(spilled, t2);
                         try new_instructions.append(alloc, instruction);
                         if (spill_slot == null) {
                             spill_slot = function.nextMem();
@@ -110,6 +110,7 @@ test "spill reg function" {
         .i64,
         .user,
         .host,
+        false,
         alloc,
     );
     defer function.deinit(alloc);
