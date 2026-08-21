@@ -49,6 +49,18 @@ fn rewriteFunction(
                     }
                     // reduce scope temporarily :)
                     if (callee.blocks.items.len != 1) return error.NonInlineableFunction;
+                    for (callee.blocks.items) |*callee_block| {
+                        for (callee_block.instructions.items) |*callee_instruction| {
+                            switch (callee_instruction.*) {
+                                .function_call => return error.NonInlineableFunction,
+                                .lir => |lir| switch (lir) {
+                                    .jump, .branch => return error.NonInlineableFunction,
+                                    else => {},
+                                },
+                                else => {},
+                            }
+                        }
+                    }
 
                     // old -> new temp
                     var operands: HashMap(Operand, Operand) = .init(alloc);

@@ -440,6 +440,10 @@ pub const Instruction = union(enum) {
                     }
                 }
             },
+            .list_repeat => |*lr| {
+                if (lr.list.operand.equal(old)) lr.list.operand = new;
+                if (lr.count.operand.equal(old)) lr.count.operand = new;
+            },
             .subscript_store => |*ss| {
                 if (ss.target.operand.equal(old)) ss.target.operand = new;
                 if (ss.index.operand.equal(old)) ss.index.operand = new;
@@ -495,6 +499,9 @@ pub const Instruction = union(enum) {
             },
             .list_literal => |*ll| {
                 if (ll.dst.operand.equal(old)) ll.dst.operand = new;
+            },
+            .list_repeat => |*lr| {
+                if (lr.dst.operand.equal(old)) lr.dst.operand = new;
             },
             .subscript => |*s| {
                 if (s.dst.operand.equal(old)) s.dst.operand = new;

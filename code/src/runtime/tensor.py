@@ -1,19 +1,23 @@
 class Tensor[T]:
     def __init__(self, data: list[T], shape: tuple[int, int]) -> None:
         self.data = data
-        # FIXME: ownership transfer since tuples are pointers
         self.shape = [shape[0], shape[1]]
+
+    @inline
+    @staticmethod
+    def _index_2d(row: i32, col: i32, stride: i32) -> i32:
+        return row * stride + col;
 
     def __getitem__(self, idxs: tuple[int, int]) -> T:
         row = idxs[0]
         col = idxs[1]
-        index = row * self.shape[1] + col
+        index = Tensor._index_2d(row, col, self.shape[1])
         return self.data[index]
 
     def __setitem__(self, idxs: tuple[int, int], value: T) -> None:
         row = idxs[0]
         col = idxs[1]
-        index = row * self.shape[1] + col
+        index = Tensor._index_2d(row, col, self.shape[1])
         self.data[index] = value
 
     @staticmethod
@@ -29,8 +33,8 @@ class Tensor[T]:
         return
 
     def __add__(self, other: Tensor[T]) -> Tensor[T]:
+        # FIXME: hack for proper type propogation
         zero: T = 0
-        # FIXME: should be able to pass self.shape through and a copy is made
         res = Tensor.fill((self.shape[0], self.shape[1]), zero)
         Tensor._add_gpu(res.data, self.data, other.data, (self.shape[0] * self.shape[1], 1, 1))
         return res
@@ -38,19 +42,20 @@ class Tensor[T]:
     @gpu
     @staticmethod
     # (i, j) @ (j,k) = (i,k)
-    # should we push classes into gpu kernels to cleanup indexing logic?
     def _matmul_gpu[U](out: list[U], a: list[U], b: list[U], J: i32, K: i32) -> None:
         i = global_id(0)
         k = global_id(1)
         acc: U = 0
         for j in range(J):
-            acc += a[i * J + j] * b[j * K + k]
+            a_i = Tensor._index_2d(i, j, J)
+            b_i = Tensor._index_2d(j, k, K) 
+            acc += a[a_i] * b[b_i]
 
         # (i, k)
         out[i * K + k] = acc
     
     def __matmul__(self, other: Tensor[T]) -> Tensor[T]:
-        # hack to avoid a cast
+        # FIXME: hack for proper type propogation
         zero: T = 0
         # (i, k)
         res = Tensor.fill((self.shape[0], other.shape[1]), zero)
@@ -63,4 +68,3 @@ class Tensor[T]:
            (self.shape[0], other.shape[1], 1)
        )
         return res
-

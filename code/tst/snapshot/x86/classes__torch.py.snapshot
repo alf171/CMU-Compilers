@@ -29,20 +29,20 @@ print(C.shape[1])
 print(C[0,0])
 
 performance report: (ORIGIN=user)
-number of asm lines: 622
-mov count: 445
+number of asm lines: 623
+mov count: 446
 memory load count: 0
 memory store count: 0
 branch count: 10
 call count: 43
-spill count: 16
+spill count: 15
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 1323
-mov count: 704
+number of asm lines: 1347
+mov count: 706
 memory load count: 0
 memory store count: 0
-branch count: 85
+branch count: 88
 call count: 39
 spill count: 11
 

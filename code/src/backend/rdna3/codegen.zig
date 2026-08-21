@@ -336,7 +336,10 @@ pub fn emit(
                         try out.appendSlice(alloc, "\ts_waitcnt vmcnt(0) lgkmcnt(0)\n");
                         try out.appendSlice(alloc, "\ts_endpgm\n");
                     },
-                    else => return error.NotImpl,
+                    else => |e| {
+                        std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                        return error.NotImpl;
+                    },
                 }
             }
         }
