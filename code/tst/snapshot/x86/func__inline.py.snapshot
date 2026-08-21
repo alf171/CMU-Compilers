@@ -2,24 +2,24 @@ running program: (OPTIM=true)
 
 
 @inline
-def f(x: int) -> str:
-    return "hello world"
+def f(x: int) -> int:
+    return x + 42
 
 x = f(5)
 print(x)
 
 performance report: (ORIGIN=user)
-number of asm lines: 193
-mov count: 122
+number of asm lines: 69
+mov count: 22
 memory load count: 0
 memory store count: 0
 branch count: 5
-call count: 5
+call count: 3
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 641
-mov count: 327
+number of asm lines: 638
+mov count: 324
 memory load count: 0
 memory store count: 0
 branch count: 54
@@ -27,5 +27,5 @@ call count: 28
 spill count: 12
 
 actual output:
-hello world
-[!!memory report!!]: allocs=2 frees=2 allocated_bytes=30 freed_bytes=30
+47
+[!!memory report!!]: allocs=1 frees=1 allocated_bytes=10 freed_bytes=10
