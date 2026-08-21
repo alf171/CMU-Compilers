@@ -39,9 +39,19 @@ pub fn runFunction(function: *Function, alloc: std.mem.Allocator) !void {
             }
 
             switch (instruction.*) {
-                // naive impl: barrier needed since function param regs could be dirty
+                // function param regs could be dirty
                 .function_call => {
-                    copyMap.clearRetainingCapacity();
+                    var removals: ArrayList(Operand) = .init(alloc);
+
+                    var it = copyMap.iterator();
+                    while (it.next()) |entry| {
+                        if (try dependsOnBuiltinReg(entry.value_ptr.*, &copyMap, alloc)) {
+                            try removals.append(entry.key_ptr.*);
+                        }
+                    }
+                    for (removals.items) |removal| {
+                        _ = copyMap.remove(removal);
+                    }
                 },
                 .lir => |lir| switch (lir) {
                     .move => |mov| {
@@ -204,6 +214,21 @@ fn dependsOn(value: ValueRef, operand: Operand, copyMap: *HashMap(Operand, Value
         try visited.put(current_op, {});
 
         current = copyMap.get(current_op) orelse return false;
+    }
+    return false;
+}
+
+fn dependsOnBuiltinReg(value: ValueRef, copyMap: *HashMap(Operand, ValueRef), alloc: std.mem.Allocator) !bool {
+    var seen: HashMap(Operand, void) = .init(alloc);
+    defer seen.deinit();
+
+    var current = value;
+    while (current == .top) {
+        const operand = current.top.operand;
+        if (operand == .reg) return true;
+        if (seen.contains(operand)) return false;
+        try seen.put(operand, {});
+        current = copyMap.get(operand) orelse return false;
     }
     return false;
 }

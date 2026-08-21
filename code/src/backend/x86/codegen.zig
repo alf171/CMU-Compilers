@@ -9,7 +9,6 @@ const Block = common.ir.BasicBlock;
 const ConstValue = common.ir.ConstValue;
 const Function = common.ir.Function;
 const ValueRef = common.ir.ValueRef;
-const getElementType = common.types.getElementType;
 const ColoredGraph = @import("middle").color.ColoredGraph;
 const Abi = @import("../cpu_abi.zig").CpuAbi;
 
@@ -314,12 +313,14 @@ fn emitFunction(
                         .select => |s| {
                             const dst = try abi.regFor(s.dst.operand, colors);
                             const scratch_reg = try abi.scratchReg(0, .gp);
+
+                            const condition = try abi.regFor(s.condition.operand, colors);
+                            try out.print(alloc, "\tcmpq $0, %{s}\n", .{condition});
+
                             const else_reg = try valueToReg(s.else_value, out, dst, colors, abi, alloc);
                             if (!std.mem.eql(u8, else_reg, dst)) {
                                 try out.print(alloc, "\tmovq %{s}, %{s}\n", .{ else_reg, dst });
                             }
-                            const condition = try abi.regFor(s.condition.operand, colors);
-                            try out.print(alloc, "\tcmpq $0, %{s}\n", .{condition});
                             const if_reg = try valueToReg(s.if_value, out, scratch_reg, colors, abi, alloc);
                             try out.print(alloc, "\tcmovne %{s}, %{s}\n", .{ if_reg, dst });
                         },
