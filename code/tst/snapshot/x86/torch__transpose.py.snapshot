@@ -1,0 +1,30 @@
+running program: (OPTIM=true)
+
+
+A_stride: tuple[i32, i32] = (2,2)
+A = Tensor([1,2,3,4], A_stride)
+print(A[1,0])
+print(A[0,1])
+
+performance report: (ORIGIN=user)
+number of asm lines: 123
+mov count: 77
+memory load count: 0
+memory store count: 0
+branch count: 2
+call count: 10
+spill count: 0
+
+performance report: (ORIGIN=runtime)
+number of asm lines: 754
+mov count: 366
+memory load count: 0
+memory store count: 0
+branch count: 63
+call count: 28
+spill count: 12
+
+actual output:
+3
+2
+[!!memory report!!]: allocs=4 frees=4 allocated_bytes=88 freed_bytes=88

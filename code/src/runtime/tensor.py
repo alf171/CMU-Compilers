@@ -6,6 +6,13 @@ class Tensor[T]:
         self.row_stride = shape[1]
         self.col_stride = 1
 
+    @staticmethod
+    def _view[U](data: list[U], rows: i32, cols: i32, row_stride: i32, col_stride: i32) -> Tensor[U]:
+        res = Tensor(data, (rows, cols))
+        res.row_stride = row_stride
+        res.col_stride = col_stride
+        return res
+
     @inline
     @staticmethod
     def _index_2d(row: i32, col: i32, row_stride: i32, col_stride: i32) -> i32:
@@ -119,3 +126,6 @@ class Tensor[T]:
             (self.rows, self.cols)
         )
         return res
+
+    def transpose(self) -> Tensor[T]:
+        return Tensor._view(self.data, self.cols, self.rows, self.col_stride, self.row_stride)

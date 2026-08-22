@@ -307,10 +307,11 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
                 else => return error.ExpectedInstance,
             };
             const class = irBuilder.getClass(instance.class_id);
-            var field = class.findField(std.mem.span(raw_field_name));
+            const field_idx = class.findFieldIdx(std.mem.span(raw_field_name));
+            var field: ?*Field = null;
 
             // first time self so define field
-            if (field == null) {
+            if (field_idx == null) {
                 try class.fields.append(alloc, .{
                     .name = try alloc.dupe(u8, field_name),
                     .type = try rhs_value.type.clone(alloc),
@@ -320,7 +321,10 @@ fn storeAssignmentTarget(lhs: *PyObject, rhs_value: TypedOperand, irBuilder: *Ir
                 field = &class.fields.items[class.fields.items.len - 1];
             } else {
                 // reassignemnt scenario
-                return error.NotImpl;
+                field = &class.fields.items[field_idx.?];
+                var bindings: TypeBindings = .init(alloc);
+                defer bindings.deinit(alloc);
+                try field.?.type.unify(rhs_value.type, &bindings, alloc);
             }
 
             try irBuilder.emit(.{ .field_store = .{

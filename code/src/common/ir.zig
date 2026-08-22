@@ -159,6 +159,15 @@ pub const ClassInfo = struct {
         return null;
     }
 
+    pub fn findFieldIdx(self: *const @This(), name: []const u8) ?usize {
+        for (self.fields.items, 0..) |field, i| {
+            if (std.mem.eql(u8, field.name, name)) {
+                return i;
+            }
+        }
+        return null;
+    }
+
     // O(n) scan for method
     pub fn findMethod(self: *@This(), name: []const u8) ?*Method {
         for (self.methods.items) |*method| {
