@@ -784,7 +784,11 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
             std.debug.assert(raw_name != null);
 
             const class = irBuilder.getClass(instance.class_id);
-            const field = class.findField(std.mem.span(raw_name)) orelse return error.CantFindField;
+            const name = std.mem.span(raw_name);
+            const field = class.findField(name) orelse {
+                std.debug.print("cant find {s}\n", .{name});
+                return error.CantFindField;
+            };
 
             const dst: TypedOperand = .{
                 .operand = irBuilder.nextTemp(),

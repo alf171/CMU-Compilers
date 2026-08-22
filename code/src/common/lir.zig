@@ -515,6 +515,11 @@ pub const Instruction = union(enum) {
                 .if_value = try s.if_value.clone(alloc),
                 .else_value = try s.else_value.clone(alloc),
             } },
+            .cast => |c| .{ .cast = .{
+                .dst = try c.dst.clone(alloc),
+                .dst_target_type = try c.dst_target_type.clone(alloc),
+                .src = try c.src.clone(alloc),
+            } },
             else => |e| {
                 std.debug.print("cant handle {s}\n", .{@tagName(e)});
                 return error.NotImpl;

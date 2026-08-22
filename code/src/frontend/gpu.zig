@@ -105,7 +105,8 @@ fn rewriteFunction(
                                     try elements.append(alloc, .{ .top = try byte_count.clone(alloc) });
                                     try element_types.append(alloc, .i64);
                                 },
-                                .i64 => {
+                                // gpu scalars are always 8 bits wide
+                                .i64, .i32 => {
                                     try elements.append(alloc, .{ .top = try arg.clone(alloc) });
                                     try elements.append(alloc, .{ .constant = .{ .i64 = 0 } });
                                     try element_types.append(alloc, .i64);

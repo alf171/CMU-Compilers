@@ -14,8 +14,8 @@ print(y[5,5])
 z = Tensor.fill((16, 16), 42);
 # this will get run on the gpu
 a = y + z
-for i in range(a.shape[0]):
-    for j in range(a.shape[1]):
+for i in range(a.rows):
+    for j in range(a.cols):
         print(a[i, j], end=" ")
 print("\n", end="")
 
@@ -24,26 +24,26 @@ A = Tensor(A_data, (2,3))
 B_data: list[i32] = [7,8,9,10,11,12,13,14,15,16,17,18]
 B = Tensor(B_data, (3,4))
 C = A @ B
-print(C.shape[0], end = ", ")
-print(C.shape[1])
+print(C.rows, end = ", ")
+print(C.cols)
 print(C[0,0])
 
 performance report: (ORIGIN=user)
-number of asm lines: 623
-mov count: 446
+number of asm lines: 592
+mov count: 423
 memory load count: 0
 memory store count: 0
 branch count: 10
 call count: 43
-spill count: 15
+spill count: 12
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 1483
-mov count: 765
+number of asm lines: 1394
+mov count: 706
 memory load count: 0
 memory store count: 0
 branch count: 98
-call count: 44
+call count: 42
 spill count: 11
 
 actual output:
@@ -55,4 +55,4 @@ actual output:
 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 84 
 2, 4
 74
-[!!memory report!!]: allocs=291 frees=291 allocated_bytes=9336 freed_bytes=9336
+[!!memory report!!]: allocs=284 frees=284 allocated_bytes=9252 freed_bytes=9252

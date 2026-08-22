@@ -12,8 +12,8 @@ print(y[5,5])
 z = Tensor.fill((16, 16), 42);
 # this will get run on the gpu
 a = y + z
-for i in range(a.shape[0]):
-    for j in range(a.shape[1]):
+for i in range(a.rows):
+    for j in range(a.cols):
         print(a[i, j], end=" ")
 print("\n", end="")
 
@@ -22,6 +22,6 @@ A = Tensor(A_data, (2,3))
 B_data: list[i32] = [7,8,9,10,11,12,13,14,15,16,17,18]
 B = Tensor(B_data, (3,4))
 C = A @ B
-print(C.shape[0], end = ", ")
-print(C.shape[1])
+print(C.rows, end = ", ")
+print(C.cols)
 print(C[0,0])

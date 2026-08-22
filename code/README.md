@@ -59,7 +59,7 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 2. common matrix operations like relu(), transpose(), matmul(), etc
   - [x] relu
   - [x] ewise sub/mul
-  - [ ] Tensor * scalar (div too)?
+  - [x] Tensor * scalar (div too)?
   - [ ] transpose
   - [ ] sum/max (axis=1, keepdim=True)
   - [ ] exp

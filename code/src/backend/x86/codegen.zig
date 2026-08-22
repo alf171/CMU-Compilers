@@ -169,9 +169,7 @@ fn emitFunction(
                             const src = try abi.regFor(so.src.operand, colors);
                             switch (so.offset) {
                                 .constant => |c| switch (c) {
-                                    .i64 => |offset| {
-                                        try out.print(alloc, "\tmovq %{s}, {d}(%{s})\n", .{ src, offset, dst });
-                                    },
+                                    .i64 => |offset| try emitStoreConstant(out, dst, src, offset, so.src.type, alloc),
                                     else => return error.NotImpl,
                                 },
                                 .top => |top| {
@@ -351,6 +349,11 @@ fn emitFunction(
                                         const src = try abi.regFor(c.src.operand, colors);
                                         try out.print(alloc, "\tcvtsi2sdl %{s}, %{s}\n", .{ reg32(src), dst });
                                     },
+                                    .i64 => {
+                                        const dst = try abi.regFor(c.dst.operand, colors);
+                                        const src = try abi.regFor(c.src.operand, colors);
+                                        try out.print(alloc, "\tmovslq %{s}, %{s}\n", .{ reg32(src), dst });
+                                    },
                                     else => {
                                         std.debug.print("unsupported cast: {s} -> {s}\n", .{
                                             @tagName(c.src.type),
@@ -402,9 +405,7 @@ fn emitFunction(
                             const src = try abi.regFor(lo.src.operand, colors);
                             switch (lo.offset) {
                                 .constant => |c| switch (c) {
-                                    .i64 => |offset| {
-                                        try out.print(alloc, "\tmovq {d}(%{s}), %{s}\n", .{ offset, src, dst });
-                                    },
+                                    .i64 => |offset| try emitLoadConstant(out, dst, src, offset, lo.dst.type, alloc),
                                     else => return error.NotImpl,
                                 },
                                 .top => |top| {
@@ -413,11 +414,18 @@ fn emitFunction(
                                         .float => {
                                             try out.print(alloc, "\tmovsd (%{s},%{s}), %{s}\n", .{ offset, src, dst });
                                         },
+                                        .i64, .list => {
+                                            try out.print(alloc, "\tmovq (%{s},%{s}), %{s}\n", .{ offset, src, dst });
+                                        },
                                         .i32 => {
                                             try out.print(alloc, "\tmovslq (%{s},%{s}), %{s}\n", .{ offset, src, dst });
                                         },
-                                        else => {
-                                            try out.print(alloc, "\tmovq (%{s},%{s}), %{s}\n", .{ offset, src, dst });
+                                        .bool => {
+                                            try out.print(alloc, "\tmovzbq (%{s},%{s}), %{s}\n", .{ offset, src, dst });
+                                        },
+                                        else => |e| {
+                                            std.debug.print("cant handle {s}\n", .{@tagName(e)});
+                                            return error.NotImpl;
                                         },
                                     }
                                 },
@@ -539,6 +547,44 @@ fn emitStackStoreByte(
     alloc: std.mem.Allocator,
 ) !void {
     try out.print(alloc, "\tmovq %{s}, -{d}(%rbp)\n", .{ src, offset });
+}
+
+fn emitLoadConstant(
+    out: *ArrayList(u8),
+    dst: []const u8,
+    src: []const u8,
+    offset: i64,
+    type_: TypeInfo,
+    alloc: std.mem.Allocator,
+) !void {
+    switch (type_) {
+        .i64, .list => try out.print(alloc, "\tmovq {d}(%{s}), %{s}\n", .{ offset, src, dst }),
+        .i32 => try out.print(alloc, "\tmovslq {d}(%{s}), %{s}\n", .{ offset, src, dst }),
+        .bool => try out.print(alloc, "\tmovsbl {d}(%{s}), %{s}\n", .{ offset, src, dst }),
+        else => |e| {
+            std.debug.print("cant handle {s}\n", .{@tagName(e)});
+            return error.NotImpl;
+        },
+    }
+}
+
+fn emitStoreConstant(
+    out: *ArrayList(u8),
+    dst: []const u8,
+    src: []const u8,
+    offset: i64,
+    type_: TypeInfo,
+    alloc: std.mem.Allocator,
+) !void {
+    switch (type_) {
+        .i64, .list => try out.print(alloc, "\tmovq %{s}, {d}(%{s})\n", .{ src, offset, dst }),
+        .i32 => try out.print(alloc, "\tmovl %{s}, {d}(%{s})\n", .{ reg32(src), offset, dst }),
+        .char, .bool => try out.print(alloc, "\tmovb %{s}, {d}(%{s})\n", .{ reg8(src), offset, dst }),
+        else => |e| {
+            std.debug.print("cant handle {s}\n", .{@tagName(e)});
+            return error.NotImpl;
+        },
+    }
 }
 
 fn createFunctionFooter(
