@@ -7,7 +7,7 @@ def fill(out: list[i32]) -> None:
     col = global_id(1)
     out[row * 5 + col] = 42
 
-out: list[i32] = [0] * 25
+out: list[i32] = [i32(0)] * 25
 
 fill(out, (5, 5, 1))
 for i in range(25):
@@ -15,8 +15,8 @@ for i in range(25):
 print("\n", end="")
 
 performance report: (ORIGIN=user)
-number of asm lines: 155
-mov count: 94
+number of asm lines: 156
+mov count: 95
 memory load count: 0
 memory store count: 0
 branch count: 6
@@ -24,8 +24,8 @@ call count: 10
 spill count: 0
 
 performance report: (ORIGIN=runtime)
-number of asm lines: 731
-mov count: 350
+number of asm lines: 730
+mov count: 349
 memory load count: 0
 memory store count: 0
 branch count: 64
