@@ -1,0 +1,34 @@
+running program: (OPTIM=true)
+
+two: i32 = 2
+A = Tensor.fill((3,3), two)
+three: i32 = 3
+B = Tensor.fill((3,3), three)
+C = A * B
+print(C[0,0])
+
+D = B - A
+print(D[0,0])
+
+performance report: (ORIGIN=user)
+number of asm lines: 104
+mov count: 64
+memory load count: 0
+memory store count: 0
+branch count: 2
+call count: 11
+spill count: 0
+
+performance report: (ORIGIN=runtime)
+number of asm lines: 1187
+mov count: 632
+memory load count: 0
+memory store count: 0
+branch count: 79
+call count: 38
+spill count: 12
+
+actual output:
+6
+1
+[!!memory report!!]: allocs=18 frees=18 allocated_bytes=404 freed_bytes=404

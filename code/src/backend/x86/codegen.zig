@@ -365,6 +365,11 @@ fn emitFunction(
                                         const src = try abi.regFor(c.src.operand, colors);
                                         try out.print(alloc, "\tcvtsi2sdq %{s}, %{s}\n", .{ src, dst });
                                     },
+                                    .i32 => {
+                                        const dst = try abi.regFor(c.dst.operand, colors);
+                                        const src = try abi.regFor(c.src.operand, colors);
+                                        try out.print(alloc, "\tmovl %{s}, %{s}\n", .{ reg32(src), reg32(dst) });
+                                    },
                                     else => {
                                         std.debug.print("unsupported cast: {s} -> {s}\n", .{
                                             @tagName(c.src.type),

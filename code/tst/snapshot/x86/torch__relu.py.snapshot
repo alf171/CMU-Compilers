@@ -1,0 +1,34 @@
+running program: (OPTIM=true)
+
+neg_one: i32 = -1
+A = Tensor.fill((3,3), neg_one)
+B = A.relu()
+print(B[0,0])
+
+one: i32 = 1
+C = Tensor.fill((3,3), one)
+D = C.relu()
+print(D[0,0])
+
+performance report: (ORIGIN=user)
+number of asm lines: 105
+mov count: 63
+memory load count: 0
+memory store count: 0
+branch count: 2
+call count: 11
+spill count: 0
+
+performance report: (ORIGIN=runtime)
+number of asm lines: 1029
+mov count: 520
+memory load count: 0
+memory store count: 0
+branch count: 76
+call count: 36
+spill count: 12
+
+actual output:
+0
+1
+[!!memory report!!]: allocs=18 frees=18 allocated_bytes=404 freed_bytes=404

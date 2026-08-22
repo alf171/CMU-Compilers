@@ -41,6 +41,34 @@ class Tensor[T]:
 
     @gpu
     @staticmethod
+    def _sub_gpu[U](out: list[U], a: list[U], b: list[U]) -> None:
+        i = global_id(0)
+        out[i] = a[i] - b[i]
+        return
+
+    def __sub__(self, other: Tensor[T]) -> Tensor[T]:
+        # FIXME: hack for proper type propogation
+        zero: T = 0
+        res = Tensor.fill((self.shape[0], self.shape[1]), zero)
+        Tensor._sub_gpu(res.data, self.data, other.data, (self.shape[0] * self.shape[1], 1, 1))
+        return res
+
+    @gpu
+    @staticmethod
+    def _mul_gpu[U](out: list[U], a: list[U], b: list[U]) -> None:
+        i = global_id(0)
+        out[i] = a[i] * b[i]
+        return
+
+    def __mul__(self, other: Tensor[T]) -> Tensor[T]:
+        # FIXME: hack for proper type propogation
+        zero: T = 0
+        res = Tensor.fill((self.shape[0], self.shape[1]), zero)
+        Tensor._mul_gpu(res.data, self.data, other.data, (self.shape[0] * self.shape[1], 1, 1))
+        return res
+
+    @gpu
+    @staticmethod
     # (i, j) @ (j,k) = (i,k)
     def _matmul_gpu[U](out: list[U], a: list[U], b: list[U], J: i32, K: i32) -> None:
         i = global_id(0)

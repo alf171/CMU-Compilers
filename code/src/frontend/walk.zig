@@ -41,7 +41,7 @@ const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, 
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Tuple, Subscript, IfExp, Attribute, Unknown };
 
-const BuiltinCall = enum { Print, Write, Range, Len, Int, Float, GlobalIdx, Max };
+const BuiltinCall = enum { Print, Write, Range, Len, Int, I32, Float, GlobalIdx, Max };
 
 const SubscriberTypes = union(enum) {
     list,
@@ -375,8 +375,8 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
 
             const op = try getBinOp(stmt);
             // order here will impact temp numbering
-            const lhs = try walkExpr(left, irBuilder, expected_type, alloc);
-            const rhs = try walkExpr(right, irBuilder, expected_type, alloc);
+            const lhs = try walkExpr(left, irBuilder, null, alloc);
+            const rhs = try walkExpr(right, irBuilder, null, alloc);
 
             if (lhs.type == .list and rhs.type == .i64) {
                 // list_repeat owns clones of both operands, so release these
@@ -995,34 +995,24 @@ fn walkNamedCall(
                 } }, alloc);
                 return try typed_dst.clone(alloc);
             },
-            .Int => {
+            .Int, .I32, .Float => |t| {
                 std.debug.assert(c.PyList_Size(args) == 1);
                 const arg0 = c.PyList_GetItem(args, 0);
                 std.debug.assert(arg0 != null);
+                const dst_type: TypeInfo = switch (t) {
+                    .Int => .i64,
+                    .I32 => .i32,
+                    .Float => .float,
+                    else => unreachable,
+                };
                 const value = try walkExpr(arg0, irBuilder, null, alloc);
                 const dst: TypedOperand = .{
                     .operand = irBuilder.nextTemp(),
-                    .type = .i32,
+                    .type = dst_type,
                 };
                 try irBuilder.emit(.{ .lir = .{ .cast = .{
                     .dst = dst,
-                    .dst_target_type = .i64,
-                    .src = value,
-                } } }, alloc);
-                return try dst.clone(alloc);
-            },
-            .Float => {
-                std.debug.assert(c.PyList_Size(args) == 1);
-                const arg0 = c.PyList_GetItem(args, 0);
-                std.debug.assert(arg0 != null);
-                const value = try walkExpr(arg0, irBuilder, null, alloc);
-                const dst: TypedOperand = .{
-                    .operand = irBuilder.nextTemp(),
-                    .type = .float,
-                };
-                try irBuilder.emit(.{ .lir = .{ .cast = .{
-                    .dst = dst,
-                    .dst_target_type = .float,
+                    .dst_target_type = dst_type,
                     .src = value,
                 } } }, alloc);
                 return try dst.clone(alloc);
@@ -2271,6 +2261,8 @@ fn getBuiltinCall(name: []const u8) ?BuiltinCall {
         return BuiltinCall.Len;
     } else if (std.mem.eql(u8, name, "int")) {
         return BuiltinCall.Int;
+    } else if (std.mem.eql(u8, name, "i32")) {
+        return BuiltinCall.I32;
     } else if (std.mem.eql(u8, name, "float")) {
         return BuiltinCall.Float;
     } else if (std.mem.eql(u8, name, "global_id")) {
