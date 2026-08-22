@@ -41,7 +41,7 @@ const StmtKind = enum { Assign, AnnotatedAssign, Expr, If, While, For, FuncDef, 
 
 const ExprKind = enum { BinOp, UnaryOp, Compare, Constant, Name, Call, List, Tuple, Subscript, IfExp, Attribute, Unknown };
 
-const BuiltinCall = enum { Print, Write, Range, Len, Int, Float, GlobalIdx };
+const BuiltinCall = enum { Print, Write, Range, Len, Int, Float, GlobalIdx, Max };
 
 const SubscriberTypes = union(enum) {
     list,
@@ -429,21 +429,18 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
         },
         .UnaryOp => {
             const operand_obj = c.PyObject_GetAttrString(stmt, "operand");
-            const src = try walkExpr(operand_obj, irBuilder, null, alloc);
-            const dst = irBuilder.nextTemp();
+            const src = try walkExpr(operand_obj, irBuilder, expected_type, alloc);
+            const dst: TypedOperand = .{
+                .operand = irBuilder.nextTemp(),
+                .type = try src.type.clone(alloc),
+            };
             const op = try getUnaryOp(stmt);
             try irBuilder.emit(.{ .lir = .{ .unaryop = .{
-                .dst = .{
-                    .operand = dst,
-                    .type = try src.type.clone(alloc),
-                },
+                .dst = dst,
                 .op = op,
                 .src = src,
             } } }, alloc);
-            return .{
-                .operand = dst,
-                .type = try src.type.clone(alloc),
-            };
+            return try dst.clone(alloc);
         },
         .Constant => {
             const value_obj = c.PyObject_GetAttrString(stmt, "value");
@@ -451,9 +448,13 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
             const parsed_constant = try parseConstant(value_obj, expected_type, alloc);
             switch (parsed_constant) {
                 .immediate => |imm| {
+                    const constant_type = if (expected_type) |t|
+                        try t.clone(alloc)
+                    else
+                        imm.toType();
                     const dst: TypedOperand = .{
                         .operand = irBuilder.nextTemp(),
-                        .type = imm.toType(),
+                        .type = constant_type,
                     };
                     try irBuilder.emit(.{ .lir = .{ .move = .{
                         .dst = dst,
@@ -732,7 +733,7 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
             const func_kind = getPyType(func);
 
             if (std.mem.eql(u8, func_kind, "Name")) {
-                return walkNamedCall(stmt, func, irBuilder, alloc);
+                return walkNamedCall(stmt, func, irBuilder, expected_type, alloc);
             } else if (std.mem.eql(u8, func_kind, "Attribute")) {
                 return walkMethodCall(stmt, func, irBuilder, alloc);
             } else if (std.mem.eql(u8, func_kind, "Subscript")) {
@@ -806,7 +807,13 @@ pub fn walkExpr(stmt: *PyObject, irBuilder: *IrBuilder, expected_type: ?TypeInfo
 }
 
 // Expr(value=Call(func=Name(id="print"),args=[BinOp(...)]))
-fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc: std.mem.Allocator) anyerror!TypedOperand {
+fn walkNamedCall(
+    stmt: *PyObject,
+    func: *PyObject,
+    irBuilder: *IrBuilder,
+    expected_type: ?TypeInfo,
+    alloc: std.mem.Allocator,
+) anyerror!TypedOperand {
     const func_id = c.PyObject_GetAttrString(func, "id");
     std.debug.assert(func_id != null);
 
@@ -1037,6 +1044,41 @@ fn walkNamedCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc:
 
                 return try dst.clone(alloc);
             },
+            .Max => {
+                std.debug.assert(c.PyList_Size(args) == 2);
+                const lhs_obj = c.PyList_GetItem(args, 0);
+                const lhs = try walkExpr(lhs_obj, irBuilder, expected_type, alloc);
+                const rhs_obj = c.PyList_GetItem(args, 1);
+                const rhs = try walkExpr(rhs_obj, irBuilder, lhs.type, alloc);
+
+                std.debug.assert(lhs.type.equal(rhs.type));
+
+                const compare: TypedOperand = .{
+                    .operand = irBuilder.nextTemp(),
+                    .type = .bool,
+                };
+
+                try irBuilder.emit(.{ .lir = .{ .compare = .{
+                    .dst = compare,
+                    .lhs = lhs,
+                    .op = .gt,
+                    .rhs = rhs,
+                } } }, alloc);
+
+                const dst: TypedOperand = .{
+                    .operand = irBuilder.nextTemp(),
+                    .type = try lhs.type.clone(alloc),
+                };
+
+                try irBuilder.emit(.{ .lir = .{ .select = .{
+                    .dst = dst,
+                    .condition = compare,
+                    .if_value = .{ .top = try lhs.clone(alloc) },
+                    .else_value = .{ .top = try rhs.clone(alloc) },
+                } } }, alloc);
+
+                return try dst.clone(alloc);
+            },
         }
     }
 
@@ -1189,7 +1231,7 @@ fn walkMethodCall(stmt: *PyObject, func: *PyObject, irBuilder: *IrBuilder, alloc
 
     // instance expression, <remaining args>
     if (self) |value| {
-        try arguments.append(alloc, try value.clone(alloc));
+        try arguments.append(alloc, value);
     }
     const args_obj = c.PyObject_GetAttrString(stmt, "args");
     std.debug.assert(args_obj != null);
@@ -2233,6 +2275,8 @@ fn getBuiltinCall(name: []const u8) ?BuiltinCall {
         return BuiltinCall.Float;
     } else if (std.mem.eql(u8, name, "global_id")) {
         return BuiltinCall.GlobalIdx;
+    } else if (std.mem.eql(u8, name, "max")) {
+        return BuiltinCall.Max;
     }
     return null;
 }

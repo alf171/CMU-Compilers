@@ -76,13 +76,18 @@ pub fn emit(
                             switch (m.src) {
                                 .constant => |c| switch (c) {
                                     .i64 => |i| {
-                                        std.debug.assert(dst.width == 2);
                                         const bits: u64 = @bitCast(i);
                                         const low: u32 = @truncate(bits);
-                                        const high: u32 = @truncate(bits >> 32);
+                                        if (dst.width == 1) {
+                                            std.debug.assert(m.dst.type == .i32);
+                                            try out.print(alloc, "\tv_mov_b32_e32 v{d}, {d}\n", .{ dst.base, low });
+                                        } else {
+                                            std.debug.assert(dst.width == 2);
+                                            const high: u32 = @truncate(bits >> 32);
 
-                                        try out.print(alloc, "\tv_mov_b32_e32 v{d}, {d}\n", .{ dst.base, low });
-                                        try out.print(alloc, "\tv_mov_b32_e32 v{d}, {d}\n", .{ dst.base + 1, high });
+                                            try out.print(alloc, "\tv_mov_b32_e32 v{d}, {d}\n", .{ dst.base, low });
+                                            try out.print(alloc, "\tv_mov_b32_e32 v{d}, {d}\n", .{ dst.base + 1, high });
+                                        }
                                     },
                                     .i32 => |i| {
                                         std.debug.assert(dst.width == 1);
@@ -207,7 +212,6 @@ pub fn emit(
                                 .vgpr => {
                                     std.debug.assert(base.width == 2);
                                     std.debug.assert(offset.width == 2);
-                                    std.debug.assert(src.width == 2);
                                     // *(base + offset) = src
                                     // address = base + offset
                                     const address = try abi.scratchReg(0, 2, .vgpr);
@@ -325,6 +329,31 @@ pub fn emit(
                             // NOTE: rhs can technically be vector or scalar!
                             try out.print(alloc, "\tv_cmp_{s}_{s} vcc_lo, v{d}, v{d}\n", .{ c.op.condForCmp(), "i32", lhs.base, rhs.base });
                             try out.print(alloc, "\tv_cndmask_b32 v{d}, 0, 1, vcc_lo\n", .{dst.base});
+                        },
+                        .select => |s| {
+                            const dst = try abi.regFor(s.dst.operand, colors);
+                            std.debug.assert(s.dst.type == .i32);
+                            std.debug.assert(dst.reg_type == .vgpr);
+                            const condition = try abi.regFor(s.condition.operand, colors);
+                            std.debug.assert(condition.reg_type == .vgpr);
+                            try out.print(alloc, "\tv_cmp_ne_u32 vcc_lo, v{d}, 0\n", .{condition.base});
+                            try out.print(alloc, "v_cndmask_b32 v{d}, ", .{dst.base});
+                            switch (s.else_value) {
+                                .top => |top| {
+                                    const else_value = try abi.regFor(top.operand, colors);
+                                    try out.print(alloc, "v{d}, ", .{else_value.base});
+                                },
+                                .constant => |c| {
+                                    try out.print(alloc, "{d}, ", .{try c.valueAsIntImm()});
+                                },
+                            }
+                            switch (s.if_value) {
+                                .top => |top| {
+                                    const if_value = try abi.regFor(top.operand, colors);
+                                    try out.print(alloc, "v{d}, vcc_lo\n", .{if_value.base});
+                                },
+                                else => return error.NotImpl,
+                            }
                         },
                         else => |e| {
                             std.debug.print("cant handle {s}\n", .{@tagName(e)});

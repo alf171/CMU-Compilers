@@ -505,6 +505,16 @@ pub const Instruction = union(enum) {
                 .then_block = b.then_block,
                 .else_block = b.else_block,
             } },
+            .load_local => |ll| .{ .load_local = .{
+                .dst = try ll.dst.clone(alloc),
+                .local = try ll.local.clone(alloc),
+            } },
+            .select => |s| .{ .select = .{
+                .dst = try s.dst.clone(alloc),
+                .condition = try s.condition.clone(alloc),
+                .if_value = try s.if_value.clone(alloc),
+                .else_value = try s.else_value.clone(alloc),
+            } },
             else => |e| {
                 std.debug.print("cant handle {s}\n", .{@tagName(e)});
                 return error.NotImpl;

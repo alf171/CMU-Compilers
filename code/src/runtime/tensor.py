@@ -66,5 +66,24 @@ class Tensor[T]:
             self.shape[1],
             other.shape[1],
            (self.shape[0], other.shape[1], 1)
-       )
+        )
+        return res
+
+    @gpu
+    @staticmethod
+    def _relu_gpu[U](out: list[U], a: list[U]) -> None:
+        i = global_id(0)
+        # hack showing up again
+        zero: U = 0;
+        out[i] = max(a[i], zero)
+
+    def relu(self) -> Tensor[T]:
+        # hack
+        zero: T = 0
+        res = Tensor.fill((self.shape[0], self.shape[1]), zero)
+        Tensor._relu_gpu(
+            res.data,
+            self.data,
+            (self.shape[0], self.shape[1])
+        )
         return res

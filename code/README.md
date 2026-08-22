@@ -31,6 +31,7 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - regenerate all snapshot results based on current output
 `-Doptimize=ReleaseFast`
 - zig flag for the best performance
+  - example) `zig build snapshot-test -Doptimize=ReleaseFast --`
 
 ## Short term goals
 
@@ -42,22 +43,11 @@ The goal of this project is to learn more about compilers from a lower level. Pr
 - [ ] tuples elems not always being 8 bytes
 - [ ] strings as tuples (stack allocation!)
 - [ ] better type inference on y
-- [ ] @inline -- useful for @gpu and @cpu code
-  - first customer is tensor indexing logic
 ```
   xs: list[i32] = [0]
   y = 123 # infer i64
   xs[0] = y
 ```
-  - maybe we need to push width down into our backend
-  - consider
-```
-_P: list[list[i32]]
-_P[m]: list[i32]
-_P[m][k]: i32
-```
-- [ ] support multiple GPU work-groups per dispatch
-  - max workgroup: total=1024 dimensions=(1024, 1024, 1024)
 
 ### Assembler/Linker
 - [ ] remove clang on linux/x86
@@ -67,6 +57,15 @@ _P[m][k]: i32
 - a tiny ml framework leveraging language
 1. forward/backward pass
 2. common matrix operations like relu(), transpose(), matmul(), etc
+  - [x] relu
+  - [ ] ewise sub/mul
+  - [ ] Tensor * scalar (div too)?
+  - [ ] transpose
+  - [ ] sum/max (axis=1, keepdim=True)
+  - [ ] exp
+  - [ ] broadcasting
+  - [ ] stable softmax
+  - [ ] backwards pass
 3. [Optional] read/write weights to a file
 4. build some models (ideas under)
   - 1k param: linear classifier of sorts?
